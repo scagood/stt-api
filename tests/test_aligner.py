@@ -429,6 +429,21 @@ def test_a_failed_pass_is_not_run_again(caplog):
     assert session.runs == 1 and caplog.text.count("wav2vec2 pass failed") == 1
 
 
+class _OverflowingSession(_CountingSession):
+    """An fp16 pass that overflowed: one frame's logits are inf."""
+
+    def run(self, outputs, feeds):
+        out = super().run(outputs, feeds)[0]
+        out[0, out.shape[1] // 2] = np.inf
+        return [out]
+
+
+def test_logits_that_are_not_finite_keep_the_model_times(caplog):
+    chunk = aligner.ChunkAligner(np.zeros(3 * TARGET_SR, np.float32), _OverflowingSession(), VOCAB, ENGLISH)
+    assert chunk.spans(["It", "cost", "two", "pounds"]) is None
+    assert "not finite" in caplog.text
+
+
 def test_spoken_numbers_share_the_aligners_other_alphabet_rule():
     assert aligner.other_alphabet(["привет", "2026", "мир"])
     assert aligner.other_alphabet(["Это", "стоило", "$5", "and"])
@@ -516,6 +531,39 @@ def test_aligner_session_uses_its_own_threads_without_spinning(monkeypatch, tmp_
     monkeypatch.setattr(aligner.ort, "InferenceSession", lambda *a, **k: "session", raising=False)
     aligner._load("wav2vec2-base-960h", "int8")
     assert built == [((aligner.ALIGN_THREADS,), {"spinning": False})]
+
+
+def test_aligners_run_on_the_gpu_when_the_models_do_except_int8(monkeypatch):
+    monkeypatch.setattr(model, "_preload_cuda_libraries", lambda: True)
+    monkeypatch.setattr(
+        model.ort, "get_available_providers", lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"], raising=False
+    )
+    monkeypatch.setattr(model, "USE_GPU", "auto")
+    assert aligner._providers("int8") == ["CPUExecutionProvider"]  # no CUDA kernels for its 8-bit ops
+    assert aligner._providers("fp16") == aligner._providers("fp32") == model._resolve_providers()
+    assert aligner._providers("fp16")[0][0] == "CUDAExecutionProvider"
+    monkeypatch.setattr(model, "USE_GPU", "false")
+    assert aligner._providers("fp16") == ["CPUExecutionProvider"]
+
+
+def test_an_aligner_session_is_made_on_its_providers(monkeypatch, tmp_path):
+    _fake_hub(monkeypatch, _Download(tmp_path, fail_times=0))
+    made = []
+    monkeypatch.setattr(aligner, "_providers", lambda quant: [f"{quant} providers"])
+    monkeypatch.setattr(aligner, "_build_sess_options", lambda *a, **k: None)
+    monkeypatch.setattr(aligner.ort, "InferenceSession", lambda *a, **k: made.append(k["providers"]), raising=False)
+    aligner._load("wav2vec2-base-960h", "fp16")
+    assert made == [["fp16 providers"]]
+
+
+def test_an_aligner_that_cannot_have_the_gpu_fails_before_downloading(monkeypatch):
+    def unavailable():
+        raise RuntimeError("PARAKEET_USE_GPU=true but CUDAExecutionProvider is unavailable")
+
+    monkeypatch.setattr(aligner, "_resolve_providers", unavailable)
+    # The model's word times, not a 500; and no download (the hermetic fixture checks).
+    assert aligner.for_chunk(np.zeros(16000), "en", "wav2vec2-base-960h", "fp16") is None
+    assert aligner.status()["wav2vec2-base-960h:fp16"] == "failed"
 
 
 def test_parakeet_session_options_are_unchanged_by_default(monkeypatch):

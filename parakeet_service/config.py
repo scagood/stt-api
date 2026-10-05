@@ -517,9 +517,9 @@ DEFAULT_INTRA = 1 if USE_GPU != "false" else min(_physical, _available_logical)
 ORT_INTRA_THREADS = _env_int("PARAKEET_ORT_INTRA_THREADS", DEFAULT_INTRA)
 ORT_INTER_THREADS = _env_int("PARAKEET_ORT_INTER_THREADS", 1)
 AUDIO_WORKERS = _env_int("PARAKEET_AUDIO_WORKERS", min(8, _physical))
-# The word aligner always runs on CPU, even when Parakeet has the GPU, so it
-# cannot share ORT_INTRA_THREADS (1 in GPU mode). Its int8 kernels stop scaling
-# at about four threads.
+# int8 word aligners always run on CPU, even when Parakeet has the GPU (fp16 and
+# fp32 ones follow it there), so they cannot share ORT_INTRA_THREADS (1 in GPU
+# mode). The int8 kernels stop scaling at about four threads.
 ALIGN_THREADS = _env_int("PARAKEET_ALIGN_THREADS", min(4, _physical))
 # Each InferencePool worker runs its own ORT call with ORT_INTRA_THREADS
 # spinning threads, so workers x intra-op threads is what has to fit the CPUs

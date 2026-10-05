@@ -20,7 +20,7 @@ import onnxruntime as ort
 
 from . import spoken
 from .config import ALIGN_DEFAULT_LANGUAGE, ALIGN_THREADS, ALIGNER_CONFIGS, MODEL_CACHE_SIZE, TARGET_SR, logger
-from .model import _build_sess_options
+from .model import _build_sess_options, _resolve_providers
 
 Span = tuple[float, float]
 
@@ -174,6 +174,17 @@ def _read_vocab(files: dict[str, str]) -> dict[str, int]:
         return {token: int(index) for token, _, index in lines}
 
 
+def _providers(quant: str) -> list[Any]:
+    """Where an aligner at `quant` runs: on the GPU when the models resolve to it
+    (model._resolve_providers), else on the CPU.
+
+    int8 stays on the CPU. ONNX Runtime has no CUDA kernel for its
+    DynamicQuantizeLinear or ConvInteger, nor a MatMulInteger for their uint8
+    output, so on CUDA most of it would still run on the CPU, copied to and fro.
+    """
+    return ["CPUExecutionProvider"] if quant == "int8" else _resolve_providers()
+
+
 def _load(name: str, quant: str) -> Optional[tuple[Any, dict[str, int]]]:
     key = f"{name}:{quant}"
     with _lock:
@@ -186,19 +197,20 @@ def _load(name: str, quant: str) -> Optional[tuple[Any, dict[str, int]]]:
         spec = ALIGNER_CONFIGS[name]
         variant = spec["quantizations"][quant]
         try:
+            # ponytail: the GPU path (fp16 and fp32 on a CUDA host) is untested (#54).
+            # Expected: ~1.8 s per 30 s of audio on the CPU drops to tens of ms.
+            providers = _providers(quant)  # first, as for models: no GPU, no download
             from huggingface_hub import hf_hub_download
 
             files = {
                 file: hf_hub_download(variant["repo"], path, revision=variant["revision"])
                 for file, path in variant["files"].items()
             }
-            # ponytail: CPU only. On CUDA (an fp16 export) the pass would drop from
-            # ~1.8 s per 30 s of audio to tens of ms; untested, so not wired (#32).
             session = ort.InferenceSession(
                 files["model.onnx"],
                 # Only word and spoken-number requests use it: no threads spinning between calls.
                 sess_options=_build_sess_options(ALIGN_THREADS, spinning=False),
-                providers=["CPUExecutionProvider"],
+                providers=providers,
             )
             vocab = _read_vocab(files)
             for token in (spec["blank"], spec["separator"]):
@@ -218,7 +230,11 @@ def _load(name: str, quant: str) -> Optional[tuple[Any, dict[str, int]]]:
         while MODEL_CACHE_SIZE and len(_loaded) > MODEL_CACHE_SIZE:
             evicted, _ = _loaded.popitem(last=False)
             logger.info("Evicted word aligner %s (cache size %d)", evicted, MODEL_CACHE_SIZE)
-        logger.info("Loaded word aligner %s (%s)", key, variant["repo"])
+        # What it bound to: ONNX Runtime falls back to the CPU if CUDA won't start.
+        bound = getattr(session, "get_providers", None)
+        logger.info(
+            "Loaded word aligner %s (%s) on %s", key, variant["repo"], bound() if callable(bound) else providers
+        )
         return loaded
 
 
@@ -240,7 +256,12 @@ def _emission(session: Any, wav: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         keep = (frame_starts >= core_start) & (frame_starts < core_end)
         # Log-softmax per window in float32: a float64 copy is 300 MB at 10k tokens.
         out = out[keep].astype(np.float32, copy=False)
-        out -= out.max(axis=-1, keepdims=True)
+        peak = out.max(axis=-1, keepdims=True)
+        # A NaN or inf logit (an fp16 overflow) makes its frame's peak one; forced
+        # through, it would time every word wrong.
+        if not np.isfinite(peak).all():
+            raise FloatingPointError("the aligner's logits are not finite")
+        out -= peak
         out -= np.log(np.exp(out).sum(axis=-1, keepdims=True))
         log_probs.append(out)
         starts.append(frame_starts[keep])

@@ -137,4 +137,5 @@ curl -X POST http://localhost:5092/v1/audio/transcriptions \
   model loaded adds its own share; cap them with `PARAKEET_MODEL_CACHE_SIZE`.
   (Measured on CPU with a short clip; long audio needs more.)
 - GPU memory hasn't been measured for the current `parakeet-v3` export. On a
-  GPU, `fp16` roughly halves it.
+  GPU, `fp16` roughly halves it. An `fp16` or `fp32` aligner on a GPU server
+  takes GPU memory too (not measured either); `int8` aligners stay in RAM.
