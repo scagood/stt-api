@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sys
+import threading
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import numpy as np
@@ -513,6 +515,68 @@ def test_aligners_share_the_model_cache_cap(monkeypatch, tmp_path):
     aligner._load("omnilingual-ctc-300m", "int8")
     assert list(aligner._loaded) == ["omnilingual-ctc-300m:int8"]  # least recent evicted
     assert aligner.status()["wav2vec2-base-960h:int8"] == "not loaded"
+
+
+def _held_download(monkeypatch, tmp_path):
+    """A fake hub whose downloads set `started`, then wait for `release`:
+    (the _Download behind it, started, release)."""
+    hub = _Download(tmp_path, fail_times=0)
+    started, release = threading.Event(), threading.Event()
+
+    def download(repo, filename, revision):
+        started.set()
+        release.wait()
+        return hub(repo, filename, revision)
+
+    _fake_hub(monkeypatch, download)
+    monkeypatch.setattr(aligner.ort, "InferenceSession", lambda *a, **k: object(), raising=False)
+    monkeypatch.setattr(aligner, "_build_sess_options", lambda *a, **k: None)
+    return hub, started, release
+
+
+def test_a_download_does_not_hold_up_a_loaded_aligner(monkeypatch, tmp_path):
+    _hub, started, release = _held_download(monkeypatch, tmp_path)
+    (tmp_path / "tokens.txt").write_text("<s> 0\n  1\n", encoding="utf-8")
+    monkeypatch.setitem(aligner._loaded, "wav2vec2-base-960h:int8", ("session", VOCAB))
+    with ThreadPoolExecutor(2) as pool:
+        try:
+            first = pool.submit(aligner._load, "omnilingual-ctc-300m", "int8")
+            assert started.wait(5)
+            hit = pool.submit(aligner._load, "wav2vec2-base-960h", "int8")
+            assert hit.result(timeout=5) == ("session", VOCAB)  # while the download waits
+        finally:
+            release.set()
+        assert first.result(timeout=5) is not None
+
+
+def test_concurrent_first_loads_of_an_aligner_download_it_once(monkeypatch, tmp_path):
+    hub, _started, release = _held_download(monkeypatch, tmp_path)
+    reached = threading.Semaphore(0)
+
+    class Reached:
+        """The variant's load lock, counting the callers that reach it."""
+
+        def __init__(self):
+            self._lock = threading.Lock()
+
+        def __enter__(self):
+            reached.release()
+            return self._lock.__enter__()
+
+        def __exit__(self, *exc):
+            return self._lock.__exit__(*exc)
+
+    monkeypatch.setitem(aligner._loading, "wav2vec2-base-960h:int8", Reached())
+    with ThreadPoolExecutor(2) as pool:
+        try:
+            loads = [pool.submit(aligner._load, "wav2vec2-base-960h", "int8") for _ in range(2)]
+            # Both reach it before the first download ends: the second waits for it.
+            assert reached.acquire(timeout=5) and reached.acquire(timeout=5)
+        finally:
+            release.set()
+        first, second = (load.result(timeout=5) for load in loads)
+    assert first is second is not None
+    assert hub.calls == len(aligner.ALIGNER_CONFIGS["wav2vec2-base-960h"]["quantizations"]["int8"]["files"])
 
 
 def test_a_vocab_without_the_catalogs_tokens_is_a_failed_load(monkeypatch, tmp_path):
