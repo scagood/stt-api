@@ -139,9 +139,15 @@ _NEG_INF = -1e30
 # A failed load (no network, no cached model) is retried after this long.
 _RETRY_SEC = 300.0
 
+# _lock guards the cache (_loaded, _failed_at, _loading) and is only held
+# briefly. A load runs under its variant's own lock in _loading instead: an
+# uncached fp32 variant downloads up to 1.3 GB, which should hold up only
+# callers of that variant (they get its result, not a second download), not
+# hits on aligners already loaded.
 _lock = threading.Lock()
 _loaded: "OrderedDict[str, tuple[Any, dict[str, int]]]" = OrderedDict()
 _failed_at: dict[str, float] = {}
+_loading: dict[str, threading.Lock] = {}
 
 
 def language_code(language: Optional[str]) -> str:
@@ -174,50 +180,64 @@ def _read_vocab(files: dict[str, str]) -> dict[str, int]:
         return {token: int(index) for token, _, index in lines}
 
 
+def _fetch(spec: dict[str, Any], variant: dict[str, Any]) -> tuple[Any, dict[str, int]]:
+    """(session, vocab) for `variant` of aligner `spec`, downloaded and built.
+    Raises on any failure. A first download is slow: never call it under _lock."""
+    from huggingface_hub import hf_hub_download
+
+    files = {
+        file: hf_hub_download(variant["repo"], path, revision=variant["revision"])
+        for file, path in variant["files"].items()
+    }
+    # ponytail: CPU only. On CUDA (an fp16 export) the pass would drop from
+    # ~1.8 s per 30 s of audio to tens of ms; untested, so not wired (#32).
+    session = ort.InferenceSession(
+        files["model.onnx"],
+        # Only word and spoken-number requests use it: no threads spinning between calls.
+        sess_options=_build_sess_options(ALIGN_THREADS, spinning=False),
+        providers=["CPUExecutionProvider"],
+    )
+    vocab = _read_vocab(files)
+    for token in (spec["blank"], spec["separator"]):
+        if token is not None and token not in vocab:
+            raise KeyError(f"{token!r} is not in the vocab")
+    return session, vocab
+
+
 def _load(name: str, quant: str) -> Optional[tuple[Any, dict[str, int]]]:
     key = f"{name}:{quant}"
+    spec = ALIGNER_CONFIGS[name]
+    variant = spec["quantizations"][quant]
     with _lock:
-        if key in _loaded:
-            _loaded.move_to_end(key)
-            return _loaded[key]
-        failed = _failed_at.get(key)
-        if failed is not None and time.monotonic() - failed < _RETRY_SEC:
-            return None
-        spec = ALIGNER_CONFIGS[name]
-        variant = spec["quantizations"][quant]
+        loading = _loading.setdefault(key, threading.Lock())
+    # Held through the check and the load, so a caller that waited here finds
+    # the load (or failure) of the one before it.
+    with loading:
+        with _lock:
+            if key in _loaded:
+                _loaded.move_to_end(key)
+                return _loaded[key]
+            failed = _failed_at.get(key)
+            if failed is not None and time.monotonic() - failed < _RETRY_SEC:
+                return None
         try:
-            from huggingface_hub import hf_hub_download
-
-            files = {
-                file: hf_hub_download(variant["repo"], path, revision=variant["revision"])
-                for file, path in variant["files"].items()
-            }
-            # ponytail: CPU only. On CUDA (an fp16 export) the pass would drop from
-            # ~1.8 s per 30 s of audio to tens of ms; untested, so not wired (#32).
-            session = ort.InferenceSession(
-                files["model.onnx"],
-                # Only word and spoken-number requests use it: no threads spinning between calls.
-                sess_options=_build_sess_options(ALIGN_THREADS, spinning=False),
-                providers=["CPUExecutionProvider"],
-            )
-            vocab = _read_vocab(files)
-            for token in (spec["blank"], spec["separator"]):
-                if token is not None and token not in vocab:
-                    raise KeyError(f"{token!r} is not in the vocab")
+            loaded = _fetch(spec, variant)
         except Exception:
-            _failed_at[key] = time.monotonic()
+            with _lock:
+                _failed_at[key] = time.monotonic()
             logger.exception(
                 "word aligner %s failed to load; keeping model word times, retrying in %.0fs",
                 key,
                 _RETRY_SEC,
             )
             return None
-        _failed_at.pop(key, None)
-        _loaded[key] = loaded = (session, vocab)
-        # The models' LRU cap (PARAKEET_MODEL_CACHE_SIZE), counted separately.
-        while MODEL_CACHE_SIZE and len(_loaded) > MODEL_CACHE_SIZE:
-            evicted, _ = _loaded.popitem(last=False)
-            logger.info("Evicted word aligner %s (cache size %d)", evicted, MODEL_CACHE_SIZE)
+        with _lock:
+            _failed_at.pop(key, None)
+            _loaded[key] = loaded
+            # The models' LRU cap (PARAKEET_MODEL_CACHE_SIZE), counted separately.
+            while MODEL_CACHE_SIZE and len(_loaded) > MODEL_CACHE_SIZE:
+                evicted, _ = _loaded.popitem(last=False)
+                logger.info("Evicted word aligner %s (cache size %d)", evicted, MODEL_CACHE_SIZE)
         logger.info("Loaded word aligner %s (%s)", key, variant["repo"])
         return loaded
 
