@@ -83,3 +83,27 @@ def test_slice_chunks_returns_views():
     assert len(pieces) == 2
     assert np.shares_memory(waveform, pieces[0])
     assert pieces[0].flags.c_contiguous
+
+
+def test_vad_boundaries_do_not_trim_quiet_first_or_last_words(monkeypatch):
+    sr = chunker.TARGET_SR
+    total = int(MAX_SEC * 3 * sr)
+    margin = sr  # shorter than CHUNK_TRIM_SILENCE_SEC: kept
+    monkeypatch.setattr(chunker, "_silero_speech_segments", lambda _wav: [(margin, total - margin)])
+    ranges = chunker.auto_chunk(np.ones(total, dtype=np.float32), **BOUNDS)
+    _assert_valid(ranges, total, int(MAX_SEC * sr))
+    assert ranges[0][0] == 0
+    assert ranges[-1][1] == total
+    assert all(left[1] == right[0] for left, right in zip(ranges, ranges[1:]))
+
+
+def test_long_edge_silence_is_cut_but_keeps_a_margin(monkeypatch):
+    sr = chunker.TARGET_SR
+    total = int(MAX_SEC * 3 * sr)
+    margin = 10 * sr  # longer than CHUNK_TRIM_SILENCE_SEC: mostly cut
+    trim = int(chunker.CHUNK_TRIM_SILENCE_SEC * sr)
+    monkeypatch.setattr(chunker, "_silero_speech_segments", lambda _wav: [(margin, total - margin)])
+    ranges = chunker.auto_chunk(np.ones(total, dtype=np.float32), **BOUNDS)
+    _assert_valid(ranges, total, int(MAX_SEC * sr))
+    assert ranges[0][0] == margin - trim
+    assert ranges[-1][1] == total - margin + trim

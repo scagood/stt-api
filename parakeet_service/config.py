@@ -327,8 +327,27 @@ VAD_SPEECH_PAD_MS = _env_int("PARAKEET_VAD_SPEECH_PAD_MS", 120, minimum=0)
 MODEL_CACHE_SIZE = _env_int("PARAKEET_MODEL_CACHE_SIZE", 0, minimum=0)
 
 GPU_DEVICE_ID = _env_int("PARAKEET_GPU_DEVICE_ID", 0, minimum=0)
+# CUDA execution provider tuning. The defaults keep the settings the service
+# has always used; upstream's lower-VRAM profile is
+# PARAKEET_GPU_CUDNN_ALGO_SEARCH=heuristic PARAKEET_GPU_CUDNN_MAX_WORKSPACE=false
+# PARAKEET_GPU_ARENA_EXTEND_STRATEGY=same_as_requested.
+GPU_MEMORY_LIMIT_MB = _env_int("PARAKEET_GPU_MEMORY_LIMIT_MB", 0, minimum=0)
+GPU_CUDNN_ALGO_SEARCH = _env_choice(
+    "PARAKEET_GPU_CUDNN_ALGO_SEARCH", "exhaustive", {"default", "heuristic", "exhaustive"}
+)
+GPU_CUDNN_MAX_WORKSPACE = _env_bool("PARAKEET_GPU_CUDNN_MAX_WORKSPACE", True)
+GPU_ARENA_EXTEND_STRATEGY = _env_choice(
+    "PARAKEET_GPU_ARENA_EXTEND_STRATEGY",
+    "next_power_of_two",
+    {"next_power_of_two", "same_as_requested"},
+)
 BATCHED = _env_bool("PARAKEET_BATCHED", USE_GPU != "false")
 MAX_BATCH_SIZE = _env_int("PARAKEET_MAX_BATCH_SIZE", 4)
+# ORT pads a batch to its longest waveform, so GPU memory scales with
+# batch size * longest chunk. A batch stops growing before it would exceed this
+# much padded audio; the default fits 4 of the built-in catalog's longest
+# chunks (parakeet-v3, 75 s), so it only bites on longer custom chunks.
+MAX_BATCH_AUDIO_SECONDS = _env_float("PARAKEET_MAX_BATCH_AUDIO_SECONDS", 300.0, minimum=0.1)
 BATCH_WINDOW_MS = _env_float("PARAKEET_BATCH_WINDOW_MS", 4.0, minimum=0.0)
 
 # ONNX Runtime defers kernel selection and arena allocation to the first

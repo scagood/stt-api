@@ -11,6 +11,7 @@ from parakeet_service import model as m
 def _stub_loader(monkeypatch, tmp_path, cache_size, calls=None):
     monkeypatch.setattr(m, "MODEL_CACHE_SIZE", cache_size)
     monkeypatch.setattr(m, "_MODELS", OrderedDict())
+    monkeypatch.setattr(m, "_RUNTIMES", {})
     monkeypatch.setattr(m, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(m, "_resolve_providers", lambda: ["CPUExecutionProvider"])
     monkeypatch.setattr(m, "_validate_gpu_binding", lambda *a, **k: None)
@@ -68,3 +69,48 @@ def test_loads_exactly_the_listed_files_under_onnx_asr_names(monkeypatch, tmp_pa
     ]
     # The per-load folder of links is gone once onnx-asr has read it.
     assert not [p for p in tmp_path.iterdir() if p.name.startswith(".load-")]
+
+
+class _Session:
+    def __init__(self, provider):
+        self.provider = provider
+
+    def get_providers(self):
+        return [self.provider, "CPUExecutionProvider"]
+
+
+def test_runtime_reports_a_cpu_fallback_when_cuda_was_asked_for(monkeypatch, tmp_path):
+    _stub_loader(monkeypatch, tmp_path, cache_size=0)
+    cuda = ("CUDAExecutionProvider", {})
+    monkeypatch.setattr(m, "_resolve_providers", lambda: [cuda, "CPUExecutionProvider"])
+    monkeypatch.setattr(
+        m.onnx_asr,
+        "load_model",
+        lambda *a, **k: types.SimpleNamespace(_encoder=_Session("CPUExecutionProvider")),
+        raising=False,
+    )
+    m.load_model("whisper-tiny:fp32", with_timestamps=False)
+    assert m.runtime_status() == {
+        "whisper-tiny:fp32": {
+            "backend": "cpu",
+            "sessions": {"model._encoder": ["CPUExecutionProvider", "CPUExecutionProvider"]},
+            "fallback_reason": "ONNX Runtime selected CPU instead of CUDA",
+        }
+    }
+
+
+def test_runtime_reports_cuda_and_forgets_evicted_models(monkeypatch, tmp_path):
+    _stub_loader(monkeypatch, tmp_path, cache_size=1)
+    monkeypatch.setattr(m, "_resolve_providers", lambda: [("CUDAExecutionProvider", {})])
+    monkeypatch.setattr(
+        m.onnx_asr,
+        "load_model",
+        lambda *a, **k: types.SimpleNamespace(_encoder=_Session("CUDAExecutionProvider")),
+        raising=False,
+    )
+    m.load_model("whisper-tiny:fp32", with_timestamps=False)
+    m.load_model("whisper-base:fp32", with_timestamps=False)  # evicts tiny
+    status = m.runtime_status()
+    assert list(status) == ["whisper-base:fp32"]
+    assert status["whisper-base:fp32"]["backend"] == "cuda"
+    assert status["whisper-base:fp32"]["fallback_reason"] is None
