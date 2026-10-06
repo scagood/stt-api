@@ -124,7 +124,13 @@ def _session_provider_report(model: Any) -> Dict[str, List[str]]:
 
 
 def _validate_gpu_binding(name: str, model: Any) -> None:
-    report = _session_provider_report(model)
+    _check_gpu_binding(name, _session_provider_report(model))
+
+
+def _check_gpu_binding(name: str, report: Dict[str, List[str]]) -> None:
+    """Log the providers each of `name`'s sessions bound to; with
+    PARAKEET_USE_GPU=true, raise unless every one of them is on the GPU (ONNX
+    Runtime falls back to the CPU when CUDA won't start)."""
     if report:
         logger.info("Session providers for %s: %s", name, report)
     if USE_GPU != "true":

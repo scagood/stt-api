@@ -19,8 +19,16 @@ import numpy as np
 import onnxruntime as ort
 
 from . import spoken
-from .config import ALIGN_DEFAULT_LANGUAGE, ALIGN_THREADS, ALIGNER_CONFIGS, MODEL_CACHE_SIZE, TARGET_SR, logger
-from .model import _build_sess_options
+from .config import (
+    ALIGN_DEFAULT_LANGUAGE,
+    ALIGN_GPU,
+    ALIGN_THREADS,
+    ALIGNER_CONFIGS,
+    MODEL_CACHE_SIZE,
+    TARGET_SR,
+    logger,
+)
+from .model import _build_sess_options, _check_gpu_binding, _resolve_providers
 
 Span = tuple[float, float]
 
@@ -180,22 +188,33 @@ def _read_vocab(files: dict[str, str]) -> dict[str, int]:
         return {token: int(index) for token, _, index in lines}
 
 
-def _fetch(spec: dict[str, Any], variant: dict[str, Any]) -> tuple[Any, dict[str, int]]:
-    """(session, vocab) for `variant` of aligner `spec`, downloaded and built.
-    Raises on any failure. A first download is slow: never call it under _lock."""
+_CPU = ["CPUExecutionProvider"]
+
+
+def _providers(variant: dict[str, Any]) -> list[Any]:
+    """Where an aligner `variant` runs: on the GPU when the models resolve to it
+    (model._resolve_providers), else on the CPU. A variant the catalog marks
+    cpu_only (int8) stays on the CPU, and PARAKEET_ALIGN_GPU=false keeps them all there."""
+    return _CPU if variant["cpu_only"] or not ALIGN_GPU else _resolve_providers()
+
+
+def _fetch(spec: dict[str, Any], variant: dict[str, Any], providers: list[Any]) -> tuple[Any, dict[str, int]]:
+    """(session, vocab) for `variant` of aligner `spec`, downloaded and built on
+    `providers`. Raises on any failure. A first download is slow: never call it
+    under _lock."""
     from huggingface_hub import hf_hub_download
 
     files = {
         file: hf_hub_download(variant["repo"], path, revision=variant["revision"])
         for file, path in variant["files"].items()
     }
-    # ponytail: CPU only. On CUDA (an fp16 export) the pass would drop from
-    # ~1.8 s per 30 s of audio to tens of ms; untested, so not wired (#32).
+    # ponytail: the GPU path (fp16 and fp32 on a CUDA host) is untested (#54).
+    # Expected: ~1.8 s per 30 s of audio on the CPU drops to tens of ms.
     session = ort.InferenceSession(
         files["model.onnx"],
         # Only word and spoken-number requests use it: no threads spinning between calls.
         sess_options=_build_sess_options(ALIGN_THREADS, spinning=False),
-        providers=["CPUExecutionProvider"],
+        providers=providers,
     )
     vocab = _read_vocab(files)
     for token in (spec["blank"], spec["separator"]):
@@ -221,7 +240,11 @@ def _load(name: str, quant: str) -> Optional[tuple[Any, dict[str, int]]]:
             if failed is not None and time.monotonic() - failed < _RETRY_SEC:
                 return None
         try:
-            loaded = _fetch(spec, variant)
+            providers = _providers(variant)  # first, as for models: no GPU, no download
+            loaded = _fetch(spec, variant, providers)
+            if providers != _CPU:
+                # Logs where it bound; PARAKEET_USE_GPU=true refuses the CPU, as for models.
+                _check_gpu_binding(f"word aligner {key}", {"session": loaded[0].get_providers()})
         except Exception:
             with _lock:
                 _failed_at[key] = time.monotonic()
@@ -260,7 +283,14 @@ def _emission(session: Any, wav: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         keep = (frame_starts >= core_start) & (frame_starts < core_end)
         # Log-softmax per window in float32: a float64 copy is 300 MB at 10k tokens.
         out = out[keep].astype(np.float32, copy=False)
-        out -= out.max(axis=-1, keepdims=True)
+        peak = out.max(axis=-1, keepdims=True)
+        # A NaN or inf logit makes its frame's peak one: an fp16 overflow that
+        # reached the logits, which forced through would time every word wrong.
+        # (Most overflow does not get there: one in a layer norm's variance
+        # comes out finite, and only shifts times. See models.yaml.)
+        if not np.isfinite(peak).all():
+            raise FloatingPointError("the aligner's logits are not finite")
+        out -= peak
         out -= np.log(np.exp(out).sum(axis=-1, keepdims=True))
         log_probs.append(out)
         starts.append(frame_starts[keep])

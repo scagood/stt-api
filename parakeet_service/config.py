@@ -253,6 +253,8 @@ def validate_aligners(aligners: Dict[str, Any]) -> None:
                 raise ValueError(f"{where}: files must map aligner file names to repo paths")
             if extra := files.keys() - defaults.keys():
                 raise ValueError(f"{where}: {sorted(extra)} is not a file a {aligner_type} aligner reads")
+            if not isinstance(variant.get("cpu_only", False), bool):
+                raise ValueError(f"{where}: cpu_only must be true or false")
             # A quantization that forgot its `files` would quietly load another's.
             key = (variant["repo"], variant["revision"], tuple(sorted({**defaults, **files}.items())))
             if key in loads:
@@ -278,6 +280,7 @@ def load_catalog(path: Path) -> Dict[str, Any]:
     for entry in catalog["aligners"].values():
         for variant in entry["quantizations"].values():
             variant["files"] = {**ALIGNER_DEFAULT_FILES[entry["aligner_type"]], **variant.get("files", {})}
+            variant.setdefault("cpu_only", False)
     return {"models": catalog["models"], "aligners": catalog["aligners"]}
 
 
@@ -517,10 +520,14 @@ DEFAULT_INTRA = 1 if USE_GPU != "false" else min(_physical, _available_logical)
 ORT_INTRA_THREADS = _env_int("PARAKEET_ORT_INTRA_THREADS", DEFAULT_INTRA)
 ORT_INTER_THREADS = _env_int("PARAKEET_ORT_INTER_THREADS", 1)
 AUDIO_WORKERS = _env_int("PARAKEET_AUDIO_WORKERS", min(8, _physical))
-# The word aligner always runs on CPU, even when Parakeet has the GPU, so it
-# cannot share ORT_INTRA_THREADS (1 in GPU mode). Its int8 kernels stop scaling
-# at about four threads.
+# Word aligners on the CPU (the catalog's cpu_only ones, int8, even when Parakeet
+# has the GPU) cannot share ORT_INTRA_THREADS (1 in GPU mode). The int8 kernels
+# stop scaling at about four threads.
 ALIGN_THREADS = _env_int("PARAKEET_ALIGN_THREADS", min(4, _physical))
+# Other word aligners (fp16, fp32) run on the GPU when the models do. False keeps
+# every aligner on the CPU: to compare the two on one host, or to step back if
+# CUDA misbehaves for them.
+ALIGN_GPU = _env_bool("PARAKEET_ALIGN_GPU", True)
 # Each InferencePool worker runs its own ORT call with ORT_INTRA_THREADS
 # spinning threads, so workers x intra-op threads is what has to fit the CPUs
 # the quota actually grants; four workers on four intra-op threads would put

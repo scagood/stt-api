@@ -53,6 +53,7 @@ def test_a_replacement_file_loads_with_anchors_and_quoted_codes(tmp_path):
         "model.onnx": "model.int8.onnx",
         "tokens.txt": "tokens.txt",
     }
+    assert catalog["aligners"]["my-aligner"]["quantizations"]["int8"]["cpu_only"] is False  # unless it says so
     assert list(models) == ["my-model"]
     assert models["my-model"]["languages"] == ["da", "no", "sv"]
     # Defaults are spelled out on load; `files` overrides only what it names.
@@ -130,6 +131,7 @@ _ALIGNER = {
         (lambda a: a["quantizations"]["int8"].update(revision=1234), "revision"),
         (lambda a: a["quantizations"]["int8"]["files"].update({"tokens.txt": "tokens.txt"}), "not a file"),
         (lambda a: a["quantizations"]["int8"].pop("files"), "same files as my-aligner:fp32"),
+        (lambda a: a["quantizations"]["int8"].update(cpu_only="yes"), "cpu_only must be true or false"),
     ],
 )
 def test_a_broken_aligner_names_the_problem(change, complaint):

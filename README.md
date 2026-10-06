@@ -233,7 +233,18 @@ curl http://localhost:5092/v1/audio/transcriptions \
 ```
 
 Each aligner comes in `int8` (the default) and `fp32`, which is about as
-accurate and 4x the download. Which aligners exist, and the languages each
+accurate and 4x the download. All but `omnilingual-ctc-300m` also come in
+`fp16`, half the download of `fp32`, for GPUs: on a CPU, keep `fp32` or `int8`,
+since ONNX Runtime upcasts `fp16` there, which is slower than `fp32`.
+
+**On a GPU server**, `fp16` and `fp32` aligners run on the GPU, as the models
+do. `int8` always runs on the CPU: ONNX Runtime has no CUDA kernels for its
+8-bit operations. The default stays `int8` whatever the hardware, so to align
+on the GPU, ask for it: `aligner=mms-300m-forced-aligner:fp16`, or
+`omnilingual-ctc-300m:fp32`. This has not been tested on a GPU yet;
+`PARAKEET_ALIGN_GPU=false` keeps every aligner on the CPU, as before.
+
+Which aligners exist, and the languages each
 aligns, is set in the [model catalog](#your-own-model-catalog). An unknown
 aligner or precision, or a language the aligner doesn't align, is a 400 that
 lists what is available.
@@ -266,8 +277,9 @@ doesn't drag its neighbours' times; in heavy noise it occasionally still does.
 An invented word in a pause takes the pause, but a long one invented in the
 middle of continuous speech pushes its neighbours aside.
 
-**Cost.** The aligner runs on the CPU, even on GPU hosts, one request at a time
-on its own threads, so it never holds up other requests' audio decoding. Each
+**Cost.** The aligner runs one request at a time, on its own CPU threads
+(`int8`, or any aligner without a GPU) or on the GPU (`fp16` and `fp32` on a
+GPU server), so it never holds up other requests' audio decoding. Each
 aligner downloads on the first request that names it (int8: ~320 MB, or
 ~95 MB for `wav2vec2-base-960h`) and adds roughly 3 s per 30 s of audio on a
 4-core machine (2 s for `wav2vec2-base-960h`). If a download fails, words keep
@@ -420,7 +432,8 @@ images already set the CPU or GPU ones (`PARAKEET_USE_GPU`, `PARAKEET_BATCHED`,
 | `PARAKEET_ORT_INTER_THREADS` | `1` | ONNX Runtime inter-op threads |
 | `PARAKEET_INFER_WORKERS` | logical CPUs ÷ intra-op threads, at most `4` | parallel inferences on CPU (`PARAKEET_BATCHED` off) |
 | `PARAKEET_AUDIO_WORKERS` | physical cores, at most `8` | audio decoding and chunking threads |
-| `PARAKEET_ALIGN_THREADS` | physical cores, at most `4` | word aligner threads |
+| `PARAKEET_ALIGN_THREADS` | physical cores, at most `4` | word aligner threads on the CPU (`int8`, or any aligner without a GPU) |
+| `PARAKEET_ALIGN_GPU` | `true` | run `fp16` and `fp32` word aligners on the GPU when the models use it; `false` keeps them all on the CPU |
 
 Core counts respect the affinity mask and the cgroup CPU quota; see
 [Running under an orchestrator](#running-under-an-orchestrator).
@@ -482,7 +495,8 @@ models:
 
 The `aligners` section lists the [word aligners](#word-timestamps) the same
 way, plus the languages each aligns and how to spell a transcript for it
-(`aligners: {}` serves none). To serve a different set without rebuilding the
+(`aligners: {}` serves none). A quantization marked `cpu_only: true` stays on
+the CPU on a GPU server; the built-in catalog marks the `int8` ones. To serve a different set without rebuilding the
 image, point `PARAKEET_MODEL_CATALOG` at another file of the same shape. It
 **replaces** the built-in catalog, so copy the built-in file and edit it. The
 service checks it at startup and refuses to start on a mistake, naming it; it

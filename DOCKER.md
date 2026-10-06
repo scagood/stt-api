@@ -133,8 +133,14 @@ curl -X POST http://localhost:5092/v1/audio/transcriptions \
 
 **Out of memory:**
 - With `parakeet-v3` loaded, the server uses about 2.5 GB of RAM at fp32 and
-  about 1 GB at int8. Each aligner adds about 0.5 GB at int8, and every other
-  model loaded adds its own share; cap them with `PARAKEET_MODEL_CACHE_SIZE`.
-  (Measured on CPU with a short clip; long audio needs more.)
+  about 1 GB at int8 (measured on CPU with a short clip; long audio needs
+  more). Each aligner on the CPU adds, once it has aligned a 30 s chunk, about
+  0.65 GB at int8 for `wav2vec2-base-960h` and 1.1 GB for the others, or 1 GB
+  and 2.5–3 GB at fp32; about 0.45 GB of that is working memory, which it
+  keeps. Every other model loaded adds its own share; cap them with
+  `PARAKEET_MODEL_CACHE_SIZE`.
 - GPU memory hasn't been measured for the current `parakeet-v3` export. On a
-  GPU, `fp16` roughly halves it.
+  GPU, `fp16` roughly halves it. An `fp16` or `fp32` aligner on a GPU server
+  takes GPU memory too, also not measured: from the CPU figures, roughly its
+  download size plus 0.2–0.45 GB, and more for cuDNN's scratch space. `int8`
+  aligners stay in RAM.
