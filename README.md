@@ -179,6 +179,14 @@ starts. Name an `aligner` and a forced aligner retimes the words from the
 audio instead, on 20 ms frames, WhisperX-style but on ONNX Runtime with no
 PyTorch. Parakeet still decides the words.
 
+Parakeet's times also slip into pauses: the word before a pause can start
+after the speech has stopped, and the word after it before the speech has
+started. In a 41-minute LibriVox chapter, 249 words lay entirely inside a
+pause (`ffmpeg silencedetect`, -30 dB, 0.3 s or longer), each a real word timed
+into the pause beside it. With `aligner=wav2vec2-base-960h`, none did. If you
+match words against text or silence, as an audiobook aligner does, name an
+aligner.
+
 ```bash
 curl http://localhost:5092/v1/audio/transcriptions \
   -F file=@audio.mp3 -F model=parakeet-v3 \
