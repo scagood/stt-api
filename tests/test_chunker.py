@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
 
 from parakeet_service import chunker
@@ -107,3 +110,13 @@ def test_long_edge_silence_is_cut_but_keeps_a_margin(monkeypatch):
     _assert_valid(ranges, total, int(MAX_SEC * sr))
     assert ranges[0][0] == margin - trim
     assert ranges[-1][1] == total - margin + trim
+
+
+def test_each_thread_has_its_own_vad(monkeypatch):
+    # Silero is stateful: sharing one model would serialize every request's VAD
+    monkeypatch.setattr(chunker, "_vad_local", threading.local())
+    monkeypatch.setattr(chunker, "_load_vad", object)
+    here = chunker._get_vad()
+    assert chunker._get_vad() is here
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        assert pool.submit(chunker._get_vad).result() is not here

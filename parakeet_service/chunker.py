@@ -1,6 +1,7 @@
 """Pause-aware audio chunking with strict size invariants."""
 from __future__ import annotations
 
+import logging
 import threading
 from typing import List, Tuple
 
@@ -17,29 +18,38 @@ from .config import (
 import numpy as np
 
 Range = Tuple[int, int]
-_vad_model = None
-_vad_init_lock = threading.Lock()
-_vad_infer_lock = threading.Lock()
+# Silero carries state from one window to the next, so threads sharing a model
+# would have to take turns, and a short request's VAD would wait out a long
+# file's whole pass (about 0.7 s per minute of audio). One model per thread.
+_vad_local = threading.local()
+_vad_logged: set = set()
+
+
+def _log_once(level: int, message: str, *args) -> None:
+    """Log `message` the first time any thread loads a VAD, not once per thread."""
+    if message not in _vad_logged:
+        _vad_logged.add(message)
+        logger.log(level, message, *args)
+
+
+def _load_vad():
+    try:
+        from silero_vad import load_silero_vad  # type: ignore
+
+        model = load_silero_vad(onnx=True)
+    except Exception as exc:
+        _log_once(logging.WARNING, "Silero VAD unavailable (%s); falling back to energy VAD", exc)
+        return "energy"
+    _log_once(logging.INFO, "Loaded Silero VAD (ONNX backend)")
+    return model
 
 
 def _get_vad():
-    global _vad_model
-    if _vad_model is not None:
-        return _vad_model
-    with _vad_init_lock:
-        if _vad_model is not None:
-            return _vad_model
-        try:
-            from silero_vad import load_silero_vad  # type: ignore
-
-            _vad_model = load_silero_vad(onnx=True)
-            logger.info("Loaded Silero VAD (ONNX backend)")
-        except Exception as exc:
-            logger.warning(
-                "Silero VAD unavailable (%s); falling back to energy VAD", exc
-            )
-            _vad_model = "energy"
-    return _vad_model
+    """This thread's Silero model, or "energy" when Silero is unavailable."""
+    model = getattr(_vad_local, "model", None)
+    if model is None:
+        model = _vad_local.model = _load_vad()
+    return model
 
 
 def _silero_speech_segments(wav: np.ndarray) -> List[Range]:
@@ -51,19 +61,15 @@ def _silero_speech_segments(wav: np.ndarray) -> List[Range]:
     from silero_vad import get_speech_timestamps  # type: ignore
     import torch
 
-    tensor = torch.from_numpy(wav)
-    # Silero resets internal state during timestamp extraction, so serialize
-    # access to the shared singleton model across preprocessing threads.
-    with _vad_infer_lock:
-        timestamps = get_speech_timestamps(
-            tensor,
-            model,
-            sampling_rate=TARGET_SR,
-            threshold=VAD_THRESHOLD,
-            min_silence_duration_ms=VAD_MIN_SILENCE_MS,
-            speech_pad_ms=VAD_SPEECH_PAD_MS,
-            return_seconds=False,
-        )
+    timestamps = get_speech_timestamps(
+        torch.from_numpy(wav),
+        model,
+        sampling_rate=TARGET_SR,
+        threshold=VAD_THRESHOLD,
+        min_silence_duration_ms=VAD_MIN_SILENCE_MS,
+        speech_pad_ms=VAD_SPEECH_PAD_MS,
+        return_seconds=False,
+    )
     return [(int(item["start"]), int(item["end"])) for item in timestamps]
 
 
