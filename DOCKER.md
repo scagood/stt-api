@@ -37,7 +37,10 @@ docker run -d --name parakeet-cpu -p 5092:5092 -v parakeet-models:/app/models pa
 ### GPU Deployment (Requires NVIDIA GPU)
 
 **Prerequisites:**
-- NVIDIA GPU with CUDA support
+- NVIDIA GPU of compute capability 7.5 or newer (Turing: RTX 20 series, GTX 16
+  series, T4; or later), with driver 580 or newer. The pinned `onnxruntime-gpu`
+  1.30.0 is built for CUDA 13 and has no GPU code for older cards, such as the
+  GTX 10 series (Pascal) or the V100 (Volta).
 - [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
 
 ```bash
