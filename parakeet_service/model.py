@@ -10,7 +10,11 @@ from typing import Any, Dict, List, Tuple
 
 # Import config before ONNX Runtime so thread-pool environment limits are active.
 from .config import (
+    GPU_ARENA_EXTEND_STRATEGY,
+    GPU_CUDNN_ALGO_SEARCH,
+    GPU_CUDNN_MAX_WORKSPACE,
     GPU_DEVICE_ID,
+    GPU_MEMORY_LIMIT_MB,
     MODEL_CACHE_SIZE,
     MODEL_CONFIGS,
     MODELS_DIR,
@@ -30,6 +34,7 @@ _ModelKey = Tuple[str, bool]
 _MODELS: "OrderedDict[_ModelKey, object]" = OrderedDict()
 _MODEL_LOCK = threading.RLock()
 _CUDA_PRELOADED = False
+_RUNTIMES: Dict[str, dict] = {}
 
 
 class ModelLoadError(RuntimeError):
@@ -97,15 +102,19 @@ def _resolve_providers() -> List[Any]:
     if USE_GPU == "false" or not has_cuda:
         return ["CPUExecutionProvider"]
 
-    cuda = (
-        "CUDAExecutionProvider",
-        {
-            "device_id": GPU_DEVICE_ID,
-            "cudnn_conv_algo_search": "EXHAUSTIVE",
-            "cudnn_conv_use_max_workspace": "1",
-            "do_copy_in_default_stream": "1",
-        },
-    )
+    cuda_options = {
+        "device_id": GPU_DEVICE_ID,
+        "arena_extend_strategy": {
+            "next_power_of_two": "kNextPowerOfTwo",
+            "same_as_requested": "kSameAsRequested",
+        }[GPU_ARENA_EXTEND_STRATEGY],
+        "cudnn_conv_algo_search": GPU_CUDNN_ALGO_SEARCH.upper(),
+        "cudnn_conv_use_max_workspace": "1" if GPU_CUDNN_MAX_WORKSPACE else "0",
+        "do_copy_in_default_stream": "1",
+    }
+    if GPU_MEMORY_LIMIT_MB:
+        cuda_options["gpu_mem_limit"] = GPU_MEMORY_LIMIT_MB * 1024 * 1024
+    cuda = ("CUDAExecutionProvider", cuda_options)
     return [cuda] if USE_GPU == "true" else [cuda, "CPUExecutionProvider"]
 
 
@@ -147,6 +156,26 @@ def _check_gpu_binding(name: str, report: Dict[str, List[str]]) -> None:
         raise RuntimeError(
             f"PARAKEET_USE_GPU=true but {name} did not bind all sessions to GPU: {report}"
         )
+
+
+def _runtime(providers: List[Any], report: Dict[str, List[str]]) -> dict:
+    """What a loaded model actually runs on, for /health: the provider each
+    session bound to and, when CUDA was asked for but not used, why."""
+    requested_cuda = any(
+        (item[0] if isinstance(item, tuple) else item) == "CUDAExecutionProvider"
+        for item in providers
+    )
+    firsts = {names[0] for names in report.values() if names}
+    if "CUDAExecutionProvider" in firsts:
+        backend = "cuda"
+    elif firsts:
+        backend = "cpu"
+    else:
+        backend = "unknown"
+    fallback_reason = None
+    if requested_cuda and backend == "cpu":
+        fallback_reason = "ONNX Runtime selected CPU instead of CUDA"
+    return {"backend": backend, "sessions": report, "fallback_reason": fallback_reason}
 
 
 def variant_key(model: str, quantization: str | None = None) -> str:
@@ -239,6 +268,7 @@ def load_model(key: str, *, with_timestamps: bool = True):
             logger.exception("%s", error)
             raise error from exc
         _MODELS[cache_key] = model
+        _RUNTIMES[key] = _runtime(providers, _session_provider_report(model))
         # ponytail: LRU cap, drop least-recent so a many-model sweep fits RAM.
         while MODEL_CACHE_SIZE and len(_MODELS) > MODEL_CACHE_SIZE:
             evicted, _ = _MODELS.popitem(last=False)
@@ -271,3 +301,10 @@ def warmup_waveform(seconds: float | None = None) -> np.ndarray:
 def loaded_models() -> List[str]:
     with _MODEL_LOCK:
         return sorted({key for key, _timestamps in _MODELS})
+
+
+def runtime_status() -> Dict[str, dict]:
+    """_runtime() for each loaded model, by variant key."""
+    with _MODEL_LOCK:
+        loaded = {key for key, _timestamps in _MODELS}
+        return {key: _RUNTIMES[key] for key in sorted(loaded) if key in _RUNTIMES}

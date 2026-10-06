@@ -165,7 +165,11 @@ def auto_chunk(
 
     trim_gap = max(1, int(CHUNK_TRIM_SILENCE_SEC * TARGET_SR))
     packed: List[Range] = []
-    current_start, current_end = segments[0]
+    # VAD can miss a quiet first or last syllable (the energy fallback in
+    # particular), so the first and last chunks reach up to trim_gap past the
+    # detected speech: room for the syllable, without feeding the model the
+    # long silences cut out below.
+    current_start, current_end = max(0, segments[0][0] - trim_gap), segments[0][1]
     for start, end in segments[1:]:
         # Cut at long silences and skip them entirely: feeding multi-second
         # silence to the model degrades recognition of the following speech,
@@ -187,8 +191,9 @@ def auto_chunk(
         else:
             current_end = end
 
-    if current_end > current_start:
-        packed.append((current_start, current_end))
+    last_end = min(total, current_end + trim_gap)
+    if last_end > current_start:
+        packed.append((current_start, last_end))
 
     output: List[Range] = []
     for start, end in packed:

@@ -425,8 +425,13 @@ images already set the CPU or GPU ones (`PARAKEET_USE_GPU`, `PARAKEET_BATCHED`,
 |---|---|---|
 | `PARAKEET_USE_GPU` | `true` | `true` requires CUDA, `auto` uses it when present, `false` runs on CPU |
 | `PARAKEET_GPU_DEVICE_ID` | `0` | CUDA device |
+| `PARAKEET_GPU_MEMORY_LIMIT_MB` | `0` | cap on ONNX Runtime's CUDA memory arena, in MiB; `0` is no cap |
+| `PARAKEET_GPU_CUDNN_ALGO_SEARCH` | `exhaustive` | how cuDNN picks convolution kernels: `exhaustive`, `heuristic` or `default`; `heuristic` starts faster and uses less memory |
+| `PARAKEET_GPU_CUDNN_MAX_WORKSPACE` | `true` | let cuDNN use its largest workspace; `false` saves VRAM, maybe at some speed |
+| `PARAKEET_GPU_ARENA_EXTEND_STRATEGY` | `next_power_of_two` | how the CUDA arena grows; `same_as_requested` grows only by what is needed |
 | `PARAKEET_BATCHED` | on, unless `PARAKEET_USE_GPU=false` | micro-batch requests together (GPU); off runs parallel single requests (CPU) |
 | `PARAKEET_MAX_BATCH_SIZE` | `4` | largest micro-batch |
+| `PARAKEET_MAX_BATCH_AUDIO_SECONDS` | `300` | most padded audio in one micro-batch: a batch pads every clip to its longest, so long chunks batch fewer at a time |
 | `PARAKEET_BATCH_WINDOW_MS` | `4` | how long to wait to fill a micro-batch |
 | `PARAKEET_ORT_INTRA_THREADS` | `1` on GPU; physical cores on CPU | ONNX Runtime threads per inference |
 | `PARAKEET_ORT_INTER_THREADS` | `1` | ONNX Runtime inter-op threads |
@@ -438,13 +443,18 @@ images already set the CPU or GPU ones (`PARAKEET_USE_GPU`, `PARAKEET_BATCHED`,
 Core counts respect the affinity mask and the cgroup CPU quota; see
 [Running under an orchestrator](#running-under-an-orchestrator).
 
+`/health` reports what each loaded model actually runs on under `runtime`:
+`backend` (`cuda` or `cpu`), the providers each ONNX session bound to, and a
+`fallback_reason` when CUDA was asked for (`PARAKEET_USE_GPU=auto`) but ONNX
+Runtime used the CPU.
+
 **Chunking** (long audio is cut at pauses; each model's chunk length is set in
 the catalog)
 
 | Variable | Default | |
 |---|---|---|
 | `PARAKEET_CHUNK_MIN_SEC` | `20` | shortest chunk before neighbours are merged |
-| `PARAKEET_CHUNK_TRIM_SILENCE_SEC` | `3` | cut silences at least this long out of a chunk |
+| `PARAKEET_CHUNK_TRIM_SILENCE_SEC` | `3` | cut silences at least this long out of a chunk; the first and last chunks keep up to this much before and after the speech |
 | `PARAKEET_VAD_THRESHOLD` | `0.5` | Silero-VAD speech probability |
 | `PARAKEET_VAD_MIN_SILENCE_MS` | `400` | shortest pause to cut at |
 | `PARAKEET_VAD_SPEECH_PAD_MS` | `120` | padding kept around speech |
