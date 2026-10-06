@@ -19,8 +19,16 @@ import numpy as np
 import onnxruntime as ort
 
 from . import spoken
-from .config import ALIGN_DEFAULT_LANGUAGE, ALIGN_THREADS, ALIGNER_CONFIGS, MODEL_CACHE_SIZE, TARGET_SR, logger
-from .model import _build_sess_options, _resolve_providers
+from .config import (
+    ALIGN_DEFAULT_LANGUAGE,
+    ALIGN_GPU,
+    ALIGN_THREADS,
+    ALIGNER_CONFIGS,
+    MODEL_CACHE_SIZE,
+    TARGET_SR,
+    logger,
+)
+from .model import _build_sess_options, _check_gpu_binding, _resolve_providers
 
 Span = tuple[float, float]
 
@@ -180,15 +188,14 @@ def _read_vocab(files: dict[str, str]) -> dict[str, int]:
         return {token: int(index) for token, _, index in lines}
 
 
-def _providers(quant: str) -> list[Any]:
-    """Where an aligner at `quant` runs: on the GPU when the models resolve to it
-    (model._resolve_providers), else on the CPU.
+_CPU = ["CPUExecutionProvider"]
 
-    int8 stays on the CPU. ONNX Runtime has no CUDA kernel for its
-    DynamicQuantizeLinear or ConvInteger, nor a MatMulInteger for their uint8
-    output, so on CUDA most of it would still run on the CPU, copied to and fro.
-    """
-    return ["CPUExecutionProvider"] if quant == "int8" else _resolve_providers()
+
+def _providers(variant: dict[str, Any]) -> list[Any]:
+    """Where an aligner `variant` runs: on the GPU when the models resolve to it
+    (model._resolve_providers), else on the CPU. A variant the catalog marks
+    cpu_only (int8) stays on the CPU, and PARAKEET_ALIGN_GPU=false keeps them all there."""
+    return _CPU if variant["cpu_only"] or not ALIGN_GPU else _resolve_providers()
 
 
 def _fetch(spec: dict[str, Any], variant: dict[str, Any], providers: list[Any]) -> tuple[Any, dict[str, int]]:
@@ -233,8 +240,11 @@ def _load(name: str, quant: str) -> Optional[tuple[Any, dict[str, int]]]:
             if failed is not None and time.monotonic() - failed < _RETRY_SEC:
                 return None
         try:
-            providers = _providers(quant)  # first, as for models: no GPU, no download
+            providers = _providers(variant)  # first, as for models: no GPU, no download
             loaded = _fetch(spec, variant, providers)
+            if providers != _CPU:
+                # Logs where it bound; PARAKEET_USE_GPU=true refuses the CPU, as for models.
+                _check_gpu_binding(f"word aligner {key}", {"session": loaded[0].get_providers()})
         except Exception:
             with _lock:
                 _failed_at[key] = time.monotonic()
@@ -251,11 +261,7 @@ def _load(name: str, quant: str) -> Optional[tuple[Any, dict[str, int]]]:
             while MODEL_CACHE_SIZE and len(_loaded) > MODEL_CACHE_SIZE:
                 evicted, _ = _loaded.popitem(last=False)
                 logger.info("Evicted word aligner %s (cache size %d)", evicted, MODEL_CACHE_SIZE)
-        # What it bound to: ONNX Runtime falls back to the CPU if CUDA won't start.
-        bound = getattr(loaded[0], "get_providers", None)
-        logger.info(
-            "Loaded word aligner %s (%s) on %s", key, variant["repo"], bound() if callable(bound) else providers
-        )
+        logger.info("Loaded word aligner %s (%s)", key, variant["repo"])
         return loaded
 
 
@@ -278,8 +284,10 @@ def _emission(session: Any, wav: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         # Log-softmax per window in float32: a float64 copy is 300 MB at 10k tokens.
         out = out[keep].astype(np.float32, copy=False)
         peak = out.max(axis=-1, keepdims=True)
-        # A NaN or inf logit (an fp16 overflow) makes its frame's peak one; forced
-        # through, it would time every word wrong.
+        # A NaN or inf logit makes its frame's peak one: an fp16 overflow that
+        # reached the logits, which forced through would time every word wrong.
+        # (Most overflow does not get there: one in a layer norm's variance
+        # comes out finite, and only shifts times. See models.yaml.)
         if not np.isfinite(peak).all():
             raise FloatingPointError("the aligner's logits are not finite")
         out -= peak

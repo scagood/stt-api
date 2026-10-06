@@ -74,11 +74,12 @@ async def lifespan(app: FastAPI):
     app.state.audio_pool = ThreadPoolExecutor(
         max_workers=AUDIO_WORKERS, thread_name_prefix="audio"
     )
-    # ponytail: one aligner job at a time, each on ALIGN_THREADS CPU threads (or,
-    # for fp16 and fp32 on a GPU host, the GPU), so it can't starve decoding or
-    # Parakeet. Word requests, and spoken-number requests with a number to hear
-    # (routes._needs_aligner), queue here; add a worker-count knob if their
-    # throughput matters.
+    # ponytail: one aligner job at a time. On the CPU, on ALIGN_THREADS threads,
+    # it can't starve decoding or a CPU Parakeet. On the GPU (fp16 and fp32 on a
+    # GPU host) it competes with Parakeet for compute and memory, and only this
+    # one-at-a-time bounds it. Word requests, and spoken-number requests with a
+    # number to hear (routes._needs_aligner), queue here; add a worker-count knob
+    # if their throughput matters.
     app.state.align_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="align")
     try:
         # An unknown model or quantization fails startup, as it would 400 a request.

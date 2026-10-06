@@ -597,27 +597,80 @@ def test_aligner_session_uses_its_own_threads_without_spinning(monkeypatch, tmp_
     assert built == [((aligner.ALIGN_THREADS,), {"spinning": False})]
 
 
-def test_aligners_run_on_the_gpu_when_the_models_do_except_int8(monkeypatch):
+def _variant(quant):
+    return aligner.ALIGNER_CONFIGS["wav2vec2-base-960h"]["quantizations"][quant]
+
+
+def _a_gpu(monkeypatch, use_gpu="auto"):
+    """A host whose models resolve to CUDA (with PARAKEET_USE_GPU=`use_gpu`)."""
     monkeypatch.setattr(model, "_preload_cuda_libraries", lambda: True)
     monkeypatch.setattr(
         model.ort, "get_available_providers", lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"], raising=False
     )
-    monkeypatch.setattr(model, "USE_GPU", "auto")
-    assert aligner._providers("int8") == ["CPUExecutionProvider"]  # no CUDA kernels for its 8-bit ops
-    assert aligner._providers("fp16") == aligner._providers("fp32") == model._resolve_providers()
-    assert aligner._providers("fp16")[0][0] == "CUDAExecutionProvider"
+    monkeypatch.setattr(model, "USE_GPU", use_gpu)
+
+
+def test_aligners_run_on_the_gpu_when_the_models_do_unless_cpu_only(monkeypatch):
+    _a_gpu(monkeypatch)
+    assert _variant("int8")["cpu_only"]  # no CUDA kernels for its 8-bit ops
+    assert aligner._providers(_variant("int8")) == ["CPUExecutionProvider"]
+    assert aligner._providers(_variant("fp16")) == aligner._providers(_variant("fp32")) == model._resolve_providers()
+    assert aligner._providers(_variant("fp16"))[0][0] == "CUDAExecutionProvider"
+    monkeypatch.setattr(aligner, "ALIGN_GPU", False)  # PARAKEET_ALIGN_GPU=false: all on the CPU
+    assert aligner._providers(_variant("fp16")) == ["CPUExecutionProvider"]
+    monkeypatch.setattr(aligner, "ALIGN_GPU", True)
     monkeypatch.setattr(model, "USE_GPU", "false")
-    assert aligner._providers("fp16") == ["CPUExecutionProvider"]
+    assert aligner._providers(_variant("fp16")) == ["CPUExecutionProvider"]
+
+
+def test_the_built_in_catalog_keeps_only_int8_aligners_on_the_cpu():
+    for name, spec in aligner.ALIGNER_CONFIGS.items():
+        for quant, variant in spec["quantizations"].items():
+            assert variant["cpu_only"] == (quant == "int8"), f"{name}:{quant}"
+
+
+class _BoundSession:
+    """A session that bound to `providers`, as ONNX Runtime reports it."""
+
+    def __init__(self, providers):
+        self.providers = providers
+
+    def get_providers(self):
+        return self.providers
+
+
+def _gpu_loader(monkeypatch, tmp_path, bound):
+    """_load with a fake hub, made on CUDA providers, binding to `bound`."""
+    _fake_hub(monkeypatch, _Download(tmp_path, fail_times=0))
+    made = []
+    monkeypatch.setattr(aligner, "_providers", lambda variant: [("CUDAExecutionProvider", {}), "CPUExecutionProvider"])
+    monkeypatch.setattr(aligner, "_build_sess_options", lambda *a, **k: None)
+
+    def session(*_args, **kwargs):
+        made.append(kwargs["providers"])
+        return _BoundSession(bound)
+
+    monkeypatch.setattr(aligner.ort, "InferenceSession", session, raising=False)
+    return made
 
 
 def test_an_aligner_session_is_made_on_its_providers(monkeypatch, tmp_path):
-    _fake_hub(monkeypatch, _Download(tmp_path, fail_times=0))
-    made = []
-    monkeypatch.setattr(aligner, "_providers", lambda quant: [f"{quant} providers"])
-    monkeypatch.setattr(aligner, "_build_sess_options", lambda *a, **k: None)
-    monkeypatch.setattr(aligner.ort, "InferenceSession", lambda *a, **k: made.append(k["providers"]), raising=False)
-    aligner._load("wav2vec2-base-960h", "fp16")
-    assert made == [["fp16 providers"]]
+    made = _gpu_loader(monkeypatch, tmp_path, ["CUDAExecutionProvider", "CPUExecutionProvider"])
+    assert aligner._load("wav2vec2-base-960h", "fp16") is not None
+    assert made == [[("CUDAExecutionProvider", {}), "CPUExecutionProvider"]]
+
+
+@pytest.mark.parametrize(("use_gpu", "loads"), [("true", False), ("auto", True)])
+def test_an_aligner_that_fell_back_to_the_cpu_fails_only_where_cuda_is_required(
+    monkeypatch, tmp_path, caplog, use_gpu, loads
+):
+    # ONNX Runtime falls back to the CPU when CUDA won't start; =true refuses that, as for models.
+    _gpu_loader(monkeypatch, tmp_path, ["CPUExecutionProvider"])
+    monkeypatch.setattr(model, "USE_GPU", use_gpu)
+    caplog.set_level("INFO")
+    assert (aligner._load("wav2vec2-base-960h", "fp16") is not None) == loads
+    assert aligner.status()["wav2vec2-base-960h:fp16"] == ("loaded" if loads else "failed")
+    assert "word aligner wav2vec2-base-960h:fp16" in caplog.text  # where it bound is logged either way
 
 
 def test_an_aligner_that_cannot_have_the_gpu_fails_before_downloading(monkeypatch):
