@@ -4,6 +4,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
+import pytest
 
 from parakeet_service import chunker
 
@@ -27,7 +28,7 @@ def test_empty_audio_has_no_chunks():
 def test_short_audio_bypasses_vad(monkeypatch):
     monkeypatch.setattr(
         chunker,
-        "_silero_speech_segments",
+        "_speech_segments",
         lambda _wav: (_ for _ in ()).throw(AssertionError("VAD should not run")),
     )
     waveform = np.zeros(int(MAX_SEC * chunker.TARGET_SR) - 1)
@@ -35,7 +36,7 @@ def test_short_audio_bypasses_vad(monkeypatch):
 
 
 def test_long_silence_skips_inference(monkeypatch):
-    monkeypatch.setattr(chunker, "_silero_speech_segments", lambda _wav: [])
+    monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: [])
     waveform = np.zeros(int((MAX_SEC + 10) * chunker.TARGET_SR))
     assert chunker.auto_chunk(waveform, **BOUNDS) == []
 
@@ -43,7 +44,7 @@ def test_long_silence_skips_inference(monkeypatch):
 def test_long_uninterrupted_speech_has_no_phantom_tail(monkeypatch):
     total = int((MAX_SEC * 2.5) * chunker.TARGET_SR)
     monkeypatch.setattr(
-        chunker, "_silero_speech_segments", lambda _wav: [(0, total)]
+        chunker, "_speech_segments", lambda _wav: [(0, total)]
     )
     ranges = chunker.auto_chunk(np.ones(total, dtype=np.float32), **BOUNDS)
     maximum = int(MAX_SEC * chunker.TARGET_SR)
@@ -57,7 +58,7 @@ def test_long_silence_gap_is_cut_out_of_chunks(monkeypatch):
     sr = chunker.TARGET_SR
     total = int(MAX_SEC * 2 * sr)
     speech = [(0, 10 * sr), (40 * sr, total)]  # 30 s silent gap
-    monkeypatch.setattr(chunker, "_silero_speech_segments", lambda _wav: speech)
+    monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: speech)
     ranges = chunker.auto_chunk(np.ones(total, dtype=np.float32), **BOUNDS)
     maximum = int(MAX_SEC * sr)
     _assert_valid(ranges, total, maximum)
@@ -71,7 +72,7 @@ def test_bounds_override_caps_chunks(monkeypatch):
     # the 75 s Parakeet default (which would silently truncate under Whisper).
     sr = chunker.TARGET_SR
     total = int(90 * sr)
-    monkeypatch.setattr(chunker, "_silero_speech_segments", lambda _wav: [(0, total)])
+    monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: [(0, total)])
     ranges = chunker.auto_chunk(
         np.ones(total, dtype=np.float32), target_sec=25.0, max_sec=30.0, min_sec=20.0
     )
@@ -92,7 +93,7 @@ def test_vad_boundaries_do_not_trim_quiet_first_or_last_words(monkeypatch):
     sr = chunker.TARGET_SR
     total = int(MAX_SEC * 3 * sr)
     margin = sr  # shorter than CHUNK_TRIM_SILENCE_SEC: kept
-    monkeypatch.setattr(chunker, "_silero_speech_segments", lambda _wav: [(margin, total - margin)])
+    monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: [(margin, total - margin)])
     ranges = chunker.auto_chunk(np.ones(total, dtype=np.float32), **BOUNDS)
     _assert_valid(ranges, total, int(MAX_SEC * sr))
     assert ranges[0][0] == 0
@@ -105,7 +106,7 @@ def test_long_edge_silence_is_cut_but_keeps_a_margin(monkeypatch):
     total = int(MAX_SEC * 3 * sr)
     margin = 10 * sr  # longer than CHUNK_TRIM_SILENCE_SEC: mostly cut
     trim = int(chunker.CHUNK_TRIM_SILENCE_SEC * sr)
-    monkeypatch.setattr(chunker, "_silero_speech_segments", lambda _wav: [(margin, total - margin)])
+    monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: [(margin, total - margin)])
     ranges = chunker.auto_chunk(np.ones(total, dtype=np.float32), **BOUNDS)
     _assert_valid(ranges, total, int(MAX_SEC * sr))
     assert ranges[0][0] == margin - trim
@@ -120,3 +121,77 @@ def test_each_thread_has_its_own_vad(monkeypatch):
     assert chunker._get_vad() is here
     with ThreadPoolExecutor(max_workers=1) as pool:
         assert pool.submit(chunker._get_vad).result() is not here
+
+
+SR = chunker.TARGET_SR
+
+
+def _bursts(level_db, gap_db, bursts=3, burst_sec=1.0, gap_sec=1.0):
+    """Tone bursts at level_db, with gaps of noise at gap_db, both in dBFS RMS."""
+    rng = np.random.default_rng(0)
+    tone = np.sin(2 * np.pi * 220 * np.arange(int(burst_sec * SR)) / SR) * np.sqrt(2) * 10 ** (level_db / 20)
+    gap = rng.standard_normal(int(gap_sec * SR)) * 10 ** (gap_db / 20)
+    return np.concatenate([part for _ in range(bursts) for part in (gap, tone)] + [gap]).astype(np.float32)
+
+
+@pytest.fixture
+def volume(monkeypatch):
+    def fail():
+        raise AssertionError("PARAKEET_VAD=volume must not load Silero")
+
+    monkeypatch.setattr(chunker, "VAD", "volume")
+    monkeypatch.setattr(chunker, "VAD_GATE_DB", None)
+    monkeypatch.setattr(chunker, "_get_vad", fail)
+
+
+def test_volume_finds_speech_without_silero(volume):
+    segments = chunker._speech_segments(_bursts(-25, -70))
+    pad = int(chunker.VAD_SPEECH_PAD_MS * SR / 1000)
+    # each 1 s burst, from its 20 ms frames, padded as Silero pads
+    assert [(round(a / SR, 2), round(b / SR, 2)) for a, b in segments] == [
+        (round(1 - pad / SR, 2), round(2 + pad / SR, 2)),
+        (round(3 - pad / SR, 2), round(4 + pad / SR, 2)),
+        (round(5 - pad / SR, 2), round(6 + pad / SR, 2)),
+    ]
+
+
+def test_volume_gate_follows_the_file_unless_fixed(volume, monkeypatch):
+    quiet = _bursts(-45, -80)  # a quiet recording: the file's own gate still finds it
+    assert len(chunker._speech_segments(quiet)) == 3
+    monkeypatch.setattr(chunker, "VAD_GATE_DB", -40.0)  # a fixed gate above it hears nothing
+    assert chunker._speech_segments(quiet) == []
+    monkeypatch.setattr(chunker, "VAD_GATE_DB", -60.0)
+    assert len(chunker._speech_segments(quiet)) == 3
+
+
+def test_volume_hears_no_pause_above_the_gate(volume, monkeypatch):
+    # noise louder than a fixed gate fills the pauses: one span, so long audio is cut by length
+    monkeypatch.setattr(chunker, "VAD_GATE_DB", -50.0)
+    assert len(chunker._speech_segments(_bursts(-25, -40))) == 1
+
+
+def test_silero_without_the_package_falls_back_to_volume(monkeypatch):
+    monkeypatch.setattr(chunker, "VAD", "silero")
+    monkeypatch.setattr(chunker, "VAD_GATE_DB", None)
+    monkeypatch.setattr(chunker, "_get_vad", lambda: "energy")
+    assert len(chunker._speech_segments(_bursts(-25, -70))) == 3
+
+
+@pytest.mark.parametrize(("raw", "expected"), [(None, None), ("", None), (" -45 ", -45.0), ("-50.5", -50.5)])
+def test_gate_setting_parses(monkeypatch, raw, expected):
+    from parakeet_service import config
+
+    if raw is None:
+        monkeypatch.delenv("PARAKEET_VAD_GATE_DB", raising=False)
+    else:
+        monkeypatch.setenv("PARAKEET_VAD_GATE_DB", raw)
+    assert config._env_dbfs("PARAKEET_VAD_GATE_DB") == expected
+
+
+@pytest.mark.parametrize("raw", ["loud", "0", "6", "-121"])
+def test_gate_setting_rejects_nonsense(monkeypatch, raw):
+    from parakeet_service import config
+
+    monkeypatch.setenv("PARAKEET_VAD_GATE_DB", raw)
+    with pytest.raises(RuntimeError, match="PARAKEET_VAD_GATE_DB"):
+        config._env_dbfs("PARAKEET_VAD_GATE_DB")

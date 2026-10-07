@@ -321,6 +321,31 @@ if VAD_THRESHOLD > 1.0:
 VAD_MIN_SILENCE_MS = _env_int("PARAKEET_VAD_MIN_SILENCE_MS", 400, minimum=1)
 VAD_SPEECH_PAD_MS = _env_int("PARAKEET_VAD_SPEECH_PAD_MS", 120, minimum=0)
 
+
+def _env_dbfs(name: str) -> Optional[float]:
+    """A level in dBFS (below 0), or None when unset or empty."""
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be a level in dBFS such as -45, got {raw!r}") from exc
+    if not -120.0 <= value < 0.0:
+        raise RuntimeError(f"{name} must be between -120 and 0 dBFS, got {value}")
+    return value
+
+
+# How long audio finds its pauses to cut at. "silero" asks the Silero VAD
+# network for speech; "volume" takes as a pause any 20 ms frame quieter than a
+# gate, which is ~30x faster and, on narration, cut a 41-minute audiobook
+# chapter as well (README). Under music or steady noise a pause may be no
+# quieter than the gate. Without silero-vad installed, both use volume.
+VAD = _env_choice("PARAKEET_VAD", "silero", {"silero", "volume"})
+# Volume's gate. Unset, each file sets its own: 0.4x its average frame level
+# (about 8 dB below it), never under -60 dBFS.
+VAD_GATE_DB = _env_dbfs("PARAKEET_VAD_GATE_DB")
+
 # Loaded models and aligners are cached forever by default (0 = unbounded). Set
 # a small N to LRU-evict all but the N most-recent models, and likewise aligners,
 # when clients can ask for more than fits in RAM.
