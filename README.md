@@ -469,13 +469,28 @@ the catalog)
 | `PARAKEET_VAD_MIN_SILENCE_MS` | `400` | shortest pause to cut at |
 | `PARAKEET_VAD_SPEECH_PAD_MS` | `120` | padding kept around speech |
 
-**Finding pauses by volume.** Silero-VAD costs about 11 ms of one CPU core per
-second of audio, all of it before the first chunk reaches the model: some 11
-minutes for a 17-hour audiobook. `PARAKEET_VAD=volume` takes 0.4 ms. On a
-41-minute LibriVox chapter (`parakeet-v3:int8`), the transcripts cut either way
-had 218 and 222 word errors against the book's 7,383 words. Volume needs pauses
-quieter than the speech around them: under music or a noise bed, where they
-may not be, keep `silero`.
+**Finding pauses by volume.** Silero-VAD costs about 10 ms of one CPU core per
+second of audio, all of it before the first chunk reaches the model: some 10
+minutes for a 17-hour audiobook. `PARAKEET_VAD=volume` takes under 0.3 ms.
+Measured on LibriVox narration with `parakeet-v3:int8`, as word errors against
+the book's text:
+
+| Audio | `silero` | `volume` | `volume`, gate `-45` |
+|---|---|---|---|
+| *The Adventures of Sherlock Holmes*, 15 min (2,769 words) | 107 | 102 | 103 |
+| *Alice's Adventures in Wonderland*, chapter 3 (1,758) | 144 | 139 | 135 |
+| *The War of the Worlds*, chapter 1 (2,292) | 167 | 140 | 143 |
+| the Holmes clip under pink noise at -40 dBFS | 107 | 109 | 119 |
+| the Holmes clip under pink noise at -35 dBFS | 111 | 116 | 116 |
+
+Silero's run of *The War of the Worlds* lost a sentence that volume's kept;
+where chunks fall decides that, so take it as luck rather than an advantage.
+Volume needs pauses quieter than the speech. Under a noise bed the file's own
+gate rises with the noise: at -40 dBFS it still found every pause, at -35 dBFS
+(5 dB under the speech) it missed some and 10 chunks were cut mid-speech at
+their full length. A fixed gate below the noise finds no pause at all, and
+every chunk is cut that way. For narration, use `volume`; for speech over
+music or noise, keep `silero`.
 
 **Words and numbers**
 
