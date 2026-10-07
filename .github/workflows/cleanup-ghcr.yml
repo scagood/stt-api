@@ -10,8 +10,9 @@ jobs:
     permissions:
       packages: write
     steps:
-      # Multi-arch buildx re-pushes (latest-cpu/latest-gpu) orphan the previous
-      # untagged manifests; no pr-* handling needed as PR builds never push.
+      # Re-pushes of latest-cpu/latest-gpu, and of a labelled pull request's
+      # pr-<number>-cpu/gpu, leave the manifests they replaced untagged.
+      # docker.yml deletes the pr-<number>-* tags when the pull request closes.
       - uses: dataaxiom/ghcr-cleanup-action@v1
         with:
           delete-untagged: true

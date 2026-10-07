@@ -6,10 +6,17 @@ How to run stt-api in Docker, from the published images or built from this repo.
 
 ### Prebuilt images
 
-CI publishes both images to `ghcr.io/scagood/stt-api`: `latest-cpu` and
-`latest-gpu` track `main`, and each release is tagged `<version>-cpu` and
-`<version>-gpu`. The CPU image is built for `linux/amd64` and `linux/arm64`, the
-GPU image for `linux/amd64`.
+CI publishes both images to `ghcr.io/scagood/stt-api`:
+
+- `latest-cpu` and `latest-gpu` track `main`.
+- `<version>-cpu` and `<version>-gpu` are each release.
+- `pr-<number>-cpu` and `pr-<number>-gpu` exist only for a pull request from
+  this repository labelled `prerelease`, until it closes. They are for trying a
+  change on hardware CI doesn't have, such as a GPU. While the label is on,
+  each push rebuilds them from the pull request merged into `main`.
+
+The CPU image is built for `linux/amd64` and `linux/arm64`, the GPU image for
+`linux/amd64`. `pr-<number>-*` images are `linux/amd64` only.
 
 ```bash
 docker run -d --name parakeet-cpu -p 5092:5092 -v parakeet-models:/app/models \

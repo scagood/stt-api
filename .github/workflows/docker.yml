@@ -4,23 +4,70 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  # A pull request labelled prerelease also pushes pr-<number>-cpu and
+  # pr-<number>-gpu, to try a change on hardware CI doesn't have. Labelling
+  # needs triage access, so the label is the approval. Closing the pull
+  # request deletes them.
   pull_request:
-    paths:
-      - "Dockerfile.*"
-      - "requirements.txt"
-      - ".github/workflows/docker.yml"
-      # What the smoke test below loads, and the code that loads it.
-      - "parakeet_service/models.yaml"
-      - "parakeet_service/model.py"
+    types: [opened, synchronize, reopened, labeled, closed]
 
 permissions:
   contents: read
-  packages: write
+
+# One group per pull request: a new push cancels the build of the last one,
+# and closing cancels a build that would push after its images are deleted.
+# Other labels run nothing, so they don't share it.
+concurrency:
+  group: >-
+    docker-${{ github.event_name == 'pull_request' &&
+    (github.event.action != 'labeled' || github.event.label.name == 'prerelease') &&
+    github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
+  # A paths filter on the trigger would also stop a labelled pull request that
+  # changes none of these paths from publishing, so the filter is here.
+  changes:
+    if: >-
+      contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action) ||
+      (github.event.action == 'labeled' && github.event.label.name == 'prerelease')
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      image: ${{ steps.files.outputs.image }}
+      # A fork's pull request gets a read-only token, so it never pushes.
+      publish: >-
+        ${{ contains(github.event.pull_request.labels.*.name, 'prerelease') &&
+        github.event.pull_request.head.repo.full_name == github.repository }}
+    steps:
+      - id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FILES: repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files?per_page=100
+        run: |
+          files=$(gh api --paginate "$FILES" --jq '.[].filename')
+          # What the image is made of, plus what the smoke test below loads
+          # and the code that loads it.
+          if grep -qxE 'Dockerfile\.[^/]+|requirements\.txt|\.github/workflows/docker\.yml|parakeet_service/(models\.yaml|model\.py)' <<< "$files"; then
+            echo image=true >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: build (${{ matrix.flavor }})
+    needs: changes
+    # main and release tags always build. Labelling only adds the push, so it
+    # builds only what it publishes.
+    if: >-
+      ${{ !cancelled() && !failure() && (github.event_name == 'push' ||
+      needs.changes.outputs.publish == 'true' ||
+      (needs.changes.outputs.image == 'true' && github.event.action != 'labeled')) }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUSH: ${{ github.event_name == 'push' || needs.changes.outputs.publish == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -43,7 +90,7 @@ jobs:
       - uses: docker/setup-buildx-action@v4
 
       - uses: docker/login-action@v4
-        if: github.event_name != 'pull_request'
+        if: env.PUSH == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -67,9 +114,10 @@ jobs:
           context: .
           file: Dockerfile.${{ matrix.flavor }}
           platforms: ${{ matrix.platforms }}
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ env.PUSH }}
           # A pull request builds the CPU image for one platform, so it can be
-          # loaded into the runner's Docker for the smoke test.
+          # loaded into the runner's Docker for the smoke test, and pushed as
+          # well when it publishes (BuildKit 0.13+ takes both outputs).
           load: ${{ github.event_name == 'pull_request' && matrix.flavor == 'cpu' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -102,3 +150,46 @@ jobs:
           docker logs smoke
           echo "::error::the image never answered /healthz; its logs are above"
           exit 1
+
+  # Once both images are pushed, tell the pull request how to pull them. Each
+  # push rebuilds them under the same tags, so one comment is enough.
+  comment:
+    needs: [changes, build]
+    if: needs.changes.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENTS: repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments
+          BODY: |
+            <!-- docker.yml prerelease -->
+            This pull request's images, for `linux/amd64`:
+
+            ```bash
+            docker pull ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}-cpu
+            docker pull ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}-gpu
+            ```
+
+            Each push rebuilds them while the `prerelease` label is on. Closing the pull request deletes them.
+        run: |
+          ids=$(gh api --paginate "$COMMENTS" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- docker.yml prerelease -->"))) | .id')
+          [ -n "$ids" ] || gh api --silent "$COMMENTS" -f body="$BODY"
+
+  # Every closed pull request from this repository, labelled or not: the label
+  # may have come off after it pushed. Tags that aren't there are skipped.
+  # Each re-push left the manifest it replaced untagged; cleanup-ghcr.yml
+  # deletes those nightly. This doesn't share a concurrency group with it: a
+  # group keeps one pending job and cancels the others, so a delete could be
+  # dropped. The two delete different versions, and the action takes a
+  # version that is already gone as deleted.
+  delete:
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          delete-tags: pr-${{ github.event.pull_request.number }}-cpu,pr-${{ github.event.pull_request.number }}-gpu
