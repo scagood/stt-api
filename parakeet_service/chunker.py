@@ -81,17 +81,26 @@ def _silero_speech_segments(wav: np.ndarray) -> List[Range]:
     return [(int(item["start"]), int(item["end"])) for item in timestamps]
 
 
+FRAME = int(0.02 * TARGET_SR)  # loudness is measured in 20 ms frames
+
+
+def frame_rms(wav: np.ndarray) -> np.ndarray:
+    """RMS of each whole 20 ms frame of `wav`."""
+    count = wav.size // FRAME
+    framed = wav[: count * FRAME].reshape(count, FRAME)
+    return np.sqrt((framed * framed).mean(axis=1) + 1e-12)
+
+
 def _volume_speech_segments(wav: np.ndarray) -> List[Range]:
     """Spans louder than the gate (PARAKEET_VAD_GATE_DB, else 0.4x the average
     20 ms frame level), joined across dips shorter than VAD_MIN_SILENCE_MS and
     padded by VAD_SPEECH_PAD_MS as Silero's are."""
-    frame = max(1, int(0.02 * TARGET_SR))
+    frame = FRAME
     if wav.size < frame:
         return [(0, wav.size)] if np.any(np.abs(wav) > 1e-4) else []
 
-    frame_count = wav.size // frame
-    framed = wav[: frame_count * frame].reshape(frame_count, frame)
-    rms = np.sqrt((framed * framed).mean(axis=1) + 1e-12)
+    rms = frame_rms(wav)
+    frame_count = rms.size
     if VAD_GATE_DB is None:
         threshold = max(1e-3, float(rms.mean()) * 0.4)
     else:

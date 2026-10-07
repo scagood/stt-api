@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
-from . import aligner, spoken
+from . import aligner, retime, spoken
 from .audio import load_audio
 from .chunker import auto_chunk, slice_chunks
 from .config import (
@@ -28,6 +28,7 @@ from .config import (
     MAX_REQUEST_CHUNKS,
     MAX_UPLOAD_BYTES,
     MODEL_CONFIGS,
+    RETIME_WORDS,
     SPOKEN_NUMBERS,
     TARGET_SR,
     UPLOAD_READ_CHUNK_BYTES,
@@ -454,6 +455,7 @@ def _stitch(
     speak: bool = False,
     language: Optional[str] = None,
     aligner_choice: Optional[Tuple[str, str]] = None,
+    retime_words: bool = False,
 ) -> Tuple[str, List[Dict[str, Any]], Optional[List[Dict[str, Any]]]]:
     """Chunk results -> (text, segments, words); words None when a text-only
     (Whisper) chunk was to be aligned and could not be.
@@ -462,7 +464,8 @@ def _stitch(
     name and quantization); `speak` says numbers out (PARAKEET_SPOKEN_NUMBERS),
     hearing which reading was said through that aligner if there is one. Either
     may run the aligner's model: call it through _stitch_request, which keeps
-    that off the event loop.
+    that off the event loop. `retime_words` moves the words of each chunk the
+    aligner did not re-time out of the pauses they slipped into (retime.py).
     """
     if len(results) != len(prepared.ranges):
         raise RuntimeError(
@@ -473,6 +476,10 @@ def _stitch(
     segments: List[Dict[str, Any]] = []
     words: List[Dict[str, Any]] = []
     untimed = False
+    gaps = gap_ends = None
+    if retime_words and prepared.waveform is not None:
+        gaps = retime.pauses(prepared.waveform)
+        gap_ends = [end for _start, end in gaps]
     for (start_sample, end_sample), chunk_wav, result in zip(
         prepared.ranges, prepared.pieces, results
     ):
@@ -548,16 +555,24 @@ def _stitch(
             untimed = True  # no aligner, no language, or nothing placed
         elif spans:
             _apply_alignment(chunk_words, spans, chunk_start, chunk_end)
-            # Segment bounds came from the model's estimates; keep them covering
-            # the re-timed words so a cue never ends before its last word.
-            segment = segments[-1]
-            segment["start"] = min(segment["start"], chunk_words[0]["start"])
-            segment["end"] = max(segment["end"], chunk_words[-1]["end"])
+            _cover(segments[-1], chunk_words)
+        elif gaps is not None and chunk_words and not placeholders:
+            chunk_words = retime.retime(
+                chunk_words, retime.within(gaps, gap_ends, chunk_start, chunk_end), chunk_start, chunk_end
+            )
+            _cover(segments[-1], chunk_words)
         words.extend(chunk_words)
 
     full_text = _clean_text(" ".join(item["segment"] for item in segments))
     # Whisper's word times come only from the aligner: none rather than some.
     return full_text, segments, None if untimed else words
+
+
+def _cover(segment: Dict[str, Any], words: List[Dict[str, Any]]) -> None:
+    """Segment bounds came from the model's estimates; keep them covering its
+    re-timed words, so a cue never ends before its last word."""
+    segment["start"] = min(segment["start"], words[0]["start"])
+    segment["end"] = max(segment["end"], words[-1]["end"])
 
 
 def _needs_aligner(
@@ -589,7 +604,7 @@ async def _stitch_request(
     request: Request, prepared: _PreparedAudio, results: Sequence[Any], **flags: Any
 ) -> Tuple[str, List[Dict[str, Any]], Optional[List[Dict[str, Any]]]]:
     """_stitch(prepared, results, **flags), off the event loop unless it is
-    plain text work (no word times, no digit to say).
+    plain text work (no word times, no digit to say, nothing to re-time).
 
     Saying numbers reads their readings back through number_parse, which is
     CPU work: it, and deciding whether the aligner's model is needed, run on
@@ -600,10 +615,10 @@ async def _stitch_request(
     says_numbers = flags.get("speak") and any(
         char.isdigit() for result in results for char in str(getattr(result, "text", result))
     )
-    if not (flags.get("align") or says_numbers):
+    if not (flags.get("align") or says_numbers or flags.get("retime_words")):
         return stitch()
     loop, state = asyncio.get_running_loop(), request.app.state
-    needs = flags.get("align") or await loop.run_in_executor(
+    needs = flags.get("align") or says_numbers and await loop.run_in_executor(
         state.audio_pool,
         functools.partial(
             _needs_aligner, results, speak=flags.get("speak", False), aligner_choice=flags.get("aligner_choice")
@@ -762,6 +777,12 @@ def _transcript_language(model_name: str, language: Optional[str]) -> Optional[s
     return "en" if MODEL_CONFIGS[model_name]["languages"] == ["en"] else language
 
 
+def _retimes(retime_words: Optional[bool]) -> bool:
+    """Move word times out of pauses: the request's `retime_words`, else the
+    server's PARAKEET_RETIME_WORDS."""
+    return RETIME_WORDS if retime_words is None else retime_words
+
+
 def _speaks(spoken_numbers: Optional[bool], language: Optional[str]) -> bool:
     """Say numbers in words: the request's `spoken_numbers`, else the server's
     PARAKEET_SPOKEN_NUMBERS; English only."""
@@ -788,6 +809,7 @@ async def transcribe(
     spoken_numbers: Optional[bool] = Form(None),
     aligner_name: Optional[str] = Form(None, alias="aligner"),
     aligner_quantization: Optional[str] = Form(None),
+    retime_words: Optional[bool] = Form(None),
 ):
     del prompt, temperature  # accepted for OpenAI client compatibility
     model, quantization = _named(model, quantization, "model", "quantization")
@@ -842,6 +864,7 @@ async def transcribe(
         speak=speak,
         language=heard,
         aligner_choice=choice,
+        retime_words=want_words and _retimes(retime_words),
     )
     stitch_ms = (time.perf_counter() - stitch_started) * 1000
 

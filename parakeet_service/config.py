@@ -402,6 +402,13 @@ if ALIGN_DEFAULT_LANGUAGE and not LANGUAGE_CODE.fullmatch(ALIGN_DEFAULT_LANGUAGE
 # the aligner to hear how each was said. A request opts in or out with
 # `spoken_numbers=true|false`; this is the answer for requests that don't say.
 SPOKEN_NUMBERS = _env_bool("PARAKEET_SPOKEN_NUMBERS", False)
+# Parakeet's word times slip into pauses: the word before one starts after the
+# speech has stopped, the word after it before the speech starts. On, words
+# touching a pause (found by loudness, retime.py) move to its edge, for a few
+# ms per hour of audio; an aligner, when named, times words better. A request
+# opts in or out with `retime_words=true|false`; this is the answer for
+# requests that don't say.
+RETIME_WORDS = _env_bool("PARAKEET_RETIME_WORDS", False)
 # The /compare page: upload a clip and hear where each model and aligner puts
 # every word. Off unless an operator turns it on: each row it runs is a full
 # transcription, and loads the model or aligner it names.

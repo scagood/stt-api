@@ -122,6 +122,7 @@ async def _transcribe(
     spoken_numbers=None,
     model="parakeet-v3",
     quantization=None,
+    retime_words=None,
 ):
     state = _state()
     try:
@@ -139,6 +140,7 @@ async def _transcribe(
             spoken_numbers=spoken_numbers,
             aligner_name=aligner_name,
             aligner_quantization=aligner_quantization,
+            retime_words=retime_words,
         )
     finally:
         state.audio_pool.shutdown()
@@ -334,6 +336,7 @@ async def test_alignment_only_runs_when_words_are_returned(calls, stitched, resp
         (routes.transcribe, "aligner_quantization", ("Optional[str]", "str | None")),
         (routes.transcribe_batch, "aligner_name", ("Optional[str]", "str | None")),
         (routes.transcribe_batch, "aligner_quantization", ("Optional[str]", "str | None")),
+        (routes.transcribe, "retime_words", ("Optional[bool]", "bool | None")),
     ],
 )
 def test_the_switches_are_optional_form_fields(handler, name, annotation):
@@ -612,3 +615,34 @@ async def test_whisper_words_need_an_aligner(calls):
     body = await _transcribe_whisper("whisper-base", language="en", aligner_name=None)
     assert calls == []
     assert body["words"] is None
+
+
+@pytest.fixture
+def retimed(calls, monkeypatch):
+    """The retime_words each _stitch was given, and the pool it ran on."""
+    seen = []
+    stitch = routes._stitch
+
+    def recording(*args, **kwargs):
+        seen.append((kwargs.get("retime_words", False), _pool(threading.current_thread().name)))
+        return stitch(*args, **kwargs)
+
+    monkeypatch.setattr(routes, "_stitch", recording)
+    return seen
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("server", "request_says", "fmt", "expected"),
+    [
+        (False, None, "verbose_json", False),
+        (True, None, "verbose_json", True),
+        (True, False, "verbose_json", False),
+        (False, True, "verbose_json", True),
+        (False, True, "json", False),  # no word times asked for: nothing to re-time
+    ],
+)
+async def test_retime_words_is_the_request_s_else_the_server_s(retimed, monkeypatch, server, request_says, fmt, expected):
+    monkeypatch.setattr(routes, "RETIME_WORDS", server)
+    await _transcribe(response_format=fmt, retime_words=request_says)
+    assert retimed == [(expected, "audio" if expected else "inline")]  # off the event loop when it works

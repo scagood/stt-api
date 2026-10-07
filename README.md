@@ -185,7 +185,16 @@ started. In a 41-minute LibriVox chapter, 249 words lay entirely inside a
 pause (`ffmpeg silencedetect`, -30 dB, 0.3 s or longer), each a real word timed
 into the pause beside it. With `aligner=wav2vec2-base-960h`, none did. If you
 match words against text or silence, as an audiobook aligner does, name an
-aligner.
+aligner, or send `retime_words=true`.
+
+`retime_words=true` finds the pauses by loudness and moves only the words
+touching one to its edge: a word that starts in a pause starts at its end, one
+that ends in it ends at its start, and one wholly inside goes before it if it
+ends a sentence or clause, after it if not. Every other word keeps Parakeet's
+time. It costs about 0.1 s per hour of audio, against the aligner's 3.4x the
+transcription time on a CPU, but it is not as good: the aligner times every
+word from the audio. With an aligner named, it only re-times chunks the aligner
+could not. `PARAKEET_RETIME_WORDS=true` turns it on for requests that don't say.
 
 ```bash
 curl http://localhost:5092/v1/audio/transcriptions \
@@ -498,6 +507,7 @@ every chunk is cut that way. Music hasn't been measured.
 |---|---|---|
 | `PARAKEET_ALIGN_DEFAULT_LANGUAGE` | `en` | language assumed for [word timestamps](#word-timestamps) and [spoken numbers](#spoken-numbers) when a request sends none; empty uses them only when `language` is sent |
 | `PARAKEET_SPOKEN_NUMBERS` | `false` | spoken numbers for requests that don't send `spoken_numbers` |
+| `PARAKEET_RETIME_WORDS` | `false` | [`retime_words`](#word-timestamps) for requests that don't send it: move Parakeet's word times out of pauses |
 
 ### Request limits
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
+
 from parakeet_service import routes
 from parakeet_service.config import TARGET_SR
 
@@ -140,3 +142,49 @@ def test_unaligned_words_stay_between_aligned_neighbours():
     assert (words[0]["start"], words[0]["end"]) == (10.1, 10.2)
     assert (words[2]["start"], words[2]["end"]) == (10.4, 10.6)
     assert words[0]["end"] <= words[1]["start"] <= words[1]["end"] <= words[2]["start"]
+
+
+def _talk_pause_talk():
+    """Speech 0-2 s, a pause 2-3 s, speech 3-5 s (a tone stands in for speech)."""
+    t = np.arange(5 * TARGET_SR) / TARGET_SR
+    wav = 0.1 * np.sin(2 * np.pi * 220 * t)
+    wav[2 * TARGET_SR: 3 * TARGET_SR] = 0.0
+    return wav.astype(np.float32)
+
+
+def _with_audio(ranges_sec, wav):
+    prepared = _prepared(ranges_sec)
+    prepared.waveform = wav
+    return prepared
+
+
+# Parakeet's times: "world." starts after the speech stopped, "Then" before it resumed.
+LATE_AND_EARLY = ([" Hello", " world", ".", " Then", " more"], [0.4, 2.24, 2.4, 2.8, 3.6])
+
+
+def test_retime_moves_words_out_of_pauses():
+    prepared = _with_audio([(0.0, 5.0)], _talk_pause_talk())
+    _text, segments, words = routes._stitch(prepared, [_result(*LATE_AND_EARLY)], retime_words=True)
+    assert [(w["word"], round(w["start"], 2), round(w["end"], 2)) for w in words] == [
+        ("Hello", 0.4, 0.72),
+        ("world.", 1.52, 2.0),  # closes a sentence: before the pause, as long as it was
+        ("Then", 3.0, 3.12),    # starts in the pause: at its end
+        ("more", 3.6, 3.92),    # nowhere near one: untouched
+    ]
+    assert segments[0]["start"] <= words[0]["start"] and segments[0]["end"] >= words[-1]["end"]
+
+
+def test_retime_is_off_unless_asked():
+    prepared = _with_audio([(0.0, 5.0)], _talk_pause_talk())
+    result = _result(*LATE_AND_EARLY)
+    assert routes._stitch(prepared, [result]) == routes._stitch(_prepared([(0.0, 5.0)]), [result])
+    assert routes._stitch(prepared, [result])[2][1]["start"] == 2.24
+
+
+def test_aligned_words_are_not_retimed(monkeypatch):
+    monkeypatch.setattr(routes.aligner, "for_chunk", lambda wav, *_: _FakeChunk(wav, []))
+    prepared = _with_audio([(0.0, 5.0)], _talk_pause_talk())
+    _text, _segments, words = routes._stitch(
+        prepared, [_result(*LATE_AND_EARLY)], align=True, aligner_choice=EAR, retime_words=True
+    )
+    assert [(w["start"], w["end"]) for w in words] == [(0.25 + i, 0.5 + i) for i in range(4)]
