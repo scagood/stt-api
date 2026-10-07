@@ -123,9 +123,9 @@ so switch those when the server upgrades.
   | `omnilingual-ctc-300m` | Parakeet v3's 25 languages; numbers keep the model's times |
   | `wav2vec2-base-960h` | English, the smallest and fastest, the least accurate |
 
-  The precision is `int8` (the default) or `fp32`, after a colon
-  (`aligner=mms-300m-forced-aligner:fp32`) or in `aligner_quantization`, as for
-  `model`. When you ask for word timestamps, `language` must be one the aligner
+  The precision goes after a colon (`aligner=mms-300m-forced-aligner:fp32`);
+  without one you get `int8`. `GET /v1/aligners` lists each one's precisions.
+  When you ask for word timestamps, `language` must be one the aligner
   aligns; a request without it is taken as the server's
   `PARAKEET_ALIGN_DEFAULT_LANGUAGE`, English unless your admin changed it.
   English-only models (`parakeet-v2`, `whisper-*.en`) are aligned as English
@@ -255,8 +255,8 @@ repos and revisions to go back to. Put them in your own catalog (next section).
   cache seeded by 1.5.0, so model loads fail (a 503 naming the model). Reseed the cache first: run 2.0.0
   once with the host online and `PARAKEET_PRELOAD_MODELS` listing everything
   you serve, then turn offline mode back on. Aligners aren't preloaded: while
-  online, also send one word request naming each `aligner` (and
-  `aligner_quantization`) your clients use. `wav2vec2-base-960h` is about
+  online, also send one word request naming each `aligner` (with its
+  precision) your clients use. `wav2vec2-base-960h` is about
   95 MB at int8; the others are about 320 MB at int8 and 1.2–1.3 GB at fp32.
 - **The model cache must be writable** even when it is fully seeded. Each load
   links the model's files into a temporary `.load-*` folder inside it.

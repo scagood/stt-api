@@ -144,10 +144,10 @@ def _validate_model(model: str) -> str:
     return normalized
 
 
-def _named(value: str, quantization: Optional[str], field: str, quantization_field: str) -> Tuple[str, Optional[str]]:
+def _named(value: str, field: str, quantization: Optional[str] = None) -> Tuple[str, Optional[str]]:
     """A `model` or `aligner` value, "name" or "name:quantization", as (name,
-    quantization): the quantization may come from either form, and must agree
-    when both are sent."""
+    quantization). A model's quantization may instead come from the
+    `quantization` field, and must agree when both are sent."""
     name, colon, suffix = value.partition(":")
     if not colon:
         return value, quantization
@@ -156,7 +156,7 @@ def _named(value: str, quantization: Optional[str], field: str, quantization_fie
         raise HTTPException(status_code=400, detail=f"{field} {value!r} has no quantization after ':'")
     if quantization is not None and quantization.strip().lower() != suffix:
         raise HTTPException(
-            status_code=400, detail=f"{field} {value!r} says {suffix!r} but {quantization_field} says {quantization!r}"
+            status_code=400, detail=f"{field} {value!r} says {suffix!r} but quantization says {quantization!r}"
         )
     return name, suffix
 
@@ -737,13 +737,13 @@ def _validate_language(language: Optional[str]) -> None:
         )
 
 
-def _validate_aligner(name: Optional[str], quantization: Optional[str]) -> Optional[Tuple[str, str]]:
-    """The request's aligner as (name, quantization), or None if it names none:
-    in the catalog, at one of its quantizations (else its default_quantization)."""
-    if name is None:
-        if quantization is not None:
-            raise HTTPException(status_code=400, detail="aligner_quantization needs an aligner")
+def _validate_aligner(value: Optional[str]) -> Optional[Tuple[str, str]]:
+    """The request's `aligner`, "name" or "name:quantization", as (name,
+    quantization), or None if it names none: in the catalog, at one of its
+    quantizations (else its default_quantization)."""
+    if value is None:
         return None
+    name, quantization = _named(value, "aligner")
     normalized = name.strip().lower()
     if normalized not in ALIGNER_CONFIGS:
         raise HTTPException(
@@ -808,11 +808,10 @@ async def transcribe(
     temperature: Optional[float] = Form(None),
     spoken_numbers: Optional[bool] = Form(None),
     aligner_name: Optional[str] = Form(None, alias="aligner"),
-    aligner_quantization: Optional[str] = Form(None),
     retime_words: Optional[bool] = Form(None),
 ):
     del prompt, temperature  # accepted for OpenAI client compatibility
-    model, quantization = _named(model, quantization, "model", "quantization")
+    model, quantization = _named(model, "model", quantization)
     model_name = _validate_model(model)
     model_key = _variant(model_name, quantization)
     family = _family(model_name)
@@ -829,11 +828,7 @@ async def transcribe(
     _validate_language(language)
     heard = _transcript_language(model_name, language)
     # Naming an aligner is asking for aligned word times; there is no default.
-    if aligner_name is not None:
-        aligner_name, aligner_quantization = _named(
-            aligner_name, aligner_quantization, "aligner", "aligner_quantization"
-        )
-    choice = _validate_aligner(aligner_name, aligner_quantization)
+    choice = _validate_aligner(aligner_name)
     speak = _speaks(spoken_numbers, heard)
     # Word timestamps: Parakeet emits them from its TDT tokens. Whisper returns
     # text only, so its words come purely from forced-aligning the transcript,
@@ -922,7 +917,6 @@ async def transcribe_batch(
     quantization: Optional[str] = Form(None),
     spoken_numbers: Optional[bool] = Form(None),
     aligner_name: Optional[str] = Form(None, alias="aligner"),
-    aligner_quantization: Optional[str] = Form(None),
 ):
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
@@ -931,14 +925,10 @@ async def transcribe_batch(
             status_code=413,
             detail=f"Batch contains {len(files)} files; limit is {MAX_BATCH_FILES}",
         )
-    model, quantization = _named(model, quantization, "model", "quantization")
+    model, quantization = _named(model, "model", quantization)
     model_name = _validate_model(model)
     model_key = _variant(model_name, quantization)
-    if aligner_name is not None:
-        aligner_name, aligner_quantization = _named(
-            aligner_name, aligner_quantization, "aligner", "aligner_quantization"
-        )
-    choice = _validate_aligner(aligner_name, aligner_quantization)  # it only hears numbers here
+    choice = _validate_aligner(aligner_name)  # it only hears numbers here
     target_sec, max_sec, min_sec = _chunk_bounds(model_name)
     filenames = [upload.filename or "unnamed" for upload in files]
 

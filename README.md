@@ -228,7 +228,7 @@ The same clip, before and after (seconds):
 | jumps | 1.04–1.36 | 1.12–1.36 |
 
 Name the aligner as you name a model, with its precision after a colon
-(`aligner=mms-300m-forced-aligner:fp32`) or in `aligner_quantization`. There is
+(`aligner=mms-300m-forced-aligner:fp32`); without one you get `int8`. There is
 no default aligner: a request that names none gets Parakeet's times.
 `GET /v1/aligners` lists them:
 
@@ -360,9 +360,9 @@ empty if you serve them.
 ## Batch transcription
 
 `POST /v1/audio/transcriptions/batch` takes several `files` in one request,
-with the same `model`, `quantization`, `aligner`, `aligner_quantization` and
-`spoken_numbers` fields as the single-file endpoint, but no `language` or
-`response_format`. It returns text only:
+with the same `model`, `quantization`, `aligner` and `spoken_numbers` fields
+as the single-file endpoint, but no `language` or `response_format`. It
+returns text only:
 
 ```bash
 curl http://localhost:5092/v1/audio/transcriptions/batch \
