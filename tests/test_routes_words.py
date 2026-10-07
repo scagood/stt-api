@@ -15,7 +15,8 @@ from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException, UploadFile, params
+from fastapi import FastAPI, HTTPException, UploadFile, params
+from starlette.datastructures import FormData
 
 from parakeet_service import aligner, routes
 from parakeet_service.config import TARGET_SR
@@ -332,6 +333,30 @@ def test_the_switches_are_optional_form_fields(handler, name, annotation):
     assert isinstance(field.default, params.Form) and field.default.default is None
     assert field.annotation in annotation
     assert "align_words" not in inspect.signature(handler).parameters  # an aligner is named, or none
+
+
+def test_timestamp_granularities_is_documented_once():
+    app = FastAPI()
+    app.include_router(routes.router)
+    schema = app.openapi()
+    body = schema["paths"]["/v1/audio/transcriptions"]["post"]["requestBody"]
+    name = body["content"]["multipart/form-data"]["schema"]["$ref"].rsplit("/", 1)[1]
+    fields = schema["components"]["schemas"][name]["properties"]
+    assert len([field for field in fields if field.startswith("timestamp_granularities")]) == 1
+
+
+@pytest.mark.asyncio
+async def test_timestamp_granularities_without_brackets_is_read_from_the_form():
+    async def form(*pairs):
+        return FormData(list(pairs))
+
+    plain = SimpleNamespace(form=lambda: form(
+        ("timestamp_granularities", "word"),
+        ("timestamp_granularities", "segment"),
+        ("timestamp_granularities[]", "ignored"),
+    ))
+    assert await routes._plain_granularities(plain) == ["word", "segment"]
+    assert await routes._plain_granularities(SimpleNamespace(form=form)) is None
 
 
 def test_aligners_are_listed_like_models():
