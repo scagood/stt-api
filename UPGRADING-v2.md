@@ -198,7 +198,7 @@ ran it.
 | — | `PARAKEET_MODEL_CATALOG`: a YAML file that replaces the built-in model catalog. |
 | — | `PARAKEET_MODEL_CACHE_SIZE`: keep at most N loaded models, and separately at most N loaded aligners, evicting the least recently used. `0` (the default) means no limit. |
 | — | `PARAKEET_SPOKEN_NUMBERS`: the answer for requests that don't send `spoken_numbers`. Defaults to `false`. There is no server-wide switch for alignment: a request names its `aligner`. |
-| — | `PARAKEET_VAD`: how long audio finds its pauses, `silero` (the default, as before) or `volume`, which is much faster on narration. `PARAKEET_VAD_GATE_DB` fixes `volume`'s gate in dBFS. See [Configuration](README.md#configuration). |
+| — | `PARAKEET_VAD`: how long audio finds its pauses. **The default is now `volume`**, frames quieter than a gate, 30x faster or more than Silero-VAD, which 1.5.0 always used; long audio is cut in slightly different places, so transcripts can differ a little. `PARAKEET_VAD=silero` brings Silero back. `PARAKEET_VAD_GATE_DB` fixes `volume`'s gate in dBFS. See [Configuration](README.md#configuration). |
 | — | `PARAKEET_ALIGN_DEFAULT_LANGUAGE` (`en`), `PARAKEET_ALIGN_THREADS` (`min(4, physical cores)`): see [Word timestamps](README.md#word-timestamps). |
 | — | `PARAKEET_COMPARE_UI`: serve `GET /compare`, a page for comparing models and aligners by ear. Defaults to `false`. Each row it runs is a full transcription and loads whatever model or aligner it names, so leave it off on shared hosts. See [the compare page](README.md#comparing-models-and-aligners-by-ear). |
 
