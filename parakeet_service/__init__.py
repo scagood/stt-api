@@ -1,3 +1,3 @@
-"""Parakeet TDT 0.6B v3 optimized FastAPI service."""
+"""stt-api: an OpenAI-compatible speech-to-text server on ONNX Runtime."""
 
 __version__ = "1.1.0"
