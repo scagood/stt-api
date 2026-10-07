@@ -489,8 +489,7 @@ Volume needs pauses quieter than the speech. Under a noise bed the file's own
 gate rises with the noise: at -40 dBFS it still found every pause, at -35 dBFS
 (5 dB under the speech) it missed some and 10 chunks were cut mid-speech at
 their full length. A fixed gate below the noise finds no pause at all, and
-every chunk is cut that way. For narration, use `volume`; for speech over
-music or noise, keep `silero`.
+every chunk is cut that way. Music hasn't been measured.
 
 **Words and numbers**
 
