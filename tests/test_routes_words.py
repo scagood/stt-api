@@ -18,7 +18,7 @@ import pytest
 from fastapi import FastAPI, HTTPException, UploadFile, params
 from starlette.datastructures import FormData
 
-from parakeet_service import aligner, routes
+from parakeet_service import aligner, routes, schemas
 from parakeet_service.config import TARGET_SR
 from parakeet_service.model import get_model
 
@@ -147,7 +147,7 @@ async def _transcribe(
     return json.loads(response.body) if response_format.endswith("json") else response.body.decode()
 
 
-async def _batch(*texts, spoken_numbers=None, aligner_name=None, model="parakeet-v3"):
+async def _batch_body(*texts, spoken_numbers=None, aligner_name=None, model="parakeet-v3"):
     state = _state()
     try:
         body = await routes.transcribe_batch(
@@ -161,7 +161,11 @@ async def _batch(*texts, spoken_numbers=None, aligner_name=None, model="parakeet
     finally:
         state.audio_pool.shutdown()
         state.align_pool.shutdown()
-    return [item["text"] for item in body["results"]]
+    return body
+
+
+async def _batch(*texts, **kwargs):
+    return [item["text"] for item in (await _batch_body(*texts, **kwargs))["results"]]
 
 
 BASE = "wav2vec2-base-960h"
@@ -343,6 +347,27 @@ def test_timestamp_granularities_is_documented_once():
     name = body["content"]["multipart/form-data"]["schema"]["$ref"].rsplit("/", 1)[1]
     fields = schema["components"]["schemas"][name]["properties"]
     assert len([field for field in fields if field.startswith("timestamp_granularities")]) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("response_format", "granularity", "aligner_name", "schema"),
+    [
+        ("json", None, None, schemas.Transcription),
+        ("verbose_json", None, None, schemas.VerboseTranscription),
+        ("verbose_json", "word", None, schemas.VerboseTranscription),
+        ("verbose_json", "word", BASE, schemas.VerboseTranscription),
+    ],
+)
+async def test_json_responses_match_the_documented_schema(calls, response_format, granularity, aligner_name, schema):
+    body = await _transcribe(response_format, granularity, language="en", aligner_name=aligner_name)
+    schema.model_validate(body)
+    assert (body.get("words") is not None) == (granularity == "word")
+
+
+@pytest.mark.asyncio
+async def test_batch_response_matches_the_documented_schema(calls):
+    schemas.BatchTranscription.model_validate(await _batch_body("hello world", "goodbye"))
 
 
 @pytest.mark.asyncio

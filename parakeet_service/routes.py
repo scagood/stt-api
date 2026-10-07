@@ -8,7 +8,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
@@ -35,9 +35,23 @@ from .config import (
     logger,
 )
 from .model import ModelLoadError, loaded_models, runtime_status, variant_key
+from .schemas import (
+    AlignerCard,
+    AlignerList,
+    BatchTranscription,
+    ErrorResponse,
+    Health,
+    ModelCard,
+    ModelList,
+    Ready,
+    Transcription,
+    VerboseTranscription,
+)
 
-router = APIRouter()
-_ALLOWED_FORMATS = {"json", "text", "srt", "vtt", "verbose_json"}
+# Name operationIds, and the docs' request body schemas, after the handler
+# (`transcribe`, `Body_transcribe`) rather than handler, path and method.
+router = APIRouter(generate_unique_id_function=lambda route: route.name)
+_ALLOWED_FORMATS = ("json", "text", "srt", "vtt", "verbose_json")  # in the docs' order
 _GRANULARITIES = {"word", "segment"}  # OpenAI's; segments come with verbose_json anyway
 
 # Parakeet TDT reports token START times only (80 ms encoder frames); its
@@ -637,6 +651,155 @@ async def _infer(request: Request, pieces: List[Any], model_key: str):
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+def _verbose_json(
+    language: str,
+    duration: float,
+    text: str,
+    segments: Sequence[Dict[str, Any]],
+    words: Optional[List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """The `verbose_json` response, in OpenAI's shape."""
+    return {
+        "task": "transcribe",
+        "language": language,
+        "duration": duration,
+        "text": text,
+        "segments": [
+            {
+                "id": index,
+                "seek": 0,
+                "start": segment["start"],
+                "end": segment["end"],
+                "text": segment["segment"],
+                "tokens": [],
+                "temperature": 0.0,
+                "avg_logprob": 0.0,
+                "compression_ratio": 0.0,
+                "no_speech_prob": 0.0,
+            }
+            for index, segment in enumerate(segments)
+        ],
+        "words": words,
+    }
+
+
+def _ok(model: Any, description: str, example: Any = None) -> Dict[str, Any]:
+    """A response for the docs: its schema, and an example to show instead of
+    one Swagger UI makes up from the schema ("string", "additionalProp1")."""
+    response: Dict[str, Any] = {"model": model, "description": description}
+    if example is not None:
+        response["content"] = {"application/json": {"example": example}}
+    return response
+
+
+def _error(description: str, example: str) -> Dict[str, Any]:
+    """An error response for the docs: `{"detail": example}`."""
+    return _ok(ErrorResponse, description, {"detail": example})
+
+
+def _form_doc(**extra: Any) -> Callable[[Dict[str, Any]], None]:
+    """json_schema_extra for an optional form field. A form leaves a field out
+    rather than sending null, so drop the null that Swagger UI shows as
+    `string | (string | null)`; then add `extra` (an enum, say)."""
+
+    def update(schema: Dict[str, Any]) -> None:
+        branches = [branch for branch in schema.get("anyOf", []) if branch.get("type") != "null"]
+        if len(branches) == 1:
+            del schema["anyOf"]
+            schema.update(branches[0])
+        schema.update(extra)
+
+    return update
+
+
+_MODEL_DOC = (
+    "The model, e.g. `parakeet-v3`, with a precision after a colon if you like "
+    "(`parakeet-v3:fp16`). `GET /v1/models` lists them."
+)
+_QUANTIZATION_DOC = (
+    "The model's precision, instead of a suffix on `model`; if both are sent, they "
+    "must agree. `fp32` if neither names one."
+)
+_SPOKEN_NUMBERS_DOC = (
+    "Write numbers, money and units in words, the way they were said (English "
+    "only). Defaults to the server's `PARAKEET_SPOKEN_NUMBERS`."
+)
+_MODEL_ERRORS = {
+    503: _error(
+        "The service is still starting, or the model could not be loaded "
+        "(`detail` names it and why); the next request tries again.",
+        "Model is not ready",
+    ),
+}
+
+_EXAMPLE_TEXT = "The quick brown fox jumps over the lazy dog."
+_EXAMPLE_SEGMENTS = [{"start": 0.0, "end": 2.3473125, "segment": _EXAMPLE_TEXT}]
+_EXAMPLE_WORDS = [
+    {"start": start, "end": end, "word": word}
+    for start, end, word in [
+        (0.0, 0.16, "The"),
+        (0.16, 0.4, "quick"),
+        (0.4, 0.72, "brown"),
+        (0.72, 1.04, "fox"),
+        (1.04, 1.36, "jumps"),
+        (1.36, 1.6, "over"),
+        (1.6, 1.76, "the"),
+        (1.76, 2.0, "lazy"),
+        (2.0, 2.3473125, "dog."),
+    ]
+]
+_TRANSCRIPTION_RESPONSES: Dict[Union[int, str], Dict[str, Any]] = {
+    200: {
+        "model": Union[Transcription, VerboseTranscription],
+        "description": "The transcript, in the `response_format` asked for.",
+        "content": {
+            "application/json": {
+                "examples": {
+                    "json": {"summary": "json", "value": {"text": _EXAMPLE_TEXT}},
+                    "verbose_json": {
+                        "summary": "verbose_json, with timestamp_granularities[]=word",
+                        "value": _verbose_json("auto", 2.3473125, _EXAMPLE_TEXT, _EXAMPLE_SEGMENTS, _EXAMPLE_WORDS),
+                    },
+                }
+            },
+            "text/plain": {"schema": {"type": "string"}, "example": _EXAMPLE_TEXT},
+            "application/x-subrip": {"schema": {"type": "string"}, "example": _segments_to_srt(_EXAMPLE_SEGMENTS)},
+            "text/vtt": {"schema": {"type": "string"}, "example": _segments_to_vtt(_EXAMPLE_SEGMENTS)},
+        },
+    },
+    400: _error(
+        "An unknown model, quantization, response_format, timestamp_granularities, "
+        "language or aligner; a language the aligner doesn't align; or no file, or "
+        "an empty one.",
+        "language must be an ISO 639-1 code, e.g. 'en'; got 'English'",
+    ),
+    413: _error(
+        "Over a request limit: the file's size, its decoded length, or the chunks it makes.",
+        f"File exceeds the {MAX_UPLOAD_BYTES} byte upload limit",
+    ),
+    415: _error("The audio could not be decoded.", "Audio could not be decoded"),
+    **_MODEL_ERRORS,
+}
+_BATCH_RESPONSES: Dict[Union[int, str], Dict[str, Any]] = {
+    200: _ok(
+        BatchTranscription,
+        "Each file's transcript.",
+        {
+            "results": [{"filename": "fox.wav", "text": _EXAMPLE_TEXT, "duration": 2.3473125}],
+            "batch_size": 1,
+        },
+    ),
+    400: _error("No files, an empty file, or an unknown model, quantization or aligner.", "No files provided"),
+    413: _error(
+        "Over a request limit: too many files, too many bytes in all, or a file "
+        "too big, too long or making too many chunks.",
+        f"Batch contains {MAX_BATCH_FILES + 1} files; limit is {MAX_BATCH_FILES}",
+    ),
+    415: _error("A file could not be decoded; `detail` names it.", "fox.wav: audio could not be decoded"),
+    **_MODEL_ERRORS,
+}
+
+
 _MODEL_CREATED = 1785888000  # catalog introduction (2026-08-05), fixed for stable output
 
 
@@ -654,12 +817,37 @@ def _model_card(name: str) -> Dict[str, Any]:
     }
 
 
-@router.get("/v1/models")
+# Docs examples from the catalog, so they name a model that exists (a catalog
+# has at least one; it may have no aligners).
+_EXAMPLE_MODEL = next(iter(MODEL_CONFIGS))
+_EXAMPLE_MODEL_CARD = _model_card(_EXAMPLE_MODEL)
+
+
+@router.get(
+    "/v1/models",
+    tags=["models"],
+    summary="List models",
+    responses={
+        200: _ok(
+            ModelList,
+            "Every model a request may name.",
+            {"object": "list", "data": [_EXAMPLE_MODEL_CARD]},
+        )
+    },
+)
 def list_models():
     return {"object": "list", "data": [_model_card(name) for name in MODEL_CONFIGS]}
 
 
-@router.get("/v1/models/{model_id:path}")
+@router.get(
+    "/v1/models/{model_id:path}",
+    tags=["models"],
+    summary="Retrieve a model",
+    responses={
+        200: _ok(ModelCard, "The model.", _EXAMPLE_MODEL_CARD),
+        404: _error("No such model.", "Model 'parakeet' not found"),
+    },
+)
 def retrieve_model(model_id: str):
     try:
         name = _validate_model(model_id)
@@ -683,13 +871,36 @@ def _aligner_card(name: str) -> Dict[str, Any]:
     }
 
 
-@router.get("/v1/aligners")
+_EXAMPLE_ALIGNER = next(iter(ALIGNER_CONFIGS), None)
+_EXAMPLE_ALIGNER_CARD = _aligner_card(_EXAMPLE_ALIGNER) if _EXAMPLE_ALIGNER else None
+
+
+@router.get(
+    "/v1/aligners",
+    tags=["models"],
+    summary="List aligners",
+    responses={
+        200: _ok(
+            AlignerList,
+            "Every aligner a request may name.",
+            {"object": "list", "data": [_EXAMPLE_ALIGNER_CARD]} if _EXAMPLE_ALIGNER_CARD else None,
+        )
+    },
+)
 def list_aligners():
     """The aligners a request may name (`aligner`), as /v1/models lists models."""
     return {"object": "list", "data": [_aligner_card(name) for name in ALIGNER_CONFIGS]}
 
 
-@router.get("/v1/aligners/{aligner_id:path}")
+@router.get(
+    "/v1/aligners/{aligner_id:path}",
+    tags=["models"],
+    summary="Retrieve an aligner",
+    responses={
+        200: _ok(AlignerCard, "The aligner.", _EXAMPLE_ALIGNER_CARD),
+        404: _error("No such aligner.", "Aligner 'wav2vec2' not found"),
+    },
+)
 def retrieve_aligner(aligner_id: str):
     name = aligner_id.strip().lower()
     if name not in ALIGNER_CONFIGS:
@@ -697,8 +908,37 @@ def retrieve_aligner(aligner_id: str):
     return _aligner_card(name)
 
 
-@router.get("/health")
+_EXAMPLE_KEY = variant_key(_EXAMPLE_MODEL)
+_EXAMPLE_HEALTH = {
+    "status": "healthy",
+    "ready": True,
+    "models": list(MODEL_CONFIGS),
+    "loaded": [_EXAMPLE_KEY],
+    "runtime": {
+        _EXAMPLE_KEY: {
+            "backend": "cpu",
+            "sessions": {
+                "asr._encoder": ["CPUExecutionProvider"],
+                "asr._decoder_joint": ["CPUExecutionProvider"],
+            },
+            "fallback_reason": None,
+        }
+    },
+    "cpu": CPU_INFO,
+    "aligner": aligner.status(),
+}
+
+
+@router.get(
+    "/health",
+    tags=["health"],
+    summary="Service status",
+    responses={200: _ok(Health, "Always 200, ready or not.", _EXAMPLE_HEALTH)},
+)
 def health(request: Request):
+    """Whether the service is ready, which models are loaded and what they
+    run on, the CPU counts it sized its thread pools from, and each aligner's
+    state. For a readiness probe, use `/healthz`."""
     ready = bool(getattr(request.app.state, "ready", False))
     return {
         "status": "healthy" if ready else "starting",
@@ -720,8 +960,15 @@ def compare_page():
     return FileResponse(Path(__file__).with_name("compare.html"), media_type="text/html")
 
 
-@router.get("/healthz")
+@router.get(
+    "/healthz",
+    tags=["health"],
+    summary="Readiness probe",
+    responses={200: _ok(Ready, "Ready."), 503: _error("Not ready yet.", "not ready")},
+)
 def healthz(request: Request):
+    """200 once the models in `PARAKEET_PRELOAD_MODELS` are loaded and warmed
+    up, 503 until then."""
     if not getattr(request.app.state, "ready", False):
         raise HTTPException(status_code=503, detail="not ready")
     return {"status": "ok"}
@@ -797,24 +1044,71 @@ async def _plain_granularities(request: Request) -> Optional[List[str]]:
     return (await request.form()).getlist("timestamp_granularities") or None
 
 
-@router.post("/v1/audio/transcriptions")
+@router.post(
+    "/v1/audio/transcriptions",
+    tags=["transcription"],
+    summary="Transcribe audio",
+    responses=_TRANSCRIPTION_RESPONSES,
+)
 async def transcribe(
     request: Request,
-    file: UploadFile = File(...),
-    model: str = Form(...),
-    quantization: Optional[str] = Form(None),
-    response_format: str = Form("json"),
+    file: UploadFile = File(..., description="The audio: anything FFmpeg can decode."),
+    model: str = Form(..., description=_MODEL_DOC, examples=[_EXAMPLE_MODEL]),
+    quantization: Optional[str] = Form(None, description=_QUANTIZATION_DOC, json_schema_extra=_form_doc()),
+    response_format: str = Form(
+        "json",
+        description="`json` is just the text; `verbose_json` adds segments, and words if asked for.",
+        json_schema_extra={"enum": list(_ALLOWED_FORMATS)},
+    ),
     timestamp_granularities: Optional[List[str]] = Form(
-        None, alias="timestamp_granularities[]"
+        None,
+        alias="timestamp_granularities[]",
+        description=(
+            "`word` adds `words` to a `verbose_json` response. `segment` changes nothing: "
+            "`verbose_json` always has segments. Repeat the field to send both; the name "
+            "without `[]` works too."
+        ),
+        json_schema_extra=_form_doc(items={"type": "string", "enum": sorted(_GRANULARITIES)}),
     ),
     timestamp_granularities_plain: Optional[List[str]] = Depends(_plain_granularities),
-    language: Optional[str] = Form(None),
-    prompt: Optional[str] = Form(None),
-    temperature: Optional[float] = Form(None),
-    spoken_numbers: Optional[bool] = Form(None),
-    aligner_name: Optional[str] = Form(None, alias="aligner"),
-    retime_words: Optional[bool] = Form(None),
+    language: Optional[str] = Form(
+        None,
+        description=(
+            "The audio's language as an ISO 639-1 code (`en`), or `auto` (the default). "
+            "The model is not told it: it is for aligning words and `spoken_numbers`, "
+            "and `verbose_json` echoes it."
+        ),
+        json_schema_extra=_form_doc(),
+    ),
+    prompt: Optional[str] = Form(
+        None, description="Accepted for OpenAI clients, and ignored.", json_schema_extra=_form_doc()
+    ),
+    temperature: Optional[float] = Form(
+        None, description="Accepted for OpenAI clients, and ignored.", json_schema_extra=_form_doc()
+    ),
+    spoken_numbers: Optional[bool] = Form(None, description=_SPOKEN_NUMBERS_DOC, json_schema_extra=_form_doc()),
+    aligner_name: Optional[str] = Form(
+        None,
+        alias="aligner",
+        description=(
+            "Time the words from the audio with a forced aligner, e.g. `wav2vec2-base-960h`, "
+            "with a precision after a colon if you like. `GET /v1/aligners` lists them. "
+            "None by default: words keep the model's own times, and Whisper has no words."
+        ),
+        json_schema_extra=_form_doc(),
+    ),
+    retime_words: Optional[bool] = Form(
+        None,
+        description=(
+            "Move word times out of pauses, found by loudness. Defaults to the server's "
+            "`PARAKEET_RETIME_WORDS`."
+        ),
+        json_schema_extra=_form_doc(),
+    ),
 ):
+    """Transcribe one audio file. OpenAI's SDKs work against it: send
+    `quantization`, `spoken_numbers`, `aligner` and `retime_words`, which are this
+    server's own, in `extra_body`."""
     del prompt, temperature  # accepted for OpenAI client compatibility
     model, quantization = _named(model, "model", quantization)
     model_name = _validate_model(model)
@@ -888,41 +1182,38 @@ async def transcribe(
         return Response(_segments_to_vtt(segments), media_type="text/vtt")
     if output_format == "verbose_json":
         return JSONResponse(
-            {
-                "task": "transcribe",
-                "language": (language or "").strip() or "auto",
-                "duration": prepared.duration,
-                "text": full_text,
-                "segments": [
-                    {
-                        "id": index,
-                        "seek": 0,
-                        "start": segment["start"],
-                        "end": segment["end"],
-                        "text": segment["segment"],
-                        "tokens": [],
-                        "temperature": 0.0,
-                        "avg_logprob": 0.0,
-                        "compression_ratio": 0.0,
-                        "no_speech_prob": 0.0,
-                    }
-                    for index, segment in enumerate(segments)
-                ],
-                "words": words if want_words else None,
-            }
+            _verbose_json(
+                (language or "").strip() or "auto",
+                prepared.duration,
+                full_text,
+                segments,
+                words if want_words else None,
+            )
         )
     return JSONResponse({"text": full_text})
 
 
-@router.post("/v1/audio/transcriptions/batch")
+@router.post(
+    "/v1/audio/transcriptions/batch",
+    tags=["transcription"],
+    summary="Transcribe several files",
+    responses=_BATCH_RESPONSES,
+)
 async def transcribe_batch(
     request: Request,
-    files: List[UploadFile] = File(...),
-    model: str = Form(...),
-    quantization: Optional[str] = Form(None),
-    spoken_numbers: Optional[bool] = Form(None),
-    aligner_name: Optional[str] = Form(None, alias="aligner"),
+    files: List[UploadFile] = File(..., description="The audio files: repeat the field for each."),
+    model: str = Form(..., description=_MODEL_DOC, examples=[_EXAMPLE_MODEL]),
+    quantization: Optional[str] = Form(None, description=_QUANTIZATION_DOC, json_schema_extra=_form_doc()),
+    spoken_numbers: Optional[bool] = Form(None, description=_SPOKEN_NUMBERS_DOC, json_schema_extra=_form_doc()),
+    aligner_name: Optional[str] = Form(
+        None,
+        alias="aligner",
+        description="Only to hear numbers for `spoken_numbers`: a batch returns no word times.",
+        json_schema_extra=_form_doc(),
+    ),
 ):
+    """Transcribe several files with one model in one request. Text only: no
+    `language`, `response_format` or word times."""
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
     if len(files) > MAX_BATCH_FILES:
