@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
 from . import aligner, retime, spoken
@@ -790,6 +790,13 @@ def _speaks(spoken_numbers: Optional[bool], language: Optional[str]) -> bool:
     return wanted and aligner.language_code(language) == "en"
 
 
+async def _plain_granularities(request: Request) -> Optional[List[str]]:
+    """`timestamp_granularities` without the brackets OpenAI's SDKs add. Read
+    from the form rather than declared with Form(), so the docs show the
+    field once."""
+    return (await request.form()).getlist("timestamp_granularities") or None
+
+
 @router.post("/v1/audio/transcriptions")
 async def transcribe(
     request: Request,
@@ -800,9 +807,7 @@ async def transcribe(
     timestamp_granularities: Optional[List[str]] = Form(
         None, alias="timestamp_granularities[]"
     ),
-    timestamp_granularities_plain: Optional[List[str]] = Form(
-        None, alias="timestamp_granularities"
-    ),
+    timestamp_granularities_plain: Optional[List[str]] = Depends(_plain_granularities),
     language: Optional[str] = Form(None),
     prompt: Optional[str] = Form(None),
     temperature: Optional[float] = Form(None),
