@@ -9,6 +9,8 @@ from .config import (
     CHUNK_MIN_SEC,
     CHUNK_TRIM_SILENCE_SEC,
     TARGET_SR,
+    VAD,
+    VAD_GATE_DB,
     VAD_MIN_SILENCE_MS,
     VAD_SPEECH_PAD_MS,
     VAD_THRESHOLD,
@@ -52,11 +54,17 @@ def _get_vad():
     return model
 
 
+def _speech_segments(wav: np.ndarray) -> List[Range]:
+    """Speech spans in `wav` as half-open sample ranges, by PARAKEET_VAD."""
+    if VAD == "volume":
+        return _volume_speech_segments(wav)
+    return _silero_speech_segments(wav)
+
+
 def _silero_speech_segments(wav: np.ndarray) -> List[Range]:
-    """Return speech spans as half-open sample ranges."""
     model = _get_vad()
     if model == "energy":
-        return _energy_speech_segments(wav)
+        return _volume_speech_segments(wav)
 
     from silero_vad import get_speech_timestamps  # type: ignore
     import torch
@@ -73,8 +81,10 @@ def _silero_speech_segments(wav: np.ndarray) -> List[Range]:
     return [(int(item["start"]), int(item["end"])) for item in timestamps]
 
 
-def _energy_speech_segments(wav: np.ndarray) -> List[Range]:
-    """Cheap RMS-based fallback when Silero is unavailable."""
+def _volume_speech_segments(wav: np.ndarray) -> List[Range]:
+    """Spans louder than the gate (PARAKEET_VAD_GATE_DB, else 0.4x the average
+    20 ms frame level), joined across dips shorter than VAD_MIN_SILENCE_MS and
+    padded by VAD_SPEECH_PAD_MS as Silero's are."""
     frame = max(1, int(0.02 * TARGET_SR))
     if wav.size < frame:
         return [(0, wav.size)] if np.any(np.abs(wav) > 1e-4) else []
@@ -82,7 +92,10 @@ def _energy_speech_segments(wav: np.ndarray) -> List[Range]:
     frame_count = wav.size // frame
     framed = wav[: frame_count * frame].reshape(frame_count, frame)
     rms = np.sqrt((framed * framed).mean(axis=1) + 1e-12)
-    threshold = max(1e-3, float(rms.mean()) * 0.4)
+    if VAD_GATE_DB is None:
+        threshold = max(1e-3, float(rms.mean()) * 0.4)
+    else:
+        threshold = 10.0 ** (VAD_GATE_DB / 20.0)
     voiced = rms > threshold
     minimum_silence_frames = max(1, int(VAD_MIN_SILENCE_MS / 20))
 
@@ -92,21 +105,20 @@ def _energy_speech_segments(wav: np.ndarray) -> List[Range]:
         if not voiced[index]:
             index += 1
             continue
-        start = index
-        cursor = index
+        start = last = cursor = index
         silence = 0
         while cursor < frame_count:
             if voiced[cursor]:
-                silence = 0
+                silence, last = 0, cursor
             else:
                 silence += 1
                 if silence >= minimum_silence_frames:
                     break
             cursor += 1
-        end = max(start + 1, min(cursor - silence, frame_count))
-        segments.append((start * frame, min(end * frame, wav.size)))
+        segments.append((start * frame, min((last + 1) * frame, wav.size)))
         index = max(cursor, index + 1)
-    return segments
+    pad = int(VAD_SPEECH_PAD_MS * TARGET_SR / 1000)
+    return [(max(0, start - pad), min(wav.size, end + pad)) for start, end in segments]
 
 
 def _normalize_segments(segments: List[Range], total: int) -> List[Range]:
@@ -165,7 +177,7 @@ def auto_chunk(
     if total <= maximum:
         return [(0, total)]
 
-    segments = _normalize_segments(_silero_speech_segments(wav), total)
+    segments = _normalize_segments(_speech_segments(wav), total)
     if not segments:
         return []
 
