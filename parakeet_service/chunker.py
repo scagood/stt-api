@@ -82,13 +82,19 @@ def _silero_speech_segments(wav: np.ndarray) -> List[Range]:
 
 
 FRAME = int(0.02 * TARGET_SR)  # loudness is measured in 20 ms frames
+# Frames squared at a time: 1000 s of audio, so the scratch copy stays ~64 MB
+# however long the file (a 17-hour book is ~3.9 GB of float32 samples).
+_RMS_BLOCK = 50_000
 
 
 def frame_rms(wav: np.ndarray) -> np.ndarray:
     """RMS of each whole 20 ms frame of `wav`."""
     count = wav.size // FRAME
     framed = wav[: count * FRAME].reshape(count, FRAME)
-    return np.sqrt((framed * framed).mean(axis=1) + 1e-12)
+    blocks = [framed[i: i + _RMS_BLOCK] for i in range(0, count, _RMS_BLOCK)]
+    if not blocks:
+        return np.empty(0, dtype=wav.dtype)
+    return np.concatenate([np.sqrt((b * b).mean(axis=1) + 1e-12) for b in blocks])
 
 
 def _volume_speech_segments(wav: np.ndarray) -> List[Range]:
