@@ -366,7 +366,7 @@ models:
           decoder_model_merged.onnx: onnx/decoder_model_merged_int8.onnx
 
 # Word aligners (#32): CTC models (wav2vec2 family, ONNX) that time a
-# transcript's words. A request names one (`aligner`, `aligner_quantization`);
+# transcript's words. A request names one (`aligner=name[:quantization]`);
 # there is no default. Shaped like `models`: `aligner_type` fixes the default
 # files (ALIGNER_DEFAULT_FILES in config.py). `normalisers` spell a transcript
 # for the model, in order: english (numbers and letter names said), letters

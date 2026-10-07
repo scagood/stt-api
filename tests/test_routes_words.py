@@ -118,7 +118,6 @@ async def _transcribe(
     language=None,
     text="hello world",
     aligner_name=None,
-    aligner_quantization=None,
     spoken_numbers=None,
     model="parakeet-v3",
     quantization=None,
@@ -139,7 +138,6 @@ async def _transcribe(
             temperature=None,
             spoken_numbers=spoken_numbers,
             aligner_name=aligner_name,
-            aligner_quantization=aligner_quantization,
             retime_words=retime_words,
         )
     finally:
@@ -148,7 +146,7 @@ async def _transcribe(
     return json.loads(response.body) if response_format.endswith("json") else response.body.decode()
 
 
-async def _batch(*texts, spoken_numbers=None, aligner_name=None, aligner_quantization=None, model="parakeet-v3"):
+async def _batch(*texts, spoken_numbers=None, aligner_name=None, model="parakeet-v3"):
     state = _state()
     try:
         body = await routes.transcribe_batch(
@@ -158,7 +156,6 @@ async def _batch(*texts, spoken_numbers=None, aligner_name=None, aligner_quantiz
             quantization=None,
             spoken_numbers=spoken_numbers,
             aligner_name=aligner_name,
-            aligner_quantization=aligner_quantization,
         )
     finally:
         state.audio_pool.shutdown()
@@ -241,18 +238,10 @@ async def test_model_and_aligner_take_a_quantization_after_a_colon(calls, monkey
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("fields", "complaint"),
-    [
-        ({"model": "parakeet-v3:fp16", "quantization": "int8"}, "quantization says 'int8'"),
-        ({"aligner_name": f"{BASE}:fp32", "aligner_quantization": "int8"}, "aligner_quantization says 'int8'"),
-        ({"aligner_name": f"{BASE}:"}, "no quantization"),
-    ],
-)
-async def test_a_colon_and_a_quantization_field_must_agree(calls, fields, complaint):
+async def test_a_colon_and_the_quantization_field_must_agree(calls):
     with pytest.raises(HTTPException) as caught:
-        await _transcribe(language="en", **fields)
-    assert caught.value.status_code == 400 and complaint in caught.value.detail
+        await _transcribe(language="en", model="parakeet-v3:fp16", quantization="int8")
+    assert caught.value.status_code == 400 and "quantization says 'int8'" in caught.value.detail
 
 
 @pytest.mark.asyncio
@@ -290,21 +279,21 @@ async def test_missing_language_reports_auto_and_uses_the_default(calls):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("aligner_name", "quantization", "language", "complaint"),
+    ("aligner_name", "language", "complaint"),
     [
-        ("wav2vec3", None, "en", "Unknown aligner 'wav2vec3'"),
-        (BASE, "fp8", "en", "no 'fp8' quantization"),
-        (BASE, None, "fr", "does not align 'fr'"),
-        (None, "int8", "en", "aligner_quantization needs an aligner"),
+        ("wav2vec3", "en", "Unknown aligner 'wav2vec3'"),
+        (f"{BASE}:fp8", "en", "no 'fp8' quantization"),
+        (f"{BASE}:", "en", "no quantization after ':'"),
+        (BASE, "fr", "does not align 'fr'"),
     ],
 )
-async def test_a_bad_aligner_is_a_400_naming_the_choices(calls, aligner_name, quantization, language, complaint):
+async def test_a_bad_aligner_is_a_400_naming_the_choices(calls, aligner_name, language, complaint):
     with pytest.raises(HTTPException) as caught:
-        await _transcribe(language=language, aligner_name=aligner_name, aligner_quantization=quantization)
+        await _transcribe(language=language, aligner_name=aligner_name)
     assert caught.value.status_code == 400 and complaint in caught.value.detail
     if language == "en":  # the batch endpoint takes no `language`: the default, English
         with pytest.raises(HTTPException, match="400"):
-            await _batch("hello", aligner_name=aligner_name, aligner_quantization=quantization)
+            await _batch("hello", aligner_name=aligner_name)
 
 
 @pytest.mark.asyncio
@@ -333,9 +322,7 @@ async def test_alignment_only_runs_when_words_are_returned(calls, stitched, resp
         (routes.transcribe, "spoken_numbers", ("Optional[bool]", "bool | None")),
         (routes.transcribe_batch, "spoken_numbers", ("Optional[bool]", "bool | None")),
         (routes.transcribe, "aligner_name", ("Optional[str]", "str | None")),
-        (routes.transcribe, "aligner_quantization", ("Optional[str]", "str | None")),
         (routes.transcribe_batch, "aligner_name", ("Optional[str]", "str | None")),
-        (routes.transcribe_batch, "aligner_quantization", ("Optional[str]", "str | None")),
         (routes.transcribe, "retime_words", ("Optional[bool]", "bool | None")),
     ],
 )
@@ -531,7 +518,6 @@ async def _transcribe_whisper(model, *, language=None, aligner_name=BASE, text="
             temperature=None,
             spoken_numbers=None,
             aligner_name=aligner_name,
-            aligner_quantization=None,
         )
     finally:
         state.audio_pool.shutdown()

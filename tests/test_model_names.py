@@ -45,7 +45,7 @@ def test_quantization_defaults_to_fp32_whatever_the_hardware():
     ],
 )
 def test_a_name_may_carry_its_quantization_after_a_colon(value, quantization, named):
-    assert routes._named(value, quantization, "model", "quantization") == named
+    assert routes._named(value, "model", quantization) == named
 
 
 @pytest.mark.parametrize(
@@ -54,7 +54,7 @@ def test_a_name_may_carry_its_quantization_after_a_colon(value, quantization, na
 )
 def test_a_colon_that_disagrees_or_names_nothing_is_a_400(value, quantization, complaint):
     with pytest.raises(HTTPException) as caught:
-        routes._named(value, quantization, "model", "quantization")
+        routes._named(value, "model", quantization)
     assert caught.value.status_code == 400 and complaint in caught.value.detail
 
 
