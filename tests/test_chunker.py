@@ -195,3 +195,14 @@ def test_gate_setting_rejects_nonsense(monkeypatch, raw):
     monkeypatch.setenv("PARAKEET_VAD_GATE_DB", raw)
     with pytest.raises(RuntimeError, match="PARAKEET_VAD_GATE_DB"):
         config._env_dbfs("PARAKEET_VAD_GATE_DB")
+
+
+def test_frame_rms_in_blocks_matches_one_pass(monkeypatch):
+    rng = np.random.default_rng(1)
+    wav = (0.1 * rng.standard_normal(SR * 3 + 123)).astype(np.float32)
+    count = wav.size // chunker.FRAME
+    framed = wav[: count * chunker.FRAME].reshape(count, chunker.FRAME)
+    whole = np.sqrt((framed * framed).mean(axis=1) + 1e-12)
+    monkeypatch.setattr(chunker, "_RMS_BLOCK", 7)  # many blocks, one partial
+    assert np.array_equal(chunker.frame_rms(wav), whole)
+    assert chunker.frame_rms(np.zeros(10, dtype=np.float32)).size == 0

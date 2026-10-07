@@ -193,7 +193,10 @@ that ends in it ends at its start, and one wholly inside goes before it if it
 ends a sentence or clause, after it if not. Every other word keeps Parakeet's
 time. It costs about 0.1 s per hour of audio, against the aligner's 3.4x the
 transcription time on a CPU, but it is not as good: the aligner times every
-word from the audio. With an aligner named, it only re-times chunks the aligner
+word from the audio. Against the aligner's times on three LibriVox chapters, it
+cut the words lying inside a pause from 249, 68 and 79 to 15, 14 and 43, and
+the words starting over 200 ms from the aligner's start from 9.4%, 9.3% and
+17.8% to 3.1%, 3.8% and 11.4%. With an aligner named, it only re-times chunks the aligner
 could not. `PARAKEET_RETIME_WORDS=true` turns it on for requests that don't say.
 
 ```bash
