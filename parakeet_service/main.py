@@ -106,12 +106,14 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Parakeet TDT 0.6B v3 (optimized)",
+        title="stt-api",
         version="1.5.0",  # x-release-please-version
-        description=(
-            "High-throughput OpenAI-compatible ASR service for "
-            "Parakeet TDT 0.6B v3."
-        ),
+        description="OpenAI-compatible speech-to-text server on ONNX Runtime.",
+        openapi_tags=[
+            {"name": "transcription"},
+            {"name": "models", "description": "The models and aligners a request may name."},
+            {"name": "health"},
+        ],
         lifespan=lifespan,
     )
     app.include_router(router)
