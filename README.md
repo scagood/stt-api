@@ -463,17 +463,18 @@ the catalog)
 |---|---|---|
 | `PARAKEET_CHUNK_MIN_SEC` | `20` | shortest chunk before neighbours are merged |
 | `PARAKEET_CHUNK_TRIM_SILENCE_SEC` | `3` | cut silences at least this long out of a chunk; the first and last chunks keep up to this much before and after the speech |
-| `PARAKEET_VAD` | `silero` | how pauses are found: `silero`, a speech model, or `volume`, frames quieter than a gate, much faster (see below) |
+| `PARAKEET_VAD` | `volume` | how pauses are found: `volume`, frames quieter than a gate, or `silero`, a speech model, 30x slower or more (see below) |
 | `PARAKEET_VAD_GATE_DB` | each file's own | `volume`'s gate in dBFS, such as `-45`; unset, 0.4× the file's average 20 ms frame level (about 8 dB below it), never under -60 dBFS |
 | `PARAKEET_VAD_THRESHOLD` | `0.5` | `silero`'s speech probability |
 | `PARAKEET_VAD_MIN_SILENCE_MS` | `400` | shortest pause to cut at |
 | `PARAKEET_VAD_SPEECH_PAD_MS` | `120` | padding kept around speech |
 
-**Finding pauses by volume.** Silero-VAD costs about 10 ms of one CPU core per
-second of audio, all of it before the first chunk reaches the model: some 10
-minutes for a 17-hour audiobook. `PARAKEET_VAD=volume` takes under 0.3 ms.
-Measured on LibriVox narration with `parakeet-v3:int8`, as word errors against
-the book's text:
+**Finding pauses.** By default a pause is any stretch of 20 ms frames quieter
+than the gate, which takes under 0.3 ms of CPU per second of audio.
+`PARAKEET_VAD=silero` asks Silero-VAD instead, at about 10 ms per second, all
+of it before the first chunk reaches the model: some 10 minutes for a 17-hour
+audiobook. Measured on LibriVox narration with `parakeet-v3:int8`, as word
+errors against the book's text:
 
 | Audio | `silero` | `volume` | `volume`, gate `-45` |
 |---|---|---|---|

@@ -336,12 +336,12 @@ def _env_dbfs(name: str) -> Optional[float]:
     return value
 
 
-# How long audio finds its pauses to cut at. "silero" asks the Silero VAD
-# network for speech; "volume" takes as a pause any 20 ms frame quieter than a
-# gate, which is 30x faster or more and cut audiobook narration as well in our
-# tests (README). Under a loud noise bed a pause may be no quieter than the
-# gate. Without silero-vad installed, both use volume.
-VAD = _env_choice("PARAKEET_VAD", "silero", {"silero", "volume"})
+# How long audio finds its pauses to cut at. "volume" takes as a pause any 20 ms
+# frame quieter than a gate; "silero" asks the Silero VAD network for speech,
+# 30x slower or more, which on audiobook narration cut no better in our tests
+# (README). Under a loud noise bed a pause may be no quieter than the gate.
+# Without silero-vad installed, both use volume.
+VAD = _env_choice("PARAKEET_VAD", "volume", {"silero", "volume"})
 # Volume's gate. Unset, each file sets its own: 0.4x its average frame level
 # (about 8 dB below it), never under -60 dBFS.
 VAD_GATE_DB = _env_dbfs("PARAKEET_VAD_GATE_DB")
