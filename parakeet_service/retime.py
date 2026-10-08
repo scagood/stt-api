@@ -29,8 +29,10 @@ _GATE_RATIO = 0.6
 _MIN_PAUSE_SEC = 0.2
 # A stretch quieter than that at least this long is heard again at its own
 # level: a speaker much quieter than the file's average would otherwise be one
-# long pause.
-_RELISTEN_SEC = 2.0
+# long pause. From 2 s, breaths in narration's longer pauses were heard as
+# speech and words moved to them: on two LibriVox chapters, 35 of the 46
+# words that then moved went farther from the aligner's times.
+_RELISTEN_SEC = 3.0
 # No word is shortened to less than this, or left out of order.
 _MIN_WORD_SEC = 0.04
 # A word ending in one of these closes a sentence or clause: in a pause, it
