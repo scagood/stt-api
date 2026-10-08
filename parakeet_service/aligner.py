@@ -147,14 +147,15 @@ _NEG_INF = -1e30
 # A failed load (no network, no cached model) is retried after this long.
 _RETRY_SEC = 300.0
 
-# _lock guards the cache (_loaded, _last_used, _failed_at, _loading) and is
-# only held briefly. A load runs under its variant's own lock in _loading
-# instead: an uncached fp32 variant downloads up to 1.3 GB, which should hold up
-# only callers of that variant (they get its result, not a second download), not
+# _lock guards the cache (_loaded, _failed_at, _loading) and is only held
+# briefly. A load runs under its variant's own lock in _loading instead: an
+# uncached fp32 variant downloads up to 1.3 GB, which should hold up only
+# callers of that variant (they get its result, not a second download), not
 # hits on aligners already loaded.
 _lock = threading.Lock()
-_loaded: "OrderedDict[str, tuple[Any, dict[str, int]]]" = OrderedDict()
-_last_used: dict[str, float] = {}  # when each of _loaded was last asked for, for evict_idle()
+# Each loaded aligner's (session, vocab) and when it was last asked for
+# (time.monotonic()), least recently used first.
+_loaded: "OrderedDict[str, tuple[tuple[Any, dict[str, int]], float]]" = OrderedDict()
 _failed_at: dict[str, float] = {}
 _loading: dict[str, threading.Lock] = {}
 
@@ -234,10 +235,10 @@ def _load(name: str, quant: str) -> Optional[tuple[Any, dict[str, int]]]:
     # the load (or failure) of the one before it.
     with loading:
         with _lock:
-            if key in _loaded:
-                _loaded.move_to_end(key)
-                _last_used[key] = time.monotonic()
-                return _loaded[key]
+            cached = _loaded.pop(key, None)
+            if cached is not None:
+                _loaded[key] = (cached[0], time.monotonic())  # now the most recent
+                return cached[0]
             failed = _failed_at.get(key)
             if failed is not None and time.monotonic() - failed < _RETRY_SEC:
                 return None
@@ -258,12 +259,10 @@ def _load(name: str, quant: str) -> Optional[tuple[Any, dict[str, int]]]:
             return None
         with _lock:
             _failed_at.pop(key, None)
-            _loaded[key] = loaded
-            _last_used[key] = time.monotonic()
+            _loaded[key] = (loaded, time.monotonic())
             # The models' LRU cap (PARAKEET_MODEL_CACHE_SIZE), counted separately.
             while MODEL_CACHE_SIZE and len(_loaded) > MODEL_CACHE_SIZE:
                 evicted, _ = _loaded.popitem(last=False)
-                del _last_used[evicted]
                 logger.info("Evicted word aligner %s (cache size %d)", evicted, MODEL_CACHE_SIZE)
         logger.info("Loaded word aligner %s (%s)", key, variant["repo"])
         return loaded
@@ -273,12 +272,16 @@ def evict_idle(timeout: float) -> list[str]:
     """Unload the aligners no one has asked for in `timeout` seconds and return
     their keys, as model.evict_idle() does models."""
     cutoff = time.monotonic() - timeout
+    idle = []
     with _lock:
-        idle = [key for key, used in _last_used.items() if used <= cutoff]
-        for key in idle:
-            del _loaded[key], _last_used[key]
-            logger.info("Evicted word aligner %s (unused for %.0fs)", key, timeout)
-    return idle
+        while _loaded and next(iter(_loaded.values()))[1] <= cutoff:
+            idle.append(_loaded.popitem(last=False))
+    keys = [key for key, _entry in idle]
+    # Tear their sessions down here, not under the lock every aligner hit takes.
+    del idle
+    for key in keys:
+        logger.info("Evicted word aligner %s (unused for %.0fs)", key, timeout)
+    return keys
 
 
 def _emission(session: Any, wav: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

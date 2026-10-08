@@ -33,9 +33,9 @@ import onnx_asr
 import onnxruntime as ort
 
 _ModelKey = Tuple[str, bool]
-_MODELS: "OrderedDict[_ModelKey, object]" = OrderedDict()
-# When each of _MODELS was last asked for (time.monotonic()), for evict_idle().
-_LAST_USED: Dict[_ModelKey, float] = {}
+# Each loaded model and when it was last asked for (time.monotonic()), least
+# recently used first.
+_MODELS: "OrderedDict[_ModelKey, Tuple[object, float]]" = OrderedDict()
 _MODEL_LOCK = threading.RLock()
 _CUDA_PRELOADED = False
 _RUNTIMES: Dict[str, dict] = {}
@@ -227,11 +227,10 @@ def load_model(key: str, *, with_timestamps: bool = True):
     cache_key = (key, with_timestamps)
 
     with _MODEL_LOCK:
-        cached = _MODELS.get(cache_key)
+        cached = _MODELS.pop(cache_key, None)
         if cached is not None:
-            _MODELS.move_to_end(cache_key)
-            _LAST_USED[cache_key] = time.monotonic()
-            return cached
+            _MODELS[cache_key] = (cached[0], time.monotonic())  # now the most recent
+            return cached[0]
 
         name, _, quant = key.partition(":")
         config = MODEL_CONFIGS[name]
@@ -272,13 +271,11 @@ def load_model(key: str, *, with_timestamps: bool = True):
             error = ModelLoadError(f"Model {key!r} could not be loaded: {type(exc).__name__}: {exc}")
             logger.exception("%s", error)
             raise error from exc
-        _MODELS[cache_key] = model
-        _LAST_USED[cache_key] = time.monotonic()
+        _MODELS[cache_key] = (model, time.monotonic())
         _RUNTIMES[key] = _runtime(providers, _session_provider_report(model))
         # ponytail: LRU cap, drop least-recent so a many-model sweep fits RAM.
         while MODEL_CACHE_SIZE and len(_MODELS) > MODEL_CACHE_SIZE:
             evicted, _ = _MODELS.popitem(last=False)
-            del _LAST_USED[evicted]
             logger.info("Evicted %s (cache size %d)", evicted, MODEL_CACHE_SIZE)
         logger.info("Loaded %s", key)
         return model
@@ -296,12 +293,16 @@ def evict_idle(timeout: float) -> List[str]:
     idle for long; one evicted mid-call lives until that call returns.
     """
     cutoff = time.monotonic() - timeout
+    idle = []
     with _MODEL_LOCK:
-        idle = [cache_key for cache_key, used in _LAST_USED.items() if used <= cutoff]
-        for cache_key in idle:
-            del _MODELS[cache_key], _LAST_USED[cache_key]
-            logger.info("Evicted %s (unused for %.0fs)", cache_key[0], timeout)
-    return [key for key, _timestamps in idle]
+        while _MODELS and next(iter(_MODELS.values()))[1] <= cutoff:
+            idle.append(_MODELS.popitem(last=False))
+    keys = [key for (key, _timestamps), _entry in idle]
+    # Tear their sessions down here, not under the lock every get_model() takes.
+    del idle
+    for key in keys:
+        logger.info("Evicted %s (unused for %.0fs)", key, timeout)
+    return keys
 
 
 def trim_heap() -> None:

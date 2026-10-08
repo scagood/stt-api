@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 import types
+import weakref
 from collections import OrderedDict
 
 import pytest
@@ -15,7 +16,6 @@ from parakeet_service import model as m
 def _stub_loader(monkeypatch, tmp_path, cache_size, calls=None):
     monkeypatch.setattr(m, "MODEL_CACHE_SIZE", cache_size)
     monkeypatch.setattr(m, "_MODELS", OrderedDict())
-    monkeypatch.setattr(m, "_LAST_USED", {})
     monkeypatch.setattr(m, "_RUNTIMES", {})
     monkeypatch.setattr(m, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(m, "_resolve_providers", lambda: ["CPUExecutionProvider"])
@@ -139,11 +139,22 @@ def test_models_unused_for_the_idle_timeout_are_evicted(monkeypatch, tmp_path):
     assert m.load_model("whisper-tiny:fp32", with_timestamps=False) is not tiny  # loaded again on use
 
 
-def test_a_model_the_cache_cap_evicted_is_not_evicted_again(monkeypatch, tmp_path):
-    _stub_loader(monkeypatch, tmp_path, cache_size=1)
+def test_idle_models_are_torn_down_outside_the_model_lock(monkeypatch, tmp_path):
+    _stub_loader(monkeypatch, tmp_path, cache_size=0)
+    held = []
+
+    class Model:
+        pass
+
+    def load(*_a, **_k):
+        made = Model()
+        weakref.finalize(made, lambda: held.append(m._MODEL_LOCK._is_owned()))
+        return made
+
+    monkeypatch.setattr(m.onnx_asr, "load_model", load, raising=False)
     m.load_model("whisper-tiny:fp32", with_timestamps=False)
-    m.load_model("whisper-base:fp32", with_timestamps=False)  # evicts tiny
-    assert m.evict_idle(0) == ["whisper-base:fp32"]
+    assert m.evict_idle(0) == ["whisper-tiny:fp32"]
+    assert held == [False]  # gone, and not while every get_model() waited on it
 
 
 def test_trim_heap_never_raises():
