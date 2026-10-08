@@ -90,7 +90,7 @@ td .who { display: flex; align-items: center; gap: 7px; font-family: var(--mono)
 <div class="page">
   <header style="display:grid;gap:8px">
     <h1>Compare word times</h1>
-    <p class="lede">Upload a clip, cut it to size, and add rows: a model, and optionally an aligner to re-time its words. Each row is one transcription on this server, run one at a time; a model or aligner loads on the first row that names it and stays loaded. Then click any word to hear exactly the span that row gave it.</p>
+    <p class="lede">Upload a clip, cut it to size, and add rows: a model, and optionally an aligner to re-time its words. Each row is one transcription on this server, run one at a time; a model or aligner loads on the first row that names it and stays loaded until it goes unused for <code>PARAKEET_MODEL_IDLE_TIMEOUT_SEC</code> (6 hours by default). Then click any word to hear exactly the span that row gave it.</p>
   </header>
 
   <section class="panel" aria-labelledby="setupTitle">

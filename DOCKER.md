@@ -142,6 +142,11 @@ curl -X POST http://localhost:5092/v1/audio/transcriptions \
   and 2.5–3 GB at fp32; about 0.45 GB of that is working memory, which it
   keeps. Every other model loaded adds its own share; cap them with
   `PARAKEET_MODEL_CACHE_SIZE`.
+- A model or aligner no request has used for 6 hours is unloaded; lower
+  `PARAKEET_MODEL_IDLE_TIMEOUT_SEC` to free memory sooner. On the CPU,
+  unloading `parakeet-v3:int8` and the `wav2vec2-base-960h:int8` aligner, after
+  a few 30 s calls, took the server from 2.2 GiB to 0.15 GiB of RAM. How much GPU
+  memory unloading returns hasn't been measured.
 - GPU memory hasn't been measured for the current `parakeet-v3` export. On a
   GPU, `fp16` roughly halves it. An `fp16` or `fp32` aligner on a GPU server
   takes GPU memory too, also not measured: from the CPU figures, roughly its

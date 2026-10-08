@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import weakref
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
@@ -267,7 +268,7 @@ ENGLISH = {"blank": "<pad>", "separator": "|", "normalisers": ["english", "upper
 
 
 def test_text_outside_the_model_alphabet_keeps_model_times(monkeypatch):
-    monkeypatch.setitem(aligner._loaded, "wav2vec2-base-960h:int8", (object(), VOCAB))
+    monkeypatch.setitem(aligner._loaded, "wav2vec2-base-960h:int8", ((object(), VOCAB), 0.0))
     ran = []
 
     def fake_emission(_session, _wav):
@@ -455,7 +456,7 @@ def test_spoken_numbers_share_the_aligners_other_alphabet_rule():
 
 
 def test_one_foreign_word_in_english_is_still_aligned(monkeypatch):
-    monkeypatch.setitem(aligner._loaded, "wav2vec2-base-960h:int8", (object(), VOCAB))
+    monkeypatch.setitem(aligner._loaded, "wav2vec2-base-960h:int8", ((object(), VOCAB), 0.0))
     seen = []
 
     def fake_emission(_session, _wav):
@@ -517,6 +518,45 @@ def test_aligners_share_the_model_cache_cap(monkeypatch, tmp_path):
     assert aligner.status()["wav2vec2-base-960h:int8"] == "not loaded"
 
 
+def test_aligners_unused_for_the_idle_timeout_are_evicted(monkeypatch, tmp_path):
+    _fake_hub(monkeypatch, _Download(tmp_path, fail_times=0))
+    (tmp_path / "tokens.txt").write_text("<s> 0\n  1\n", encoding="utf-8")
+    monkeypatch.setattr(aligner.ort, "InferenceSession", lambda *a, **k: object(), raising=False)
+    monkeypatch.setattr(aligner, "_build_sess_options", lambda *a, **k: None)
+    now = [1000.0]
+    monkeypatch.setattr(aligner.time, "monotonic", lambda: now[0])
+    english = aligner._load("wav2vec2-base-960h", "int8")
+    aligner._load("omnilingual-ctc-300m", "int8")
+    now[0] += 50
+    assert aligner._load("wav2vec2-base-960h", "int8") is english  # a hit is a use
+    now[0] += 60
+    assert aligner.evict_idle(100) == ["omnilingual-ctc-300m:int8"]
+    assert aligner.status()["omnilingual-ctc-300m:int8"] == "not loaded"
+    assert aligner.status()["wav2vec2-base-960h:int8"] == "loaded"
+    now[0] += 50
+    assert aligner.evict_idle(100) == ["wav2vec2-base-960h:int8"]
+    assert aligner._load("wav2vec2-base-960h", "int8") is not english  # loaded again on use
+
+
+def test_idle_aligners_are_torn_down_outside_the_cache_lock(monkeypatch, tmp_path):
+    _fake_hub(monkeypatch, _Download(tmp_path, fail_times=0))
+    held = []
+
+    class Session:
+        pass
+
+    def session(*_a, **_k):
+        made = Session()
+        weakref.finalize(made, lambda: held.append(aligner._lock.locked()))
+        return made
+
+    monkeypatch.setattr(aligner.ort, "InferenceSession", session, raising=False)
+    monkeypatch.setattr(aligner, "_build_sess_options", lambda *a, **k: None)
+    aligner._load("wav2vec2-base-960h", "int8")
+    assert aligner.evict_idle(0) == ["wav2vec2-base-960h:int8"]
+    assert held == [False]  # gone, and not while every aligner hit waited on it
+
+
 def _held_download(monkeypatch, tmp_path):
     """A fake hub whose downloads set `started`, then wait for `release`:
     (the _Download behind it, started, release)."""
@@ -537,7 +577,7 @@ def _held_download(monkeypatch, tmp_path):
 def test_a_download_does_not_hold_up_a_loaded_aligner(monkeypatch, tmp_path):
     _hub, started, release = _held_download(monkeypatch, tmp_path)
     (tmp_path / "tokens.txt").write_text("<s> 0\n  1\n", encoding="utf-8")
-    monkeypatch.setitem(aligner._loaded, "wav2vec2-base-960h:int8", ("session", VOCAB))
+    monkeypatch.setitem(aligner._loaded, "wav2vec2-base-960h:int8", (("session", VOCAB), 0.0))
     with ThreadPoolExecutor(2) as pool:
         try:
             first = pool.submit(aligner._load, "omnilingual-ctc-300m", "int8")

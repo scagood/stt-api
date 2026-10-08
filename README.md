@@ -121,10 +121,14 @@ English; the `parakeet-v3` entry in
 revert to if CUDA gives trouble.
 
 **Loading.** Models named in `PARAKEET_PRELOAD_MODELS` load at startup; the
-rest load on first request and then stay loaded (`PARAKEET_MODEL_CACHE_SIZE`
-caps how many). A model that can't be loaded (a failed download, missing from
-the cache under `PARAKEET_HF_OFFLINE=true`, refused by ONNX Runtime) answers
-503 with a `detail` naming it and the cause; the next request tries again.
+rest load on first request (`PARAKEET_MODEL_CACHE_SIZE` caps how many stay
+loaded). A model or aligner, preloaded or not, that no request has used for 6
+hours is unloaded to free its memory, and the next request that names it loads
+it again, without a warm-up; set `PARAKEET_MODEL_IDLE_TIMEOUT_SEC` to another
+number of seconds, or to `-1` to keep everything loaded. A model that can't be
+loaded (a failed download, missing from the cache under
+`PARAKEET_HF_OFFLINE=true`, refused by ONNX Runtime) answers 503 with a
+`detail` naming it and the cause; the next request tries again.
 
 `GET /v1/models` lists every model; `GET /v1/models/parakeet-v3` returns one:
 
@@ -393,7 +397,7 @@ a dashed reference row and each row's average error against it.
 The browser decodes the file and sends only the clip, as a 16 kHz WAV, so the
 page and the server hear the same samples. The page is off by default: each
 row is a full transcription, and loads any model or aligner it names, which
-then stays loaded.
+then stays loaded until it goes unused for `PARAKEET_MODEL_IDLE_TIMEOUT_SEC`.
 
 ## Open WebUI
 
@@ -429,6 +433,7 @@ images already set the CPU or GPU ones (`PARAKEET_USE_GPU`, `PARAKEET_BATCHED`,
 | `PARAKEET_MODEL_CATALOG` | the built-in `models.yaml` | a catalog file that replaces it; see [below](#your-own-model-catalog) |
 | `PARAKEET_PRELOAD_MODELS` | empty | comma-separated `model` (fp32) or `model:quantization` to load and warm up before ready; requests must still name `model` |
 | `PARAKEET_MODEL_CACHE_SIZE` | `0` | keep at most N loaded models, and separately N loaded aligners, evicting the least recently used; `0` is no limit |
+| `PARAKEET_MODEL_IDLE_TIMEOUT_SEC` | `21600` (6 h) | unload a model or aligner, preloaded or not, that no request has used for this many seconds; the next request that names it loads it again, without a warm-up. `-1` keeps everything loaded |
 | `PARAKEET_HF_OFFLINE` | `false` | never contact Hugging Face; every file must already be in the cache |
 
 **Startup**
@@ -612,7 +617,10 @@ to override.
 `PARAKEET_PRELOAD_MODELS`. Each listed model is then warmed up before
 `/healthz` answers 200, so the first real request doesn't pay ONNX Runtime's
 setup. A warm-up that fails or exceeds `PARAKEET_WARMUP_TIMEOUT_SEC` fails
-startup rather than reporting a replica ready that can't run inference. The
+startup rather than reporting a replica ready that can't run inference. A
+preloaded model unloaded after `PARAKEET_MODEL_IDLE_TIMEOUT_SEC` unused is
+loaded again by the next request that names it, which pays for the load and the
+setup the warm-up hid; `/healthz` stays 200 meanwhile. The
 healthcheck `start_period` in the Dockerfiles and `docker-compose.yml` allows
 for model load plus that timeout; raise both together. With a pre-seeded cache,
 set `PARAKEET_HF_OFFLINE=true` to skip the Hugging Face revision check each
