@@ -13,7 +13,9 @@ CI publishes both images to `ghcr.io/scagood/stt-api`:
 - `pr-<number>-cpu` and `pr-<number>-gpu` exist only for a pull request from
   this repository labelled `prerelease`, until it closes. They are for trying a
   change on hardware CI doesn't have, such as a GPU. While the label is on,
-  each push rebuilds them from the pull request merged into `main`.
+  each push rebuilds them from the pull request merged into `main`, and a
+  "Prerelease images" section in the pull request's description gives their
+  `docker pull` lines and the commit they were built from.
 
 The CPU image is built for `linux/amd64` and `linux/arm64`, the GPU image for
 `linux/amd64`. `pr-<number>-*` images are `linux/amd64` only.

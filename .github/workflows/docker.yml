@@ -5,22 +5,24 @@ on:
     branches: [main]
     tags: ["v*"]
   # A pull request labelled prerelease also pushes pr-<number>-cpu and
-  # pr-<number>-gpu, to try a change on hardware CI doesn't have. Labelling
-  # needs triage access, so the label is the approval. Closing the pull
-  # request deletes them.
+  # pr-<number>-gpu, to try a change on hardware CI doesn't have, and lists
+  # them in a section of its description. Labelling needs triage access, so
+  # the label is the approval. Taking it off drops the section; closing the
+  # pull request deletes the images.
   pull_request:
-    types: [opened, synchronize, reopened, labeled, closed]
+    types: [opened, synchronize, reopened, labeled, unlabeled, closed]
 
 permissions:
   contents: read
 
 # One group per pull request: a new push cancels the build of the last one,
 # and closing cancels a build that would push after its images are deleted.
-# Other labels run nothing, so they don't share it.
+# Other labels run nothing, and taking prerelease off only drops the section,
+# which a push must not cancel, so neither shares it.
 concurrency:
   group: >-
     docker-${{ github.event_name == 'pull_request' &&
-    (github.event.action != 'labeled' || github.event.label.name == 'prerelease') &&
+    (!github.event.label || (github.event.action == 'labeled' && github.event.label.name == 'prerelease')) &&
     github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
@@ -66,6 +68,11 @@ jobs:
     permissions:
       contents: read
       packages: write
+    # How each flavor went, for the prerelease section. The matrix keeps
+    # outputs of different names apart.
+    outputs:
+      cpu: ${{ steps.result.outputs.cpu }}
+      gpu: ${{ steps.result.outputs.gpu }}
     env:
       PUSH: ${{ github.event_name == 'push' || needs.changes.outputs.publish == 'true' }}
     strategy:
@@ -151,31 +158,81 @@ jobs:
           echo "::error::the image never answered /healthz; its logs are above"
           exit 1
 
-  # Once both images are pushed, tell the pull request how to pull them. Each
-  # push rebuilds them under the same tags, so one comment is enough.
-  comment:
+      - id: result
+        if: always()
+        env:
+          FLAVOR: ${{ matrix.flavor }}
+          STATUS: ${{ job.status }}
+        run: echo "$FLAVOR=$STATUS" >> "$GITHUB_OUTPUT"
+
+  # Write what this run pushed into a section of the pull request's
+  # description, the way node-packages lists its prereleases. Each run
+  # rewrites it, failures included, and taking the label off drops it.
+  prerelease:
     needs: [changes, build]
-    if: needs.changes.outputs.publish == 'true'
+    if: >-
+      ${{ !cancelled() && github.event.pull_request.head.repo.full_name == github.repository &&
+      (needs.changes.outputs.publish == 'true' ||
+      (github.event.action == 'unlabeled' && github.event.label.name == 'prerelease')) }}
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: write
     steps:
-      - env:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Write the prerelease section onto the pull request
+        env:
+          ACTION: ${{ github.event.action }}
+          CPU: ${{ needs.build.outputs.cpu }}
           GH_TOKEN: ${{ github.token }}
-          COMMENTS: repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments
-          BODY: |
-            <!-- docker.yml prerelease -->
-            This pull request's images, for `linux/amd64`:
-
-            ```bash
-            docker pull ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}-cpu
-            docker pull ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}-gpu
-            ```
-
-            Each push rebuilds them while the `prerelease` label is on. Closing the pull request deletes them.
+          GPU: ${{ needs.build.outputs.gpu }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          IMAGE: ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          ids=$(gh api --paginate "$COMMENTS" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- docker.yml prerelease -->"))) | .id')
-          [ -n "$ids" ] || gh api --silent "$COMMENTS" -f body="$BODY"
+          # The label can come off while the images build. That run drops the
+          # section, so this one must not write it back.
+          labels=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name')
+          if [ "$ACTION" = unlabeled ] || ! grep -qx prerelease <<< "$labels"; then
+            .github/scripts/pull-request-section.sh "$GITHUB_REPOSITORY" "$PR_NUMBER" prerelease
+            exit 0
+          fi
+
+          section="$RUNNER_TEMP/section.md"
+          # The backticks below are Markdown, not command substitution.
+          # shellcheck disable=SC2016
+          {
+            echo '### Prerelease images'
+            echo
+            if [ "$CPU" = success ] || [ "$GPU" = success ]; then
+              echo '```bash'
+              if [ "$CPU" = success ]; then echo "docker pull $IMAGE-cpu"; fi
+              if [ "$GPU" = success ]; then echo "docker pull $IMAGE-gpu"; fi
+              echo '```'
+              echo
+            fi
+
+            # Anything that failed goes after everything that worked. Its tag
+            # may hold this commit's broken image, or an older one.
+            if [ "$CPU" != success ]; then
+              printf -- '- :x: `pr-%s-cpu` failed its build or smoke test, so do not pull it\n' "$PR_NUMBER"
+            fi
+            if [ "$GPU" != success ]; then
+              printf -- '- :x: `pr-%s-gpu` failed to build, so do not pull it\n' "$PR_NUMBER"
+            fi
+            if [ "$CPU" != success ] || [ "$GPU" != success ]; then echo; fi
+
+            echo 'For `linux/amd64`, rebuilt on each push while the `prerelease` label is on, and deleted when the pull request closes.'
+            echo
+            printf 'Built from %s &middot; [workflow run](%s)\n' "${HEAD_SHA:0:7}" "$RUN_URL"
+          } > "$section"
+
+          .github/scripts/pull-request-section.sh \
+            "$GITHUB_REPOSITORY" "$PR_NUMBER" prerelease "$section"
 
   # Every closed pull request from this repository, labelled or not: the label
   # may have come off after it pushed. Tags that aren't there are skipped.
@@ -188,8 +245,21 @@ jobs:
     if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       packages: write
+      pull-requests: write
     steps:
       - uses: dataaxiom/ghcr-cleanup-action@v1
         with:
           delete-tags: pr-${{ github.event.pull_request.number }}-cpu,pr-${{ github.event.pull_request.number }}-gpu
+
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+
+      # Its pull lines name images that are gone now.
+      - name: Drop the prerelease section from the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: .github/scripts/pull-request-section.sh "$GITHUB_REPOSITORY" "$PR_NUMBER" prerelease
