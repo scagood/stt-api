@@ -97,8 +97,7 @@ def test_ranges_and_their_windows_fit_the_chunk(monkeypatch):
         _assert_valid(ranges, total, int((MAX_SEC - 10) * sr))
         assert max(end - start for start, end in ranges) >= 59 * sr  # the 60 s target still fits
         assert all(left[1] == right[0] for left, right in zip(ranges, ranges[1:]))
-        assert [start for start, _end in windows] == [0] + [start - 5 * sr for start, _end in ranges[1:]]
-        assert windows[-1][1] == total
+        assert windows[0][0] == 0 and windows[-1][1] == total
         for (start, end), (window_start, window_end) in zip(ranges, windows):
             assert window_start <= start < end <= window_end
             assert window_end - window_start <= MAX_SEC * sr
@@ -107,6 +106,11 @@ def test_ranges_and_their_windows_fit_the_chunk(monkeypatch):
                 assert window_end % (4 * sr) == int(3.75 * sr) and 5 * sr <= window_end - cut < 9 * sr
             else:  # no pause to end in: 5 s past the cut
                 assert window_end == cut + 5 * sr
+        for (cut, _end), (window_start, _window_end) in zip(ranges[1:], windows[1:]):
+            if speech is phrases:  # mid-way through a pause before the cut, as far back as fits
+                assert window_start % (4 * sr) == int(3.75 * sr) and cut - window_start >= 4 * sr
+            else:  # no pause to start in: 5 s before the cut
+                assert window_start == cut - 5 * sr
 
 
 def _at(*seconds):
@@ -130,12 +134,25 @@ def test_windows_end_in_a_pause_past_the_cut(speech, maximum, first):
     assert windows == [_at(*first), _at(7, 20)]
 
 
+def test_windows_start_in_a_pause_before_the_cut():
+    # pauses mid-way at 5.25 s and 7.7 s, before the cut at 10 s
+    ranges = [_at(0, 10), _at(10, 20)]
+    speech = [_at(0, 5), _at(5.5, 7.5), _at(7.9, 9.5), _at(10.5, 20)]
+    # the nearest 3 s or more before the cut
+    assert chunker._windows(ranges, speech, _at(3)[0], _at(30)[0])[1] == _at(5.25, 20)
+    # only 7.7 s fits in 14 s: the farthest that does
+    assert chunker._windows(ranges, speech, _at(3)[0], _at(14)[0])[1] == _at(7.7, 20)
+    # no pause before the cut: 3 s before it, inside the speech
+    assert chunker._windows(ranges, [_at(0, 9.5), _at(10.5, 20)], _at(3)[0], _at(14)[0])[1] == _at(7, 20)
+
+
 def test_context_stays_out_of_long_silences():
-    # cuts at 10 s and 40 s; 12-30 s is a long silence, cut out
+    # cuts at 10 s and 40 s; 12-30 s is a long silence, cut out. The audio's
+    # start and the long silence's end count as pauses to start in.
     ranges = [_at(0, 10), _at(10, 12), _at(30, 40), _at(40, 42)]
     speech = [_at(0, 9.5), _at(10.5, 12), _at(30, 39.5), _at(40.5, 42)]
     assert chunker._windows(ranges, speech, _at(3)[0], _at(75)[0]) == [
-        _at(0, 12), _at(7, 12), _at(30, 42), _at(37, 42)
+        _at(0, 12), _at(0, 12), _at(30, 42), _at(30, 42)
     ]
     assert chunker._windows(ranges, speech, 0, _at(75)[0]) == ranges
 

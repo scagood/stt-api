@@ -276,37 +276,56 @@ def _windows(ranges: List[Range], speech: List[Range], context: int, maximum: in
     between two ranges.
 
     A window that ends inside speech can make Parakeet stop early and drop
-    the rest of it, tens of seconds of words, so the end goes in a pause
-    after the cut, with speech between them: the first pause at least
-    `context` past the cut, else the last that fits. Only when none does is
-    it `context` past the cut. A window may start inside speech: that has
-    not been seen to stop Parakeet.
+    the rest of it, tens of seconds of words; one that starts inside speech
+    can make it skip a stretch in the middle (#69). So each edge that meets
+    a neighbour goes in a pause beyond the cut, with speech between them:
+    the nearest pause at least `context` from the cut, else the farthest that
+    fits. Only when none fits is it `context` from the cut. The start may
+    take half the room `maximum` leaves around the range, or all of it when
+    the end meets no neighbour; the end has the rest.
     """
     if context <= 0:
         return list(ranges)
-    # Each pause between two VAD segments: the end of the speech before it,
-    # and its middle, where the window would end (as plan_chunks cuts).
+    # Each pause between two VAD segments: where the speech before it ends,
+    # where the speech after it starts, and its middle, where a window edge
+    # goes (as plan_chunks cuts).
     befores = [left[1] for left in speech[:-1]]
+    afters = [right[0] for right in speech[1:]]
     middles = [(left[1] + right[0]) // 2 for left, right in zip(speech, speech[1:])]
     windows: List[Range] = []
     for index, (start, end) in enumerate(ranges):
         window_start, window_end = start, end
+        meets_next = index + 1 < len(ranges) and ranges[index + 1][0] == end
         if index and ranges[index - 1][1] == start:
-            window_start = max(ranges[index - 1][0], start - context)
-        if index + 1 < len(ranges) and ranges[index + 1][0] == end:
+            previous_start = ranges[index - 1][0]
+            room = maximum - (end - start)
+            low = max(previous_start, start - (room // 2 if meets_next else room))
+            pauses = []  # nearest the cut first
+            pause = bisect.bisect_left(afters, start) - 1  # speech between it and the cut
+            while pause >= 0 and middles[pause] >= low:
+                pauses.append(middles[pause])
+                pause -= 1
+            joined = index > 1 and ranges[index - 2][1] == previous_start
+            if not joined and previous_start >= low:
+                pauses.append(previous_start)  # after a long silence, or the start of the audio
+            window_start = next(
+                (at for at in pauses if at <= start - context),
+                pauses[-1] if pauses else max(low, start - context),
+            )
+        if meets_next:
             following_end = ranges[index + 1][1]
-            limit = min(following_end, window_start + maximum)
-            pauses = []
+            high = min(following_end, window_start + maximum)
+            pauses = []  # nearest the cut first
             pause = bisect.bisect_right(befores, end)  # speech between it and the cut
-            while pause < len(middles) and middles[pause] <= limit:
+            while pause < len(middles) and middles[pause] <= high:
                 pauses.append(middles[pause])
                 pause += 1
             joined = index + 2 < len(ranges) and ranges[index + 2][0] == following_end
-            if not joined and following_end <= limit:
+            if not joined and following_end <= high:
                 pauses.append(following_end)  # before a long silence, or the end of the audio
             window_end = next(
                 (at for at in pauses if at >= end + context),
-                pauses[-1] if pauses else min(limit, end + context),
+                pauses[-1] if pauses else min(high, end + context),
             )
         windows.append((window_start, window_end))
     return windows

@@ -319,8 +319,9 @@ CHUNK_TRIM_SILENCE_SEC = _env_float("PARAKEET_CHUNK_TRIM_SILENCE_SEC", 3.0, mini
 # on either side, and keeps only the words that start in its own range.
 # Parakeet makes up a word ("and", "the", "I") when its input ends shortly
 # after speech, and pieces cut mid-pause with nothing past the cut gained one
-# at about one join in five (#68). The trailing context runs on to a pause, as
-# a window that ends inside speech can make Parakeet stop early (#69).
+# at about one join in five (#68). The context starts and ends in a pause, as
+# a window that starts or ends inside speech can make Parakeet skip or drop
+# tens of seconds of it (#69).
 # Parakeet only, at most a quarter of the model's chunk_max_sec, which the
 # context fits inside; 0 turns it off.
 CHUNK_CONTEXT_SEC = _env_float("PARAKEET_CHUNK_CONTEXT_SEC", 5.0, minimum=0.0)

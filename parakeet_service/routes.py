@@ -718,40 +718,49 @@ async def _infer(request: Request, pieces: List[Any], model_key: str):
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-# Parakeet sometimes stops partway through a window and returns nothing for
-# the rest of it, tens of seconds of speech, depending on exactly where the
-# window ends (#69). A piece with this much speech, by VAD, left in its own
-# range after its last word has stopped.
+# Parakeet sometimes stops partway through a window, or skips a stretch of
+# it, and returns nothing for tens of seconds of speech, depending on exactly
+# where the window starts or ends (#69). A piece with this much speech, by
+# VAD, between two of its tokens inside its own range has skipped it.
 _STALL_SEC = 3.0
 
 
+def _speech_within(speech: Sequence[Tuple[int, int]], starts: Sequence[int], low: int, high: int) -> int:
+    """Samples of VAD speech between `low` and `high` (`starts`: each span's start)."""
+    total = 0
+    for speech_start, speech_end in speech[max(0, bisect.bisect_right(starts, low) - 1) :]:
+        if speech_start >= high:
+            break
+        total += max(0, min(speech_end, high) - max(speech_start, low))
+    return total
+
+
 def _stalled(prepared: _PreparedAudio, results: Sequence[Any]) -> List[int]:
-    """The pieces that decoded context (plan_chunks) and stopped with at
-    least _STALL_SEC of speech left in their own range. A piece decoded as just
-    its range is the same audio as before context, which has not stopped."""
+    """The pieces that decoded context (plan_chunks) and skipped at least
+    _STALL_SEC of speech in their own range: before their first token, between
+    two, or after their last. A piece decoded as just its range is the same
+    audio as before context, which has not done this."""
     starts = [start for start, _end in prepared.speech]
-    stopped = []
+    stall, tail = int(_STALL_SEC * TARGET_SR), int(_WORD_TAIL_SEC * TARGET_SR)
+    skipped = []
     for index, ((start, end), window, result) in enumerate(zip(prepared.ranges, prepared.windows, results)):
         if window == (start, end):
             continue
-        timestamps = _extract(result)["timestamps"]
-        heard = window[0] + int((max(timestamps, default=0.0) + _WORD_TAIL_SEC) * TARGET_SR)
-        left = 0
-        for speech_start, speech_end in prepared.speech[max(0, bisect.bisect_right(starts, heard) - 1) :]:
-            if speech_start >= end:
+        heard = sorted(window[0] + int(at * TARGET_SR) for at in _extract(result)["timestamps"])
+        for low, high in zip([window[0]] + [at + tail for at in heard], heard + [window[1]]):
+            low, high = max(low, start), min(high, end)
+            if high - low >= stall and _speech_within(prepared.speech, starts, low, high) >= stall:
+                skipped.append(index)
                 break
-            left += max(0, min(speech_end, end) - max(speech_start, heard))
-        if left >= _STALL_SEC * TARGET_SR:
-            stopped.append(index)
-    return stopped
+    return skipped
 
 
 async def _redo_stalled(
     request: Request, files: Sequence[_PreparedAudio], results: Sequence[Any], model_key: str
 ) -> List[Any]:
-    """`results`, every file's pieces in order, with each piece that stopped
-    (_stalled) decoded again as just its range, without context. Its window
-    and piece in `files` change to match."""
+    """`results`, every file's pieces in order, with each piece that skipped
+    speech (_stalled) decoded again as just its range, without context. Its
+    window and piece in `files` change to match."""
     redo: List[Tuple[int, _PreparedAudio, int]] = []  # (in results, file, in file)
     cursor = 0
     for prepared in files:
@@ -760,7 +769,7 @@ async def _redo_stalled(
         cursor += count
     if not redo:
         return list(results)
-    logger.warning("%d of %d chunks stopped short; decoding them again without context", len(redo), len(results))
+    logger.warning("%d of %d chunks skipped speech; decoding them again without context", len(redo), len(results))
     for _at, prepared, index in redo:
         (start, end), (window_start, _window_end) = prepared.ranges[index], prepared.windows[index]
         prepared.pieces[index] = prepared.pieces[index][start - window_start : end - window_start]
