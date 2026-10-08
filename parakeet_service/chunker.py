@@ -149,21 +149,17 @@ def _normalize_segments(segments: List[Range], total: int) -> List[Range]:
     return normalized
 
 
-def _split_oversized(start: int, end: int, target: int, maximum: int) -> List[Range]:
-    """Split one non-empty range while guaranteeing every part <= maximum."""
+def _split_oversized(start: int, end: int, maximum: int) -> List[Range]:
+    """Split one range into the fewest parts <= maximum, all about the same
+    length: where it is cut at all, each part is at least half of maximum.
+    Cutting target-length parts left whatever remained, down to a sliver
+    once the target is cut to maximum for context (parakeet-v2): a decode of
+    mostly context, and Parakeet invents words in very short input."""
     if end <= start:
         return []
-    parts: List[Range] = []
-    cursor = start
-    while end - cursor > maximum:
-        cut = min(end, cursor + target)
-        if cut <= cursor:
-            cut = min(end, cursor + maximum)
-        parts.append((cursor, cut))
-        cursor = cut
-    if end > cursor:
-        parts.append((cursor, end))
-    return parts
+    count = -(-(end - start) // maximum)
+    cuts = [start + (end - start) * index // count for index in range(count + 1)]
+    return list(zip(cuts, cuts[1:]))
 
 
 class Plan(NamedTuple):
@@ -212,8 +208,8 @@ def plan_chunks(
     # particular), so the first and last chunks reach up to trim_gap past the
     # detected speech: room for the syllable, without feeding the model the
     # long silences cut out below. Less where the speech fits own_maximum but
-    # the margin too would not: _split_oversized would cut inside the speech,
-    # or off a sliver of silence.
+    # the margin too would not: _split_oversized would cut it in two, inside
+    # the speech.
     current_start, current_end = max(0, segments[0][0] - trim_gap), segments[0][1]
     if current_end - segments[0][0] <= own_maximum:
         current_start = max(current_start, current_end - own_maximum)
@@ -231,14 +227,15 @@ def plan_chunks(
 
         # Mid-way through the pause, or later in it where the next phrase then
         # fits own_maximum, but never past own_maximum from where the range's
-        # last piece starts: _split_oversized would cut off a sliver of silence.
-        last_piece = _split_oversized(current_start, current_end, target, own_maximum)[-1][0]
+        # last piece starts: _split_oversized would cut it into one more piece,
+        # inside speech.
+        last_piece = _split_oversized(current_start, current_end, own_maximum)[-1][0]
         cut = min(max((current_end + start) // 2, min(end - own_maximum, start)), last_piece + own_maximum)
         # Cut at this pause once the range is the minimum, or before then where
         # taking the next phrase too would pass own_maximum and the phrase fits
         # after the cut: _split_oversized would cut inside speech, which makes
-        # Parakeet drop words (#69), and leave a sliver. With the target cut to
-        # own_maximum for context (parakeet-v2), that is nearly every cut.
+        # Parakeet drop words (#69). With the target cut to own_maximum for
+        # context (parakeet-v2), that is nearly every cut.
         if current_end - current_start >= minimum or end - current_start > own_maximum >= end - cut:
             if cut > current_start:
                 packed.append((current_start, cut))
@@ -255,7 +252,7 @@ def plan_chunks(
 
     output: List[Range] = []
     for start, end in packed:
-        output.extend(_split_oversized(start, end, target, own_maximum))
+        output.extend(_split_oversized(start, end, own_maximum))
 
     # Defensive invariant filter: malformed VAD output must never reach ORT.
     ranges = [
