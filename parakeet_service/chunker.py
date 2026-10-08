@@ -98,43 +98,40 @@ def frame_rms(wav: np.ndarray) -> np.ndarray:
     return np.concatenate([np.sqrt((b * b).mean(axis=1) + 1e-12) for b in blocks])
 
 
+def relative_gate(rms: np.ndarray, ratio: float) -> float:
+    """`ratio` times the average 20 ms frame level in `rms`, never under -60 dBFS."""
+    return max(1e-3, float(rms.mean()) * ratio)
+
+
+def runs(frames: np.ndarray) -> np.ndarray:
+    """Each run of true `frames`, as a row of its start and end (exclusive) index."""
+    return np.flatnonzero(np.diff(np.concatenate(([0], frames.astype(np.int8), [0])))).reshape(-1, 2)
+
+
 def _volume_speech_segments(wav: np.ndarray) -> List[Range]:
     """Spans louder than the gate (PARAKEET_VAD_GATE_DB, else 0.4x the average
     20 ms frame level), joined across dips shorter than VAD_MIN_SILENCE_MS and
     padded by VAD_SPEECH_PAD_MS as Silero's are."""
-    frame = FRAME
-    if wav.size < frame:
+    if wav.size < FRAME:
         return [(0, wav.size)] if np.any(np.abs(wav) > 1e-4) else []
 
     rms = frame_rms(wav)
-    frame_count = rms.size
     if VAD_GATE_DB is None:
-        threshold = max(1e-3, float(rms.mean()) * 0.4)
+        threshold = relative_gate(rms, 0.4)
     else:
         threshold = 10.0 ** (VAD_GATE_DB / 20.0)
-    voiced = rms > threshold
+    loud = runs(rms > threshold)
+    if not loud.size:
+        return []
     minimum_silence_frames = max(1, int(VAD_MIN_SILENCE_MS / 20))
-
-    segments: List[Range] = []
-    index = 0
-    while index < frame_count:
-        if not voiced[index]:
-            index += 1
-            continue
-        start = last = cursor = index
-        silence = 0
-        while cursor < frame_count:
-            if voiced[cursor]:
-                silence, last = 0, cursor
-            else:
-                silence += 1
-                if silence >= minimum_silence_frames:
-                    break
-            cursor += 1
-        segments.append((start * frame, min((last + 1) * frame, wav.size)))
-        index = max(cursor, index + 1)
+    # Each run opens a segment unless the dip before it is too short to be a pause.
+    opens = np.concatenate(([True], loud[1:, 0] - loud[:-1, 1] >= minimum_silence_frames))
+    closes = np.concatenate((opens[1:], [True]))
     pad = int(VAD_SPEECH_PAD_MS * TARGET_SR / 1000)
-    return [(max(0, start - pad), min(wav.size, end + pad)) for start, end in segments]
+    return [
+        (max(0, start * FRAME - pad), min(wav.size, end * FRAME + pad))
+        for start, end in zip(loud[opens, 0].tolist(), loud[closes, 1].tolist())
+    ]
 
 
 def _normalize_segments(segments: List[Range], total: int) -> List[Range]:
@@ -267,20 +264,6 @@ def plan_chunks(
         if 0 <= start < end <= total and end - start <= own_maximum
     ]
     return Plan(ranges, _windows(ranges, segments, context, maximum), segments)
-
-
-def auto_chunk(
-    wav: np.ndarray,
-    *,
-    target_sec: float,
-    max_sec: float,
-    min_sec: float = CHUNK_MIN_SEC,
-    context_sec: float = 0.0,
-) -> List[Range]:
-    """plan_chunks' ranges alone."""
-    return plan_chunks(
-        wav, target_sec=target_sec, max_sec=max_sec, min_sec=min_sec, context_sec=context_sec
-    ).ranges
 
 
 def _windows(ranges: List[Range], speech: List[Range], context: int, maximum: int) -> List[Range]:
