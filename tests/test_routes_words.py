@@ -39,8 +39,8 @@ class _Worker:
 
 def _prepared(raw, *_bounds):
     return routes._PreparedAudio(
-        waveform=None, ranges=[(0, 2 * TARGET_SR)], windows=[(0, 2 * TARGET_SR)], pieces=[raw.decode()],
-        duration=2.0,
+        waveform=None, ranges=[(0, 2 * TARGET_SR)], windows=[(0, 2 * TARGET_SR)], speech=[],
+        pieces=[raw.decode()], duration=2.0,
     )
 
 
@@ -515,7 +515,8 @@ async def test_without_an_aligner_spoken_numbers_never_queue_to_hear(calls, stit
 async def test_a_number_only_in_the_context_does_not_queue_to_hear_it(calls, stitched):
     # "£2.10" starts past the range's end (2 s): the next piece's to keep, and to hear
     prepared = routes._PreparedAudio(
-        waveform=None, ranges=[(0, 2 * TARGET_SR)], windows=[(0, 4 * TARGET_SR)], pieces=["piece"], duration=4.0
+        waveform=None, ranges=[(0, 2 * TARGET_SR)], windows=[(0, 4 * TARGET_SR)], speech=[],
+        pieces=["piece"], duration=4.0,
     )
     result = SimpleNamespace(
         text="Hello. That'll be £2.10",

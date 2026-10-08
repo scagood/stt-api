@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import bisect
 import functools
 import math
 import re
@@ -16,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 
 from . import aligner, retime, spoken
 from .audio import load_audio
-from .chunker import auto_chunk, slice_chunks, with_context
+from .chunker import plan_chunks, slice_chunks
 from .config import (
     ALIGNER_CONFIGS,
     CHUNK_CONTEXT_SEC,
@@ -67,6 +68,7 @@ class _PreparedAudio:
     waveform: Any
     ranges: List[Tuple[int, int]]  # where each piece's words come from
     windows: List[Tuple[int, int]]  # what each piece decodes: its range and context
+    speech: List[Tuple[int, int]]  # what VAD heard as speech (none for a short clip)
     pieces: List[Any]  # the windows' audio
     duration: float
 
@@ -255,19 +257,19 @@ def _prepare_audio(
         raise _AudioTooLong(
             f"audio duration {duration:.1f}s exceeds limit {MAX_AUDIO_SECONDS:.1f}s"
         )
-    ranges = auto_chunk(
+    plan = plan_chunks(
         waveform, target_sec=target_sec, max_sec=max_sec, min_sec=min_sec, context_sec=context_sec
     )
-    windows = with_context(ranges, context_sec)
-    pieces = slice_chunks(waveform, windows)
+    pieces = slice_chunks(waveform, plan.windows)
     if len(pieces) > MAX_REQUEST_CHUNKS:
         raise _AudioTooLong(
             f"audio produced {len(pieces)} chunks; limit is {MAX_REQUEST_CHUNKS}"
         )
     return _PreparedAudio(
         waveform=waveform,
-        ranges=ranges,
-        windows=windows,
+        ranges=plan.ranges,
+        windows=plan.windows,
+        speech=plan.speech,
         pieces=pieces,
         duration=duration,
     )
@@ -489,7 +491,7 @@ _DECODE_SPACE = re.compile(r"\A\s|\s\B|(\s)\b")
 def _trimmed(prepared: _PreparedAudio, results: Sequence[Any]) -> List[Any]:
     """Each piece's result cut back to its own range: the words that start in
     it, timed from its start, with its text rebuilt from their tokens as
-    onnx_asr builds it. The context either side (with_context) is decoded only
+    onnx_asr builds it. The context either side (plan_chunks) is decoded only
     so that the piece's edge words are not ones Parakeet makes up as its input
     ends (#68); the words in it are the neighbours'. A piece decoded without
     context comes back as it was."""
@@ -714,6 +716,60 @@ async def _infer(request: Request, pieces: List[Any], model_key: str):
         return await worker.submit_many(pieces, model_key)
     except ModelLoadError as exc:  # load_model logged it
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+# Parakeet sometimes stops partway through a window and returns nothing for
+# the rest of it, tens of seconds of speech, depending on exactly where the
+# window ends (#69). A piece with this much speech, by VAD, left in its own
+# range after its last word has stopped.
+_STALL_SEC = 3.0
+
+
+def _stalled(prepared: _PreparedAudio, results: Sequence[Any]) -> List[int]:
+    """The pieces that decoded context (plan_chunks) and stopped with at
+    least _STALL_SEC of speech left in their own range. A piece decoded as just
+    its range is the same audio as before context, which has not stopped."""
+    starts = [start for start, _end in prepared.speech]
+    stopped = []
+    for index, ((start, end), window, result) in enumerate(zip(prepared.ranges, prepared.windows, results)):
+        if window == (start, end):
+            continue
+        timestamps = _extract(result)["timestamps"]
+        heard = window[0] + int((max(timestamps, default=0.0) + _WORD_TAIL_SEC) * TARGET_SR)
+        left = 0
+        for speech_start, speech_end in prepared.speech[max(0, bisect.bisect_right(starts, heard) - 1) :]:
+            if speech_start >= end:
+                break
+            left += max(0, min(speech_end, end) - max(speech_start, heard))
+        if left >= _STALL_SEC * TARGET_SR:
+            stopped.append(index)
+    return stopped
+
+
+async def _redo_stalled(
+    request: Request, files: Sequence[_PreparedAudio], results: Sequence[Any], model_key: str
+) -> List[Any]:
+    """`results`, every file's pieces in order, with each piece that stopped
+    (_stalled) decoded again as just its range, without context. Its window
+    and piece in `files` change to match."""
+    redo: List[Tuple[int, _PreparedAudio, int]] = []  # (in results, file, in file)
+    cursor = 0
+    for prepared in files:
+        count = len(prepared.pieces)
+        redo += [(cursor + index, prepared, index) for index in _stalled(prepared, results[cursor : cursor + count])]
+        cursor += count
+    if not redo:
+        return list(results)
+    logger.warning("%d of %d chunks stopped short; decoding them again without context", len(redo), len(results))
+    for _at, prepared, index in redo:
+        (start, end), (window_start, _window_end) = prepared.ranges[index], prepared.windows[index]
+        prepared.pieces[index] = prepared.pieces[index][start - window_start : end - window_start]
+        prepared.windows[index] = (start, end)
+    again = await _infer(request, [prepared.pieces[index] for _at, prepared, index in redo], model_key)
+    results = list(results)
+    for (at, _prepared, _index), result in zip(redo, again):
+        results[at] = result
+    return results
 
 
 def _verbose_json(
@@ -1212,6 +1268,7 @@ async def transcribe(
 
     infer_started = time.perf_counter()
     results = await _infer(request, prepared.pieces, model_key)
+    results = await _redo_stalled(request, [prepared], results, model_key)
     infer_ms = (time.perf_counter() - infer_started) * 1000
 
     stitch_started = time.perf_counter()
@@ -1343,6 +1400,7 @@ async def transcribe_batch(
 
     flattened = [piece for item in prepared_files for piece in item.pieces]
     flat_results = await _infer(request, flattened, model_key)
+    flat_results = await _redo_stalled(request, prepared_files, flat_results, model_key)
 
     # The batch endpoint takes no `language`: the default decides, unless the
     # model is English-only.

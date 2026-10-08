@@ -84,11 +84,11 @@ so switch those when the server upgrades.
   dropped whole sentences, so long v2 transcripts will gain words.
 - **Long Parakeet audio no longer gains words where it is cut.** About one
   cut in five gained a made-up `and`, `the` or `I`, because Parakeet invents a
-  word when its input ends just after speech. Each chunk now decodes 5 s of its
-  neighbours' audio either side and keeps only its own words
-  (`PARAKEET_CHUNK_CONTEXT_SEC`). Long transcripts change a little and take a
-  little longer: up to 1.17× the audio is decoded on `parakeet-v3`, 1.5× on
-  `parakeet-v2`, whose chunks are now 20 s.
+  word when its input ends just after speech. Each chunk now decodes about 5 s
+  of its neighbours' audio either side, on to a pause, and keeps only its own
+  words (`PARAKEET_CHUNK_CONTEXT_SEC`). Long transcripts change a little and
+  take a little longer: up to 1.25× the audio is decoded on `parakeet-v3`,
+  1.5× on `parakeet-v2`, whose chunks are now 20 s.
 - **Numbers keep their word break.** Text read `in2005.` or `was£1.10`. It now
   reads `in 2005.` and `was £1.10`, and word timestamps list the number as its
   own word.
