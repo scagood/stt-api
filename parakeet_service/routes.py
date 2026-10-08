@@ -530,9 +530,11 @@ def _stitch(
     language: Optional[str] = None,
     aligner_choice: Optional[Tuple[str, str]] = None,
     retime_words: bool = False,
+    kept: Optional[Sequence[Any]] = None,
 ) -> Tuple[str, List[Dict[str, Any]], Optional[List[Dict[str, Any]]]]:
     """Chunk results -> (text, segments, words); words None when a text-only
-    (Whisper) chunk was to be aligned and could not be.
+    (Whisper) chunk was to be aligned and could not be. `kept` is the results
+    already cut to their ranges (_trimmed), if the caller has them.
 
     `align` re-times words with the request's aligner (`aligner_choice`, its
     name and quantization); `speak` says numbers out (PARAKEET_SPOKEN_NUMBERS),
@@ -546,7 +548,7 @@ def _stitch(
             f"inference returned {len(results)} results for "
             f"{len(prepared.ranges)} chunks"
         )
-    results = _trimmed(prepared, results)
+    results = _trimmed(prepared, results) if kept is None else kept
 
     segments: List[Dict[str, Any]] = []
     words: List[Dict[str, Any]] = []
@@ -683,28 +685,32 @@ async def _stitch_request(
     request: Request, prepared: _PreparedAudio, results: Sequence[Any], **flags: Any
 ) -> Tuple[str, List[Dict[str, Any]], Optional[List[Dict[str, Any]]]]:
     """_stitch(prepared, results, **flags), off the event loop unless it is
-    plain text work (no word times, no digit to say, nothing to re-time).
+    plain text work (no word times, no digit to say, nothing to re-time) on a
+    clip's one piece.
 
-    Saying numbers reads their readings back through number_parse, which is
-    CPU work: it, and deciding whether the aligner's model is needed, run on
+    Long audio's pieces are thousands of tokens to trim and join: plain text
+    from them, saying numbers (which reads their readings back through
+    number_parse), and deciding whether the aligner's model is needed run on
     the audio pool. With the model (a second ONNX model over the audio) it runs
     on the one-worker align pool, off the audio pool so it never holds up other
     requests' decoding; only those requests queue behind other alignment."""
-    stitch = functools.partial(_stitch, prepared, results, **flags)
     says_numbers = flags.get("speak") and any(
         char.isdigit() for result in results for char in str(getattr(result, "text", result))
     )
-    if not (flags.get("align") or says_numbers or flags.get("retime_words")):
-        return stitch()
     loop, state = asyncio.get_running_loop(), request.app.state
+    if not (flags.get("align") or says_numbers or flags.get("retime_words")):
+        stitch = functools.partial(_stitch, prepared, results, **flags)
+        return stitch() if len(results) < 2 else await loop.run_in_executor(state.audio_pool, stitch)
 
-    def needs_aligner() -> bool:
-        """_needs_aligner over the words _stitch keeps."""
-        return _needs_aligner(
-            _trimmed(prepared, results), speak=flags.get("speak", False), aligner_choice=flags.get("aligner_choice")
-        )
+    def needs_aligner() -> Tuple[List[Any], bool]:
+        """The words _stitch keeps (_trimmed), for it too, and _needs_aligner over them."""
+        kept = _trimmed(prepared, results)
+        return kept, _needs_aligner(kept, speak=flags.get("speak", False), aligner_choice=flags.get("aligner_choice"))
 
-    needs = flags.get("align") or says_numbers and await loop.run_in_executor(state.audio_pool, needs_aligner)
+    kept, needs = None, bool(flags.get("align"))
+    if says_numbers and not needs:
+        kept, needs = await loop.run_in_executor(state.audio_pool, needs_aligner)
+    stitch = functools.partial(_stitch, prepared, results, kept=kept, **flags)
     return await loop.run_in_executor(state.align_pool if needs else state.audio_pool, stitch)
 
 
@@ -735,14 +741,15 @@ def _speech_within(speech: Sequence[Tuple[int, int]], starts: Sequence[int], low
     return total
 
 
-def _stalled(prepared: _PreparedAudio, results: Sequence[Any]) -> List[int]:
+def _stalled(prepared: _PreparedAudio, results: Sequence[Any]) -> Dict[int, List[Tuple[int, int]]]:
     """The pieces that decoded context (plan_chunks) and skipped at least
     _STALL_SEC of speech in their own range: before their first token, between
-    two, or after their last. A piece decoded as just its range is the same
-    audio as before context, which has not done this."""
+    two, or after their last. Each comes with the stretches it skipped, in
+    samples. A piece decoded as just its range is the same audio as before
+    context, which has not done this."""
     starts = [start for start, _end in prepared.speech]
     stall, tail = int(_STALL_SEC * TARGET_SR), int(_WORD_TAIL_SEC * TARGET_SR)
-    skipped = []
+    skipped: Dict[int, List[Tuple[int, int]]] = {}
     for index, ((start, end), window, result) in enumerate(zip(prepared.ranges, prepared.windows, results)):
         if window == (start, end):
             continue
@@ -750,34 +757,79 @@ def _stalled(prepared: _PreparedAudio, results: Sequence[Any]) -> List[int]:
         for low, high in zip([window[0]] + [at + tail for at in heard], heard + [window[1]]):
             low, high = max(low, start), min(high, end)
             if high - low >= stall and _speech_within(prepared.speech, starts, low, high) >= stall:
-                skipped.append(index)
-                break
+                skipped.setdefault(index, []).append((low, high))
     return skipped
+
+
+# A piece decoded again without context keeps the redo only if it hears at
+# least this many words in the speech the first decode skipped. What VAD calls
+# speech may be music, laughter or noise, with no words to find
+# (PARAKEET_VAD=volume above all), and without context Parakeet may make up a
+# word as its input ends (#68): one new word there is no sign of a skip.
+_REDO_MIN_WORDS = 2
+
+
+def _words_in(result: Any, origin: int, stretches: Sequence[Tuple[int, int]]) -> int:
+    """How many of `result`'s words, decoded from sample `origin`, start in `stretches`."""
+    info = _extract(result)
+    starts = [origin + int(info["timestamps"][first] * TARGET_SR) for _word, first, _last in _word_spans(info["tokens"])]
+    return sum(low <= at < high for at in starts for low, high in stretches)
 
 
 async def _redo_stalled(
     request: Request, files: Sequence[_PreparedAudio], results: Sequence[Any], model_key: str
 ) -> List[Any]:
     """`results`, every file's pieces in order, with each piece that skipped
-    speech (_stalled) decoded again as just its range, without context. Its
-    window and piece in `files` change to match."""
-    redo: List[Tuple[int, _PreparedAudio, int]] = []  # (in results, file, in file)
-    cursor = 0
-    for prepared in files:
-        count = len(prepared.pieces)
-        redo += [(cursor + index, prepared, index) for index in _stalled(prepared, results[cursor : cursor + count])]
-        cursor += count
-    if not redo:
-        return list(results)
-    logger.warning("%d of %d chunks skipped speech; decoding them again without context", len(redo), len(results))
-    for _at, prepared, index in redo:
-        (start, end), (window_start, _window_end) = prepared.ranges[index], prepared.windows[index]
-        prepared.pieces[index] = prepared.pieces[index][start - window_start : end - window_start]
-        prepared.windows[index] = (start, end)
-    again = await _infer(request, [prepared.pieces[index] for _at, prepared, index in redo], model_key)
+    speech (_stalled) decoded again as just its range, without context, and
+    the redo kept if it hears words where the first decode heard none
+    (_REDO_MIN_WORDS). A kept piece's window and piece in `files` change to
+    match. Finding and judging them run on the audio pool: for hours of audio,
+    that is a scan of every token."""
     results = list(results)
-    for (at, _prepared, _index), result in zip(redo, again):
-        results[at] = result
+    if all(prepared.windows == prepared.ranges for prepared in files):
+        return results  # nothing decoded context: short audio, or PARAKEET_CHUNK_CONTEXT_SEC=0
+    loop, pool = asyncio.get_running_loop(), request.app.state.audio_pool
+
+    def find() -> List[Tuple[int, _PreparedAudio, int, List[Tuple[int, int]]]]:
+        """(in results, file, in file, what it skipped) for each piece to redo."""
+        found = []
+        cursor = 0
+        for prepared in files:
+            count = len(prepared.pieces)
+            stalled = _stalled(prepared, results[cursor : cursor + count])
+            found += [(cursor + index, prepared, index, skipped) for index, skipped in stalled.items()]
+            cursor += count
+        return found
+
+    redo = await loop.run_in_executor(pool, find)
+    if not redo:
+        return results
+    pieces = []
+    for _at, prepared, index, _skipped in redo:
+        (start, end), (window_start, _window_end) = prepared.ranges[index], prepared.windows[index]
+        pieces.append(prepared.pieces[index][start - window_start : end - window_start])
+    again = await _infer(request, pieces, model_key)
+
+    def heard() -> List[bool]:
+        return [
+            _words_in(result, prepared.ranges[index][0], skipped) >= _REDO_MIN_WORDS
+            for (_at, prepared, index, skipped), result in zip(redo, again)
+        ]
+
+    kept = 0
+    for (at, prepared, index, _skipped), piece, result, keep in zip(
+        redo, pieces, again, await loop.run_in_executor(pool, heard)
+    ):
+        if keep:
+            results[at] = result
+            prepared.pieces[index], prepared.windows[index] = piece, prepared.ranges[index]
+            kept += 1
+    logger.warning(
+        "%d of %d chunks skipped speech; decoded again without context, %d heard words there and were kept",
+        len(redo),
+        len(results),
+        kept,
+    )
     return results
 
 
