@@ -211,8 +211,8 @@ A quiet stretch of 3 s or more is heard again at its own level, as when
 gets pauses of its own instead of being one. In a 25-word turn 20 dB quieter
 than the rest, `retime_words` used to move 24 words' starts over 200 ms from
 the aligner's (aligning the turn on its own) and squeeze 23 into 40 ms; now 3
-and 1, against Parakeet's own 5 and 0. On two LibriVox chapters it moves 8 of
-3,782 words differently than before, 7 of them closer to the aligner.
+and 1, against Parakeet's own 5 and 0. On three LibriVox chapters it moves 14
+of 5,967 words differently than before, 10 of them closer to the aligner.
 
 With an aligner named, it only re-times chunks the aligner could not.
 `PARAKEET_RETIME_WORDS=true` turns it on for requests that don't say.
