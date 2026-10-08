@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import pytest
 
-from parakeet_service import chunker
+from parakeet_service import chunker, routes
 
 MAX_SEC = 75.0
 BOUNDS = {"target_sec": 60.0, "max_sec": MAX_SEC}
@@ -111,6 +111,69 @@ def test_ranges_and_their_windows_fit_the_chunk(monkeypatch):
                 assert window_start % (4 * sr) == int(3.75 * sr) and cut - window_start >= 4 * sr
             else:  # no pause to start in: 5 s before the cut
                 assert window_start == cut - 5 * sr
+
+
+def _ordinary_speech(seconds):
+    """Phrases of 2-6 s with pauses of 0.5-1.5 s, and the total samples."""
+    rng = np.random.default_rng(0)
+    speech, at = [], 1.0
+    while True:
+        length = rng.uniform(2, 6)
+        if at + length > seconds - 1:
+            return speech, int(seconds * SR)
+        speech.append(_at(at, at + length))
+        at += length + rng.uniform(0.5, 1.5)
+
+
+@pytest.mark.parametrize(
+    ("name", "seconds", "most"),
+    [
+        # 51 chunks before, with 20 cuts inside speech
+        ("parakeet-v2", 600, 34),
+        # 623 before: over the 512 chunks a request may make, so a 413
+        ("parakeet-v2", 2 * 3600, 408),
+        ("parakeet-v3", 600, 11),
+    ],
+)
+def test_ordinary_speech_is_cut_in_pauses_after_room_for_context(monkeypatch, name, seconds, most):
+    # parakeet-v2's 25 s target is cut to the 20 s its 30 s maximum leaves
+    # beside 5 s of context either side, so its 20 s minimum never came
+    # first: ranges ran past 20 s, and were cut by length inside speech,
+    # leaving slivers.
+    monkeypatch.setattr(routes, "CHUNK_MIN_SEC", 20.0)
+    monkeypatch.setattr(routes, "CHUNK_CONTEXT_SEC", 5.0)
+    target_sec, max_sec, min_sec, context_sec = routes._chunk_bounds(name)
+    own_maximum = int((max_sec - 2 * context_sec) * SR)
+    own_target = min(int(target_sec * SR), own_maximum)
+    speech, total = _ordinary_speech(seconds)
+    monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: speech)
+    ranges = chunker.auto_chunk(
+        np.broadcast_to(np.float32(0), (total,)),  # hours of samples in no memory
+        target_sec=target_sec, max_sec=max_sec, min_sec=min_sec, context_sec=context_sec,
+    )
+    assert len(ranges) <= most
+    _assert_valid(ranges, total, own_maximum)
+    assert all(left[1] == right[0] for left, right in zip(ranges, ranges[1:]))
+    cuts = [end for _start, end in ranges[:-1]]
+    assert not any(start < cut < end for cut in cuts for start, end in speech)  # all in pauses
+    # every range holds speech: no slivers of silence
+    assert all(any(begin < end and start < stop for begin, stop in speech) for start, end in ranges)
+    # each closes at the last pause before its target: short of it by less than a phrase and a pause
+    assert all(end - start > own_target - 7.5 * SR for start, end in ranges[:-1])
+
+
+def test_ranges_close_in_a_pause_rather_than_pass_their_maximum(monkeypatch):
+    # parakeet-v2 with 5 s of context: ranges of 20 s at most, target 20 s,
+    # minimum 20 s. The first range is 19.8 s at the pause, short of the
+    # minimum, but taking the next phrase would pass 20 s: it closes in the
+    # pause, at 20 s rather than mid-way at 20.2 s, and the last range's
+    # margin past the speech stops at 20 s too. Neither leaves a sliver.
+    speech = [_at(3, 19.8), _at(20.6, 39.5)]
+    monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: speech)
+    ranges = chunker.auto_chunk(
+        np.zeros(_at(45)[0], dtype=np.float32), target_sec=25.0, max_sec=30.0, min_sec=20.0, context_sec=5.0
+    )
+    assert ranges == [_at(0, 20), _at(20, 40)]
 
 
 def _at(*seconds):

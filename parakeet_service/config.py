@@ -307,7 +307,9 @@ PRELOAD_MODELS = [
 TARGET_SR = 16_000
 
 # Chunk lengths are per model (models.yaml). This is the shortest chunk cut
-# at a pause, capped at the model's own target.
+# at a pause, capped at the model's own target. A shorter one is cut at a
+# pause too where taking the next phrase would pass chunk_max_sec, less the
+# context: that would cut inside speech.
 CHUNK_MIN_SEC = _env_float("PARAKEET_CHUNK_MIN_SEC", 20.0, minimum=0.0)
 
 # Silence gaps at least this long are cut out of chunks instead of being fed

@@ -228,8 +228,17 @@ def plan_chunks(
             current_end = end
             continue
 
-        if current_end - current_start >= minimum:
-            cut = min(total, max(current_end, (current_end + start) // 2))
+        # Mid-way through the pause, but where the range fits own_maximum no
+        # later than that: _split_oversized would cut off a sliver of silence.
+        cut = min(total, max(current_end, (current_end + start) // 2))
+        if current_end - current_start <= own_maximum:
+            cut = min(cut, current_start + own_maximum)
+        # Cut at this pause once the range is the minimum, or before then where
+        # taking the next phrase too would pass own_maximum and the phrase fits
+        # after the cut: _split_oversized would cut inside speech, which makes
+        # Parakeet drop words (#69), and leave a sliver. With the target cut to
+        # own_maximum for context (parakeet-v2), that is nearly every cut.
+        if current_end - current_start >= minimum or end - current_start > own_maximum >= end - cut:
             if cut > current_start:
                 packed.append((current_start, cut))
             current_start = cut
@@ -238,6 +247,8 @@ def plan_chunks(
             current_end = end
 
     last_end = min(total, current_end + trim_gap)
+    if current_end - current_start <= own_maximum:  # as with the cuts
+        last_end = min(last_end, current_start + own_maximum)
     if last_end > current_start:
         packed.append((current_start, last_end))
 
