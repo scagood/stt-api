@@ -486,8 +486,12 @@ the catalog)
 input ends shortly after speech. Chunks cut in a pause with no audio past the
 cut gained one at about one cut in five. So each chunk now also decodes some
 of its neighbours' audio, and keeps only the words that start in its own
-range. Both ends of what it decodes go in a pause, because a chunk that starts
-or ends inside speech can make Parakeet skip or drop tens of seconds of words:
+range. Each chunk times a word on its own 80 ms grid, so one starting at a cut
+could start before it in one chunk and after it in the other; near a cut the
+two chunks' words are matched up instead, and a word both heard decides where
+one chunk's words end and the next one's start, so each is kept once. Both
+ends of what it decodes go in a pause, because a chunk that starts or ends
+inside speech can make Parakeet skip or drop tens of seconds of words:
 the nearest pause at least `PARAKEET_CHUNK_CONTEXT_SEC` from the cut, else the
 farthest that fits, or, with none, `PARAKEET_CHUNK_CONTEXT_SEC` from the cut.
 A chunk that still skips 3 s or more of speech in its own range is decoded
