@@ -12,6 +12,11 @@ MAX_SEC = 75.0
 BOUNDS = {"target_sec": 60.0, "max_sec": MAX_SEC}
 
 
+def _ranges(wav, **bounds):
+    """Where plan_chunks cuts `wav`."""
+    return chunker.plan_chunks(wav, **bounds).ranges
+
+
 def _assert_valid(ranges, total, maximum):
     previous_end = -1
     for start, end in ranges:
@@ -22,7 +27,7 @@ def _assert_valid(ranges, total, maximum):
 
 
 def test_empty_audio_has_no_chunks():
-    assert chunker.auto_chunk(np.empty(0, dtype=np.float32), **BOUNDS) == []
+    assert _ranges(np.empty(0, dtype=np.float32), **BOUNDS) == []
 
 
 def test_short_audio_bypasses_vad(monkeypatch):
@@ -32,13 +37,13 @@ def test_short_audio_bypasses_vad(monkeypatch):
         lambda _wav: (_ for _ in ()).throw(AssertionError("VAD should not run")),
     )
     waveform = np.zeros(int(MAX_SEC * chunker.TARGET_SR) - 1)
-    assert chunker.auto_chunk(waveform, **BOUNDS) == [(0, waveform.size)]
+    assert _ranges(waveform, **BOUNDS) == [(0, waveform.size)]
 
 
 def test_long_silence_skips_inference(monkeypatch):
     monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: [])
     waveform = np.zeros(int((MAX_SEC + 10) * chunker.TARGET_SR))
-    assert chunker.auto_chunk(waveform, **BOUNDS) == []
+    assert _ranges(waveform, **BOUNDS) == []
 
 
 def test_long_uninterrupted_speech_has_no_phantom_tail(monkeypatch):
@@ -46,7 +51,7 @@ def test_long_uninterrupted_speech_has_no_phantom_tail(monkeypatch):
     monkeypatch.setattr(
         chunker, "_speech_segments", lambda _wav: [(0, total)]
     )
-    ranges = chunker.auto_chunk(np.ones(total, dtype=np.float32), **BOUNDS)
+    ranges = _ranges(np.ones(total, dtype=np.float32), **BOUNDS)
     maximum = int(MAX_SEC * chunker.TARGET_SR)
     _assert_valid(ranges, total, maximum)
     assert ranges[0][0] == 0
@@ -59,7 +64,7 @@ def test_long_silence_gap_is_cut_out_of_chunks(monkeypatch):
     total = int(MAX_SEC * 2 * sr)
     speech = [(0, 10 * sr), (40 * sr, total)]  # 30 s silent gap
     monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: speech)
-    ranges = chunker.auto_chunk(np.ones(total, dtype=np.float32), **BOUNDS)
+    ranges = _ranges(np.ones(total, dtype=np.float32), **BOUNDS)
     maximum = int(MAX_SEC * sr)
     _assert_valid(ranges, total, maximum)
     assert ranges[0] == (0, 10 * sr)
@@ -73,7 +78,7 @@ def test_bounds_override_caps_chunks(monkeypatch):
     sr = chunker.TARGET_SR
     total = int(90 * sr)
     monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: [(0, total)])
-    ranges = chunker.auto_chunk(
+    ranges = _ranges(
         np.ones(total, dtype=np.float32), target_sec=25.0, max_sec=30.0, min_sec=20.0
     )
     _assert_valid(ranges, total, int(30.0 * sr))
@@ -83,7 +88,7 @@ def test_bounds_override_caps_chunks(monkeypatch):
 
 def test_short_audio_is_one_piece_whatever_the_context():
     waveform = np.zeros(int(MAX_SEC * chunker.TARGET_SR))
-    assert chunker.auto_chunk(waveform, **BOUNDS, context_sec=5.0) == [(0, waveform.size)]
+    assert _ranges(waveform, **BOUNDS, context_sec=5.0) == [(0, waveform.size)]
 
 
 def test_ranges_and_their_windows_fit_the_chunk(monkeypatch):
@@ -170,7 +175,7 @@ def test_vad_boundaries_do_not_trim_quiet_first_or_last_words(monkeypatch):
     total = int(MAX_SEC * 3 * sr)
     margin = sr  # shorter than CHUNK_TRIM_SILENCE_SEC: kept
     monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: [(margin, total - margin)])
-    ranges = chunker.auto_chunk(np.ones(total, dtype=np.float32), **BOUNDS)
+    ranges = _ranges(np.ones(total, dtype=np.float32), **BOUNDS)
     _assert_valid(ranges, total, int(MAX_SEC * sr))
     assert ranges[0][0] == 0
     assert ranges[-1][1] == total
@@ -183,7 +188,7 @@ def test_long_edge_silence_is_cut_but_keeps_a_margin(monkeypatch):
     margin = 10 * sr  # longer than CHUNK_TRIM_SILENCE_SEC: mostly cut
     trim = int(chunker.CHUNK_TRIM_SILENCE_SEC * sr)
     monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: [(margin, total - margin)])
-    ranges = chunker.auto_chunk(np.ones(total, dtype=np.float32), **BOUNDS)
+    ranges = _ranges(np.ones(total, dtype=np.float32), **BOUNDS)
     _assert_valid(ranges, total, int(MAX_SEC * sr))
     assert ranges[0][0] == margin - trim
     assert ranges[-1][1] == total - margin + trim
@@ -238,6 +243,12 @@ def test_volume_gate_follows_the_file_unless_fixed(volume, monkeypatch):
     assert chunker._speech_segments(quiet) == []
     monkeypatch.setattr(chunker, "VAD_GATE_DB", -60.0)
     assert len(chunker._speech_segments(quiet)) == 3
+
+
+def test_volume_joins_speech_across_dips_shorter_than_a_pause(volume, monkeypatch):
+    monkeypatch.setattr(chunker, "VAD_MIN_SILENCE_MS", 400)
+    assert len(chunker._speech_segments(_bursts(-25, -70, gap_sec=0.38))) == 1
+    assert len(chunker._speech_segments(_bursts(-25, -70, gap_sec=0.4))) == 3
 
 
 def test_volume_hears_no_pause_above_the_gate(volume, monkeypatch):

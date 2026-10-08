@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Sequence, Tuple
 
 import numpy as np
 
-from .chunker import FRAME, frame_rms
+from .chunker import FRAME, frame_rms, relative_gate, runs
 from .config import TARGET_SR
 
 Span = Tuple[float, float]
@@ -38,10 +38,9 @@ def pauses(wav: np.ndarray) -> List[Span]:
     rms = frame_rms(wav)
     if not rms.size:
         return []
-    quiet = (rms < max(1e-3, float(rms.mean()) * _GATE_RATIO)).astype(np.int8)
-    runs = np.flatnonzero(np.diff(np.concatenate(([0], quiet, [0])))).reshape(-1, 2)
     second = FRAME / TARGET_SR
-    return [(a * second, b * second) for a, b in runs if (b - a) * second >= _MIN_PAUSE_SEC]
+    quiet = runs(rms < relative_gate(rms, _GATE_RATIO))
+    return [(a * second, b * second) for a, b in quiet if (b - a) * second >= _MIN_PAUSE_SEC]
 
 
 def within(spans: Sequence[Span], ends: Sequence[float], low: float, high: float) -> List[Span]:
