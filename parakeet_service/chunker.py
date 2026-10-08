@@ -98,10 +98,57 @@ def frame_rms(wav: np.ndarray) -> np.ndarray:
     return np.concatenate([np.sqrt((b * b).mean(axis=1) + 1e-12) for b in blocks])
 
 
+_GATE_FLOOR = 1e-3  # -60 dBFS: no gate is lower
+# A quiet stretch heard again at its own level (loud_frames) is speech where it
+# is this far over its own quietest tenth: 10 dB, where a pause's room tone
+# stays within a few dB of its floor.
+_OVER_FLOOR = 10.0 ** (10.0 / 20.0)
+_SYLLABLE = 5  # frames: 100 ms
+
+
+def _runs(mask: np.ndarray, shortest: int) -> List[Range]:
+    """Each run of True in `mask` at least `shortest` long, as (start, end)."""
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], mask.astype(np.int8), [0]))))
+    return [(int(a), int(b)) for a, b in edges.reshape(-1, 2) if b - a >= shortest]
+
+
+def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
+    """Which frames (their levels, `rms`) are louder than `ratio` x the level
+    of the audio around them, and than -60 dBFS.
+
+    That level is first the whole file's average, which a speaker much quieter
+    than the rest (a remote guest, a phone leg) can sit under throughout, and
+    be taken for one long pause. So each run of quiet frames at least
+    `relisten` long is heard again at its own level: its frames louder than
+    `ratio` x its average, and 10 dB over its quietest tenth, are loud too.
+    Then again within each run still that long, until none changes. A pause
+    holding only room tone stays quiet, however long.
+    """
+    loud = rms > max(_GATE_FLOOR, float(rms.mean()) * ratio)
+    todo = _runs(~loud, relisten)
+    while todo:
+        start, end = todo.pop()
+        part = rms[start:end]
+        gate = max(_GATE_FLOOR, float(part.mean()) * ratio, float(np.percentile(part, 10)) * _OVER_FLOOR)
+        # Over 100 ms, as a syllable lasts: a click or a breath's rasp can be
+        # one loud frame in a pause.
+        window = np.ones(min(_SYLLABLE, part.size))
+        heard = np.convolve(part, window, "same") / np.convolve(np.ones(part.size), window, "same") > gate
+        if heard.any():
+            loud[start:end] = heard
+            todo.extend((start + a, start + b) for a, b in _runs(~heard, relisten))
+    return loud
+
+
 def _volume_speech_segments(wav: np.ndarray) -> List[Range]:
-    """Spans louder than the gate (PARAKEET_VAD_GATE_DB, else 0.4x the average
-    20 ms frame level), joined across dips shorter than VAD_MIN_SILENCE_MS and
-    padded by VAD_SPEECH_PAD_MS as Silero's are."""
+    """Spans louder than the gate (PARAKEET_VAD_GATE_DB, else 0.4x the level
+    around them, loud_frames), joined across dips shorter than
+    VAD_MIN_SILENCE_MS and padded by VAD_SPEECH_PAD_MS as Silero's are.
+
+    The file's own gate hears again any quiet stretch long enough for
+    plan_chunks to cut out (CHUNK_TRIM_SILENCE_SEC), so a quieter speaker's
+    turn is decoded rather than dropped. A fixed gate is the operator's: all
+    under it is silence."""
     frame = FRAME
     if wav.size < frame:
         return [(0, wav.size)] if np.any(np.abs(wav) > 1e-4) else []
@@ -109,10 +156,9 @@ def _volume_speech_segments(wav: np.ndarray) -> List[Range]:
     rms = frame_rms(wav)
     frame_count = rms.size
     if VAD_GATE_DB is None:
-        threshold = max(1e-3, float(rms.mean()) * 0.4)
+        voiced = loud_frames(rms, 0.4, max(1, int(CHUNK_TRIM_SILENCE_SEC * TARGET_SR) // frame))
     else:
-        threshold = 10.0 ** (VAD_GATE_DB / 20.0)
-    voiced = rms > threshold
+        voiced = rms > 10.0 ** (VAD_GATE_DB / 20.0)
     minimum_silence_frames = max(1, int(VAD_MIN_SILENCE_MS / 20))
 
     segments: List[Range] = []

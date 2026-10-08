@@ -354,7 +354,11 @@ def _env_dbfs(name: str) -> Optional[float]:
 # Without silero-vad installed, both use volume.
 VAD = _env_choice("PARAKEET_VAD", "volume", {"silero", "volume"})
 # Volume's gate. Unset, each file sets its own: 0.4x its average frame level
-# (about 8 dB below it), never under -60 dBFS.
+# (about 8 dB below it), never under -60 dBFS. A speaker far quieter than the
+# file's average can sit under that for a whole turn, which would then be cut
+# out as a long silence; so a quiet stretch at least
+# PARAKEET_CHUNK_TRIM_SILENCE_SEC long is heard again at its own level
+# (chunker.loud_frames). A fixed gate is not: all under it is silence.
 VAD_GATE_DB = _env_dbfs("PARAKEET_VAD_GATE_DB")
 
 # Loaded models and aligners are cached forever by default (0 = unbounded). Set

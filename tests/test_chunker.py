@@ -246,6 +246,41 @@ def test_volume_hears_no_pause_above_the_gate(volume, monkeypatch):
     assert len(chunker._speech_segments(_bursts(-25, -40))) == 1
 
 
+def _turn(seconds, level_db, floor_db=-70):
+    """A speaker's turn: 250 ms syllables at level_db, with 100 ms dips to
+    floor_db between them."""
+    return _bursts(level_db, floor_db, bursts=round(seconds / 0.35), burst_sec=0.25, gap_sec=0.1)
+
+
+@pytest.mark.parametrize("quiet_db", [-34, -44])
+def test_volume_keeps_a_quieter_speakers_turn(volume, quiet_db):
+    # 50 s at -20 dBFS, a second speaker's 10 s 14 or 24 dB quieter, 50 s at
+    # -20 dBFS. Under 0.4x the file's average throughout, the quiet turn was
+    # one long pause, cut out of the chunks and never decoded.
+    first, quiet, last = _turn(50, -20), _turn(10, quiet_db), _turn(50, -20)
+    plan = chunker.plan_chunks(np.concatenate([first, quiet, last]), **BOUNDS, context_sec=5.0)
+    start, end = first.size, first.size + quiet.size
+    assert sum(max(0, min(b, end) - max(a, start)) for a, b in plan.ranges) == quiet.size
+
+
+def test_volume_still_cuts_out_a_long_pause_of_room_tone(volume):
+    # Heard again at its own level, room tone louder than -60 dBFS never rises
+    # 10 dB over its own floor: still a pause, cut out.
+    first, last = _turn(40, -20, floor_db=-50), _turn(40, -20, floor_db=-50)
+    tone = (np.random.default_rng(1).standard_normal(10 * SR) * 10 ** (-50 / 20)).astype(np.float32)
+    ranges = chunker.plan_chunks(np.concatenate([first, tone, last]), **BOUNDS, context_sec=5.0).ranges
+    assert [(round(a / SR), round(b / SR)) for a, b in ranges] == [(0, 40), (50, 90)]
+
+
+def test_a_fixed_gate_is_not_heard_again(volume, monkeypatch):
+    # The operator's gate: all under it is silence, a quiet speaker too.
+    monkeypatch.setattr(chunker, "VAD_GATE_DB", -30.0)
+    first, quiet, last = _turn(50, -20), _turn(10, -40), _turn(50, -20)
+    plan = chunker.plan_chunks(np.concatenate([first, quiet, last]), **BOUNDS, context_sec=5.0)
+    start, end = first.size, first.size + quiet.size
+    assert sum(max(0, min(b, end) - max(a, start)) for a, b in plan.ranges) < quiet.size
+
+
 def test_silero_without_the_package_falls_back_to_volume(monkeypatch):
     monkeypatch.setattr(chunker, "VAD", "silero")
     monkeypatch.setattr(chunker, "VAD_GATE_DB", None)
