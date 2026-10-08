@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import io
+import wave
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from parakeet_service import routes
 from parakeet_service.config import TARGET_SR
@@ -11,13 +14,20 @@ from parakeet_service.config import TARGET_SR
 EAR = ("wav2vec2-base-960h", "int8")
 
 
-def _prepared(ranges_sec, pieces=None):
-    ranges = [(int(s * TARGET_SR), int(e * TARGET_SR)) for s, e in ranges_sec]
+def _samples(ranges_sec):
+    return [(int(s * TARGET_SR), int(e * TARGET_SR)) for s, e in ranges_sec]
+
+
+def _prepared(ranges_sec, pieces=None, windows_sec=None):
+    ranges = _samples(ranges_sec)
+    windows = _samples(windows_sec) if windows_sec else ranges
     duration = max(e for _s, e in ranges_sec)
     return routes._PreparedAudio(
         waveform=None,
         ranges=ranges,
-        pieces=pieces or [None] * len(ranges),
+        windows=windows,
+        speech=[],
+        pieces=pieces or [np.zeros(end - start, dtype=np.float32) for start, end in windows],
         duration=duration,
     )
 
@@ -188,3 +198,144 @@ def test_aligned_words_are_not_retimed(monkeypatch):
         prepared, [_result(*LATE_AND_EARLY)], align=True, aligner_choice=EAR, retime_words=True
     )
     assert [(w["start"], w["end"]) for w in words] == [(0.25 + i, 0.5 + i) for i in range(4)]
+
+
+def _timed(words):
+    return [(w["word"], round(w["start"], 3)) for w in words]
+
+
+def test_each_piece_keeps_only_the_words_starting_in_its_own_range():
+    # Two pieces cut at 10 s, each decoding 3 s of the other (plan_chunks).
+    # The first hears the second's "Now, comrades" and makes up an "and" as its
+    # input ends; the second hears the first's "there." (times from 7 s).
+    first = _result(
+        [" Hello", " there", ".", " Now", ",", " comrades", " and"],
+        [1.0, 9.0, 9.3, 11.0, 11.3, 11.6, 12.8],
+    )
+    second = _result([" there", ".", " Now", ",", " comrades", "."], [2.0, 2.3, 4.0, 4.3, 4.6, 5.2])
+    text, segments, words = routes._stitch(
+        _prepared([(0.0, 10.0), (10.0, 20.0)], windows_sec=[(0.0, 13.0), (7.0, 20.0)]), [first, second]
+    )
+    assert text == "Hello there. Now, comrades."
+    assert [s["segment"] for s in segments] == ["Hello there.", "Now, comrades."]
+    assert _timed(words) == [("Hello", 1.0), ("there.", 9.0), ("Now,", 11.0), ("comrades.", 11.6)]
+    assert round(segments[1]["start"], 3) == 11.0
+
+
+def test_trimmed_text_is_rebuilt_as_onnx_asr_joins_it():
+    # "So" is in the context before the range; the lone marker before "£" stays with its word
+    result = SimpleNamespace(
+        text="So it was£1.10.",
+        tokens=[" So", " it", " was", " ", "£", "1", ".", "1", "0", "."],
+        timestamps=[0.2, 2.5, 2.8, 3.0, 3.0, 3.1, 3.2, 3.3, 3.4, 3.5],
+    )
+    text, _segments, words = routes._stitch(_prepared([(2.0, 6.0)], windows_sec=[(0.0, 6.0)]), [result])
+    assert text == "it was £1.10."
+    assert _timed(words) == [("it", 2.5), ("was", 2.8), ("£1.10.", 3.0)]
+
+
+def test_aligner_hears_the_ranges_own_audio_not_its_context(monkeypatch):
+    wav = np.arange(20 * TARGET_SR, dtype=np.float32)
+    windows = [(0.0, 13.0), (7.0, 20.0)]
+    pieces = [wav[start:end] for start, end in _samples(windows)]
+    calls = []
+    monkeypatch.setattr(routes.aligner, "for_chunk", lambda wav, *_: _FakeChunk(wav, calls))
+    _text, _segments, words = routes._stitch(
+        _prepared([(0.0, 10.0), (10.0, 20.0)], pieces=pieces, windows_sec=windows),
+        [_result([" one"], [5.0]), _result([" two"], [4.0])],
+        align=True, aligner_choice=EAR)
+    assert [(heard[0], heard.size) for heard, _words in calls] == [(0, 10 * TARGET_SR), (10 * TARGET_SR, 10 * TARGET_SR)]
+    assert _timed(words) == [("one", 0.25), ("two", 10.25)]
+
+
+def _wav_bytes(wav):
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(TARGET_SR)
+        out.writeframes((wav * 32767).astype("<i2").tobytes())
+    return buffer.getvalue()
+
+
+def test_long_audio_decodes_each_range_with_its_context():
+    # 200 s of 3.5 s tones and 0.5 s pauses: cut in pauses, about every 60 s
+    tone = 0.3 * np.sin(2 * np.pi * 220 * np.arange(int(3.5 * TARGET_SR)) / TARGET_SR)
+    wav = np.tile(np.concatenate([tone, np.zeros(TARGET_SR // 2)]), 50).astype(np.float32)
+    prepared = routes._prepare_audio(_wav_bytes(wav), 60.0, 75.0, 20.0, 5.0)
+    assert len(prepared.ranges) > 2 and prepared.speech
+    assert all(end - start <= 65 * TARGET_SR for start, end in prepared.ranges)
+    assert [piece.size for piece in prepared.pieces] == [end - start for start, end in prepared.windows]
+    quiet = TARGET_SR // 100
+    for (start, end), (window_start, window_end) in zip(prepared.ranges[:-1], prepared.windows[:-1]):
+        assert window_start <= start and window_end >= end + 5 * TARGET_SR
+        assert window_end - window_start <= 75 * TARGET_SR
+        assert not wav[window_end - quiet : window_end + quiet].any()  # in a pause
+    for window_start, _window_end in prepared.windows[1:]:
+        assert not wav[window_start - quiet : window_start + quiet].any()
+
+
+class _Redo:
+    """A worker that answers each piece with the next of `answers`, noting the pieces."""
+
+    def __init__(self, answers):
+        self.answers, self.pieces = list(answers), []
+
+    async def submit_many(self, pieces, _model_key):
+        self.pieces += pieces
+        return [self.answers.pop(0) for _piece in pieces]
+
+
+def _request(worker):
+    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(worker=worker, ready=True)))
+
+
+def _words(count, first, step=1.0):
+    return _result([f" w{i}" for i in range(count)], [first + step * i for i in range(count)])
+
+
+def _two_pieces(pieces=None):
+    """Cut at 10 s, each piece decoding 3 s of the other."""
+    windows = [(0.0, 13.0), (7.0, 20.0)]
+    return _prepared([(0.0, 10.0), (10.0, 20.0)], pieces=pieces, windows_sec=windows)
+
+
+@pytest.mark.asyncio
+async def test_a_piece_that_stops_short_is_decoded_again_without_context():
+    wav = np.arange(20 * TARGET_SR, dtype=np.float32)
+    prepared = _two_pieces([wav[a:b] for a, b in _samples([(0.0, 13.0), (7.0, 20.0)])])
+    prepared.speech = _samples([(0.0, 20.0)])  # speech throughout
+    stopped = _result([" One", " two"], [0.5, 1.0])  # nothing after 1 s: 8.7 s of its speech unheard
+    whole = _words(10, 3.0)  # a word a second, from 10 s
+    again = _result([" One", " two", " three"], [0.5, 1.0, 9.0])
+    worker = _Redo([again])
+    results = await routes._redo_stalled(_request(worker), [prepared], [stopped, whole], "parakeet-v3:fp32")
+    assert results == [again, whole]
+    assert [(piece[0], piece.size) for piece in worker.pieces] == [(0, 10 * TARGET_SR)]
+    assert prepared.windows == _samples([(0.0, 10.0), (7.0, 20.0)])
+    assert prepared.pieces[0].size == 10 * TARGET_SR
+    text, _segments, _words_ = routes._stitch(prepared, results)
+    assert text == "One two three " + " ".join(f"w{i}" for i in range(10))
+
+
+@pytest.mark.asyncio
+async def test_a_piece_that_skips_speech_mid_way_is_decoded_again():
+    # Its last word is at its range's end, but 11.3-18 s of speech has none
+    prepared = _two_pieces()
+    prepared.speech = _samples([(0.0, 20.0)])
+    skipping = _result([" a", " b", " c", " x", " y", " z"], [3.0, 3.5, 4.0, 11.0, 11.5, 12.5])
+    again = _words(10, 0.0)
+    worker = _Redo([again])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_words(10, 0.5), skipping], "parakeet-v3:fp32")
+    assert results[1] is again and len(worker.pieces) == 1
+    assert prepared.windows == _samples([(0.0, 13.0), (10.0, 20.0)])
+
+
+@pytest.mark.asyncio
+async def test_no_piece_is_decoded_again_when_the_rest_is_silence():
+    prepared = _two_pieces()
+    prepared.speech = _samples([(0.0, 1.5), (10.5, 19.0)])  # quiet from 1.5 s to the cut
+    results = [_result([" One", " two"], [0.5, 1.0]), _words(9, 3.5)]
+    worker = _Redo([])
+    assert await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:fp32") == results
+    assert worker.pieces == [] and prepared.windows == _samples([(0.0, 13.0), (7.0, 20.0)])

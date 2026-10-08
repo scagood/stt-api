@@ -512,7 +512,8 @@ def test_speak_numbers_returns_none_when_nothing_changes():
 
 def _prepared():
     return routes._PreparedAudio(
-        waveform=None, ranges=[(0, 3 * TARGET_SR)], pieces=["chunk"], duration=3.0
+        waveform=None, ranges=[(0, 3 * TARGET_SR)], windows=[(0, 3 * TARGET_SR)], speech=[], pieces=["chunk"],
+        duration=3.0,
     )
 
 

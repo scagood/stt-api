@@ -39,7 +39,8 @@ class _Worker:
 
 def _prepared(raw, *_bounds):
     return routes._PreparedAudio(
-        waveform=None, ranges=[(0, 2 * TARGET_SR)], pieces=[raw.decode()], duration=2.0
+        waveform=None, ranges=[(0, 2 * TARGET_SR)], windows=[(0, 2 * TARGET_SR)], speech=[],
+        pieces=[raw.decode()], duration=2.0,
     )
 
 
@@ -508,6 +509,31 @@ async def test_without_an_aligner_spoken_numbers_never_queue_to_hear(calls, stit
     assert (await _transcribe(response_format="json", text=text))["text"] == "That'll be two pounds ten please."
     assert await _batch(text) == ["That'll be two pounds ten please."]
     assert calls == [] and stitched == ["audio", "audio"]
+
+
+@pytest.mark.asyncio
+async def test_a_number_only_in_the_context_does_not_queue_to_hear_it(calls, stitched):
+    # "£2.10" starts past the range's end (2 s): the next piece's to keep, and to hear
+    prepared = routes._PreparedAudio(
+        waveform=None, ranges=[(0, 2 * TARGET_SR)], windows=[(0, 4 * TARGET_SR)], speech=[],
+        pieces=["piece"], duration=4.0,
+    )
+    result = SimpleNamespace(
+        text="Hello. That'll be £2.10",
+        tokens=[" Hello", ".", " That", "'ll", " be", " ", "£", "2", ".", "1", "0"],
+        timestamps=[0.2, 0.5, 2.5, 2.7, 2.9, 3.1, 3.1, 3.2, 3.3, 3.4, 3.5],
+    )
+    state = _state()
+    try:
+        text, _segments, _words = await routes._stitch_request(
+            SimpleNamespace(app=SimpleNamespace(state=state)), prepared, [result],
+            speak=True, language="en", aligner_choice=(BASE, "int8"),
+        )
+    finally:
+        state.audio_pool.shutdown()
+        state.align_pool.shutdown()
+    assert text == "Hello."
+    assert stitched == ["audio"] and calls == []
 
 
 @pytest.mark.asyncio

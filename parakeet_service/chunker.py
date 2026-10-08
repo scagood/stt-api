@@ -1,9 +1,10 @@
 """Pause-aware audio chunking with strict size invariants."""
 from __future__ import annotations
 
+import bisect
 import logging
 import threading
-from typing import List, Tuple
+from typing import List, NamedTuple, Tuple
 
 from .config import (
     CHUNK_MIN_SEC,
@@ -168,33 +169,45 @@ def _split_oversized(start: int, end: int, target: int, maximum: int) -> List[Ra
     return parts
 
 
-def auto_chunk(
+class Plan(NamedTuple):
+    ranges: List[Range]  # where each piece's words come from
+    windows: List[Range]  # the audio each piece decodes: its range and context
+    speech: List[Range]  # what VAD heard as speech; nothing for a clip it skipped
+
+
+def plan_chunks(
     wav: np.ndarray,
     *,
     target_sec: float,
     max_sec: float,
     min_sec: float = CHUNK_MIN_SEC,
-) -> List[Range]:
-    """Return ordered, non-empty, bounded ranges in the original waveform.
+    context_sec: float = 0.0,
+) -> Plan:
+    """Ordered, non-empty, bounded ranges in the original waveform, and the
+    window of audio to decode for each (_windows).
 
     Short clips bypass VAD. Long clips with no detected speech return no ranges,
     allowing the API to skip expensive ASR inference for silence.
 
-    Bounds are the model's own (models.yaml).
+    Bounds are the model's own (models.yaml). A long clip's ranges leave room
+    for `context_sec` more on either side within max_sec.
     """
     total = int(wav.size)
     if total <= 0:
-        return []
+        return Plan([], [], [])
 
     target = max(1, int(target_sec * TARGET_SR))
     maximum = max(target, int(max_sec * TARGET_SR))
-    minimum = max(0, int(min_sec * TARGET_SR))
     if total <= maximum:
-        return [(0, total)]
+        return Plan([(0, total)], [(0, total)], [])
+    context = int(context_sec * TARGET_SR)
+    own_maximum = max(1, maximum - 2 * context)
+    target = min(target, own_maximum)
+    minimum = min(target, max(0, int(min_sec * TARGET_SR)))
 
     segments = _normalize_segments(_speech_segments(wav), total)
     if not segments:
-        return []
+        return Plan([], [], [])
 
     trim_gap = max(1, int(CHUNK_TRIM_SILENCE_SEC * TARGET_SR))
     packed: List[Range] = []
@@ -230,14 +243,92 @@ def auto_chunk(
 
     output: List[Range] = []
     for start, end in packed:
-        output.extend(_split_oversized(start, end, target, maximum))
+        output.extend(_split_oversized(start, end, target, own_maximum))
 
     # Defensive invariant filter: malformed VAD output must never reach ORT.
-    return [
+    ranges = [
         (start, end)
         for start, end in output
-        if 0 <= start < end <= total and end - start <= maximum
+        if 0 <= start < end <= total and end - start <= own_maximum
     ]
+    return Plan(ranges, _windows(ranges, segments, context, maximum), segments)
+
+
+def auto_chunk(
+    wav: np.ndarray,
+    *,
+    target_sec: float,
+    max_sec: float,
+    min_sec: float = CHUNK_MIN_SEC,
+    context_sec: float = 0.0,
+) -> List[Range]:
+    """plan_chunks' ranges alone."""
+    return plan_chunks(
+        wav, target_sec=target_sec, max_sec=max_sec, min_sec=min_sec, context_sec=context_sec
+    ).ranges
+
+
+def _windows(ranges: List[Range], speech: List[Range], context: int, maximum: int) -> List[Range]:
+    """The audio to decode for each range: `context` samples more on each side
+    where it meets the next range (a cut in a pause, or one by length in long
+    speech), taken from that range, and at most `maximum` samples in all.
+    Never past the neighbour's far end, nor into a long silence cut out
+    between two ranges.
+
+    A window that ends inside speech can make Parakeet stop early and drop
+    the rest of it, tens of seconds of words; one that starts inside speech
+    can make it skip a stretch in the middle (#69). So each edge that meets
+    a neighbour goes in a pause beyond the cut, with speech between them:
+    the nearest pause at least `context` from the cut, else the farthest that
+    fits. Only when none fits is it `context` from the cut. The start may
+    take half the room `maximum` leaves around the range, or all of it when
+    the end meets no neighbour; the end has the rest.
+    """
+    if context <= 0:
+        return list(ranges)
+    # Each pause between two VAD segments: where the speech before it ends,
+    # where the speech after it starts, and its middle, where a window edge
+    # goes (as plan_chunks cuts).
+    befores = [left[1] for left in speech[:-1]]
+    afters = [right[0] for right in speech[1:]]
+    middles = [(left[1] + right[0]) // 2 for left, right in zip(speech, speech[1:])]
+    windows: List[Range] = []
+    for index, (start, end) in enumerate(ranges):
+        window_start, window_end = start, end
+        meets_next = index + 1 < len(ranges) and ranges[index + 1][0] == end
+        if index and ranges[index - 1][1] == start:
+            previous_start = ranges[index - 1][0]
+            room = maximum - (end - start)
+            low = max(previous_start, start - (room // 2 if meets_next else room))
+            pauses = []  # nearest the cut first
+            pause = bisect.bisect_left(afters, start) - 1  # speech between it and the cut
+            while pause >= 0 and middles[pause] >= low:
+                pauses.append(middles[pause])
+                pause -= 1
+            joined = index > 1 and ranges[index - 2][1] == previous_start
+            if not joined and previous_start >= low:
+                pauses.append(previous_start)  # after a long silence, or the start of the audio
+            window_start = next(
+                (at for at in pauses if at <= start - context),
+                pauses[-1] if pauses else max(low, start - context),
+            )
+        if meets_next:
+            following_end = ranges[index + 1][1]
+            high = min(following_end, window_start + maximum)
+            pauses = []  # nearest the cut first
+            pause = bisect.bisect_right(befores, end)  # speech between it and the cut
+            while pause < len(middles) and middles[pause] <= high:
+                pauses.append(middles[pause])
+                pause += 1
+            joined = index + 2 < len(ranges) and ranges[index + 2][0] == following_end
+            if not joined and following_end <= high:
+                pauses.append(following_end)  # before a long silence, or the end of the audio
+            window_end = next(
+                (at for at in pauses if at >= end + context),
+                pauses[-1] if pauses else min(high, end + context),
+            )
+        windows.append((window_start, window_end))
+    return windows
 
 
 def slice_chunks(wav: np.ndarray, ranges: List[Range]) -> List[np.ndarray]:

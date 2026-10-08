@@ -79,9 +79,16 @@ so switch those when the server upgrades.
   it scored 1.13 / 1.07 / 1.20% WER (fp32 / fp16 / int8), against 1.20 / 1.20 /
   1.83% for 1.5.0. If you compare against stored transcripts or golden files,
   expect small differences.
-- **Long `parakeet-v2` audio no longer loses speech.** v2 is now chunked at
-  25–30 s, not 60–75 s. At the longer length it silently dropped whole
-  sentences, so long v2 transcripts will gain words.
+- **Long `parakeet-v2` audio no longer loses speech.** v2 now decodes long
+  audio at most 30 s at a time, not 60–75 s. At the longer length it silently
+  dropped whole sentences, so long v2 transcripts will gain words.
+- **Long Parakeet audio no longer gains words where it is cut.** About one cut
+  in five gained a made-up `and`, `the` or `I`, because Parakeet invents a
+  word when its input ends just after speech. Each chunk now decodes about 5 s
+  of its neighbours' audio either side, from and to a pause, and keeps only
+  its own words (`PARAKEET_CHUNK_CONTEXT_SEC`). Long transcripts change a
+  little and take a little longer: up to 1.25× the audio is decoded on
+  `parakeet-v3`, 1.5× on `parakeet-v2`, whose chunks are now 20 s.
 - **Numbers keep their word break.** Text read `in2005.` or `was£1.10`. It now
   reads `in 2005.` and `was £1.10`, and word timestamps list the number as its
   own word.
@@ -205,6 +212,7 @@ ran it.
 | — | `PARAKEET_SPOKEN_NUMBERS`: the answer for requests that don't send `spoken_numbers`. Defaults to `false`. There is no server-wide switch for alignment: a request names its `aligner`. |
 | — | `PARAKEET_RETIME_WORDS`: the answer for requests that don't send `retime_words`. Defaults to `false`. See [Word timestamps](README.md#word-timestamps). |
 | — | `PARAKEET_VAD`: how long audio finds its pauses. **The default is now `volume`**, frames quieter than a gate, 30x faster or more than Silero-VAD, which 1.5.0 always used; long audio is cut in slightly different places, so transcripts can differ a little. `PARAKEET_VAD=silero` brings Silero back. `PARAKEET_VAD_GATE_DB` fixes `volume`'s gate in dBFS. See [Configuration](README.md#configuration). |
+| — | `PARAKEET_CHUNK_CONTEXT_SEC` (`5`): how much of its neighbours' audio each chunk of long Parakeet audio decodes either side; `0` cuts with no overlap, as 1.5.0 did. See [Configuration](README.md#configuration). |
 | — | `PARAKEET_ALIGN_DEFAULT_LANGUAGE` (`en`), `PARAKEET_ALIGN_THREADS` (`min(4, physical cores)`): see [Word timestamps](README.md#word-timestamps). |
 | — | `PARAKEET_COMPARE_UI`: serve `GET /compare`, a page for comparing models and aligners by ear. Defaults to `false`. Each row it runs is a full transcription and loads whatever model or aligner it names, so leave it off on shared hosts. See [the compare page](README.md#comparing-models-and-aligners-by-ear). |
 

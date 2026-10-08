@@ -81,6 +81,82 @@ def test_bounds_override_caps_chunks(monkeypatch):
     assert ranges[-1][1] == total
 
 
+def test_short_audio_is_one_piece_whatever_the_context():
+    waveform = np.zeros(int(MAX_SEC * chunker.TARGET_SR))
+    assert chunker.auto_chunk(waveform, **BOUNDS, context_sec=5.0) == [(0, waveform.size)]
+
+
+def test_ranges_and_their_windows_fit_the_chunk(monkeypatch):
+    sr = chunker.TARGET_SR
+    total = int(MAX_SEC * 4 * sr)
+    phrases = [(start, start + int(3.5 * sr)) for start in range(0, total, 4 * sr)]  # 0.5 s pauses
+    for speech in (phrases, [(0, total)]):  # cut in pauses, or by length
+        monkeypatch.setattr(chunker, "_speech_segments", lambda _wav, speech=speech: speech)
+        ranges, windows, heard = chunker.plan_chunks(np.ones(total, dtype=np.float32), **BOUNDS, context_sec=5.0)
+        assert heard == speech
+        _assert_valid(ranges, total, int((MAX_SEC - 10) * sr))
+        assert max(end - start for start, end in ranges) >= 59 * sr  # the 60 s target still fits
+        assert all(left[1] == right[0] for left, right in zip(ranges, ranges[1:]))
+        assert windows[0][0] == 0 and windows[-1][1] == total
+        for (start, end), (window_start, window_end) in zip(ranges, windows):
+            assert window_start <= start < end <= window_end
+            assert window_end - window_start <= MAX_SEC * sr
+        for (_start, cut), (_window_start, window_end) in zip(ranges[:-1], windows[:-1]):
+            if speech is phrases:  # mid-way through the first pause 5 s or more past the cut
+                assert window_end % (4 * sr) == int(3.75 * sr) and 5 * sr <= window_end - cut < 9 * sr
+            else:  # no pause to end in: 5 s past the cut
+                assert window_end == cut + 5 * sr
+        for (cut, _end), (window_start, _window_end) in zip(ranges[1:], windows[1:]):
+            if speech is phrases:  # mid-way through a pause before the cut, as far back as fits
+                assert window_start % (4 * sr) == int(3.75 * sr) and cut - window_start >= 4 * sr
+            else:  # no pause to start in: 5 s before the cut
+                assert window_start == cut - 5 * sr
+
+
+def _at(*seconds):
+    return tuple(int(second * SR) for second in seconds)
+
+
+@pytest.mark.parametrize(
+    ("speech", "maximum", "first"),
+    [
+        # pauses mid-way at 12.25 s and 14.3 s: the first 3 s or more past the cut at 10 s
+        ([(0, 9.5), (10.5, 12), (12.5, 14), (14.6, 20)], 15, (0, 14.3)),
+        # only the 12.25 s pause fits in 13.5 s: less context, still ending in a pause
+        ([(0, 9.5), (10.5, 12), (12.5, 14), (14.6, 20)], 13.5, (0, 12.25)),
+        # no pause past the cut: 3 s past it, inside the speech
+        ([(0, 9.5), (10.5, 20)], 15, (0, 13)),
+    ],
+)
+def test_windows_end_in_a_pause_past_the_cut(speech, maximum, first):
+    ranges = [_at(0, 10), _at(10, 20)]
+    windows = chunker._windows(ranges, [_at(*span) for span in speech], _at(3)[0], _at(maximum)[0])
+    assert windows == [_at(*first), _at(7, 20)]
+
+
+def test_windows_start_in_a_pause_before_the_cut():
+    # pauses mid-way at 5.25 s and 7.7 s, before the cut at 10 s
+    ranges = [_at(0, 10), _at(10, 20)]
+    speech = [_at(0, 5), _at(5.5, 7.5), _at(7.9, 9.5), _at(10.5, 20)]
+    # the nearest 3 s or more before the cut
+    assert chunker._windows(ranges, speech, _at(3)[0], _at(30)[0])[1] == _at(5.25, 20)
+    # only 7.7 s fits in 14 s: the farthest that does
+    assert chunker._windows(ranges, speech, _at(3)[0], _at(14)[0])[1] == _at(7.7, 20)
+    # no pause before the cut: 3 s before it, inside the speech
+    assert chunker._windows(ranges, [_at(0, 9.5), _at(10.5, 20)], _at(3)[0], _at(14)[0])[1] == _at(7, 20)
+
+
+def test_context_stays_out_of_long_silences():
+    # cuts at 10 s and 40 s; 12-30 s is a long silence, cut out. The audio's
+    # start and the long silence's end count as pauses to start in.
+    ranges = [_at(0, 10), _at(10, 12), _at(30, 40), _at(40, 42)]
+    speech = [_at(0, 9.5), _at(10.5, 12), _at(30, 39.5), _at(40.5, 42)]
+    assert chunker._windows(ranges, speech, _at(3)[0], _at(75)[0]) == [
+        _at(0, 12), _at(0, 12), _at(30, 42), _at(30, 42)
+    ]
+    assert chunker._windows(ranges, speech, 0, _at(75)[0]) == ranges
+
+
 def test_slice_chunks_returns_views():
     waveform = np.arange(20, dtype=np.float32)
     pieces = chunker.slice_chunks(waveform, [(2, 8), (8, 12)])
