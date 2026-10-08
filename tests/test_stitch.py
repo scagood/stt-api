@@ -287,7 +287,8 @@ class _Redo:
 
 
 def _request(worker):
-    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(worker=worker, ready=True)))
+    state = SimpleNamespace(worker=worker, ready=True, audio_pool=None)  # None: asyncio's own pool
+    return SimpleNamespace(app=SimpleNamespace(state=state))
 
 
 def _words(count, first, step=1.0):
@@ -307,7 +308,7 @@ async def test_a_piece_that_stops_short_is_decoded_again_without_context():
     prepared.speech = _samples([(0.0, 20.0)])  # speech throughout
     stopped = _result([" One", " two"], [0.5, 1.0])  # nothing after 1 s: 8.7 s of its speech unheard
     whole = _words(10, 3.0)  # a word a second, from 10 s
-    again = _result([" One", " two", " three"], [0.5, 1.0, 9.0])
+    again = _result([" One", " two", " three", " four"], [0.5, 1.0, 5.0, 9.0])
     worker = _Redo([again])
     results = await routes._redo_stalled(_request(worker), [prepared], [stopped, whole], "parakeet-v3:fp32")
     assert results == [again, whole]
@@ -315,7 +316,28 @@ async def test_a_piece_that_stops_short_is_decoded_again_without_context():
     assert prepared.windows == _samples([(0.0, 10.0), (7.0, 20.0)])
     assert prepared.pieces[0].size == 10 * TARGET_SR
     text, _segments, _words_ = routes._stitch(prepared, results)
-    assert text == "One two three " + " ".join(f"w{i}" for i in range(10))
+    assert text == "One two three four " + " ".join(f"w{i}" for i in range(10))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "again",
+    [
+        _result([" One", " two"], [0.5, 1.0]),  # music, laughter or noise: no words to find
+        _result([" One", " two", " and"], [0.5, 1.0, 9.6]),  # a word made up as the input ends (#68)
+    ],
+)
+async def test_a_redo_that_hears_no_more_words_is_dropped(again):
+    wav = np.arange(20 * TARGET_SR, dtype=np.float32)
+    prepared = _two_pieces([wav[a:b] for a, b in _samples([(0.0, 13.0), (7.0, 20.0)])])
+    prepared.speech = _samples([(0.0, 20.0)])  # VAD called it all speech
+    stopped = _result([" One", " two"], [0.5, 1.0])
+    results = [stopped, _words(10, 3.0)]
+    worker = _Redo([again])
+    assert await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:fp32") == results
+    assert len(worker.pieces) == 1  # decoded again, and the first decode kept
+    assert prepared.windows == _samples([(0.0, 13.0), (7.0, 20.0)])
+    assert prepared.pieces[0].size == 13 * TARGET_SR
 
 
 @pytest.mark.asyncio

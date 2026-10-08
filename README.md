@@ -491,12 +491,14 @@ or ends inside speech can make Parakeet skip or drop tens of seconds of words:
 the nearest pause at least `PARAKEET_CHUNK_CONTEXT_SEC` from the cut, else the
 farthest that fits, or, with none, `PARAKEET_CHUNK_CONTEXT_SEC` from the cut.
 A chunk that still skips 3 s or more of speech in its own range is decoded
-again without context. All of it fits inside the model's `chunk_max_sec`, so a
-chunk's own range is shorter by twice the context: `parakeet-v3` still cuts at
-about 60 s (at most 65 s), `parakeet-v2` at 20 s instead of 25 s. That decodes
-up to 1.25× the audio on `parakeet-v3` and 1.5× on `parakeet-v2`. Long
-silences are still cut out, with no context across them. Whisper gets no
-context: it returns no word times to trim it back by.
+again without context, and that is kept only if it hears words in what was
+skipped: to VAD, music or noise can be speech. All of it fits inside the
+model's `chunk_max_sec`, so a chunk's own range is shorter by twice the
+context: `parakeet-v3` still cuts at about 60 s (at most 65 s), `parakeet-v2`
+at 20 s instead of 25 s. That decodes up to 1.25× the audio on `parakeet-v3`
+and 1.5× on `parakeet-v2`. Long silences are still cut out, with no context
+across them. Whisper gets no context: it returns no word times to trim it back
+by.
 
 **Finding pauses.** By default a pause is any stretch of 20 ms frames quieter
 than the gate, which takes under 0.3 ms of CPU per second of audio.

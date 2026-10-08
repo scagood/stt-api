@@ -537,6 +537,38 @@ async def test_a_number_only_in_the_context_does_not_queue_to_hear_it(calls, sti
 
 
 @pytest.mark.asyncio
+async def test_long_audio_is_never_scanned_or_joined_on_the_event_loop(stitched, monkeypatch):
+    # Hours of audio are thousands of tokens: finding skipped speech, trimming
+    # and joining them run on the audio pool, even for plain text.
+    threads = []
+    stalled = routes._stalled
+
+    def recording(*args):
+        threads.append(_pool(threading.current_thread().name))
+        return stalled(*args)
+
+    monkeypatch.setattr(routes, "_stalled", recording)
+    prepared = routes._PreparedAudio(
+        waveform=None, ranges=[(0, 2 * TARGET_SR), (2 * TARGET_SR, 4 * TARGET_SR)],
+        windows=[(0, 3 * TARGET_SR), (TARGET_SR, 4 * TARGET_SR)], speech=[], pieces=["one", "two"], duration=4.0,
+    )
+    results = [
+        SimpleNamespace(text="hello world", tokens=[" hello", " world"], timestamps=[0.5, 2.5]),
+        SimpleNamespace(text="hello world", tokens=[" hello", " world"], timestamps=[0.5, 1.5]),
+    ]
+    state = _state()
+    request = SimpleNamespace(app=SimpleNamespace(state=state))
+    try:
+        results = await routes._redo_stalled(request, [prepared], results, "parakeet-v3:fp32")
+        text, _segments, _words = await routes._stitch_request(request, prepared, results)
+    finally:
+        state.audio_pool.shutdown()
+        state.align_pool.shutdown()
+    assert text == "hello world"
+    assert threads == ["audio"] and stitched == ["audio"]
+
+
+@pytest.mark.asyncio
 async def test_numbers_are_never_read_on_the_event_loop(calls, speak, monkeypatch):
     # Reading every number's readings back through number_parse is CPU work
     # (seconds for a long request of codes): deciding and saying both run off the loop.
