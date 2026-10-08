@@ -8,6 +8,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -15,9 +16,10 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 
 from . import aligner, retime, spoken
 from .audio import load_audio
-from .chunker import auto_chunk, slice_chunks
+from .chunker import auto_chunk, slice_chunks, with_context
 from .config import (
     ALIGNER_CONFIGS,
+    CHUNK_CONTEXT_SEC,
     CHUNK_MIN_SEC,
     COMPARE_UI,
     CPU_INFO,
@@ -63,8 +65,9 @@ _WORD_TAIL_SEC = 0.32
 @dataclass(slots=True)
 class _PreparedAudio:
     waveform: Any
-    ranges: List[Tuple[int, int]]
-    pieces: List[Any]
+    ranges: List[Tuple[int, int]]  # where each piece's words come from
+    windows: List[Tuple[int, int]]  # what each piece decodes: its range and context
+    pieces: List[Any]  # the windows' audio
     duration: float
 
 
@@ -187,11 +190,14 @@ def _family(model_name: str) -> str:
     return MODEL_CONFIGS[model_name]["family"]
 
 
-def _chunk_bounds(model_name: str) -> Tuple[float, float, float]:
-    """(target, max, min) seconds for chunking this model (models.yaml)."""
+def _chunk_bounds(model_name: str) -> Tuple[float, float, float, float]:
+    """(target, max, min, context) seconds for chunking this model (models.yaml).
+    Context (PARAKEET_CHUNK_CONTEXT_SEC) is Parakeet's only: Whisper returns no
+    word times to trim it back out by."""
     config = MODEL_CONFIGS[model_name]
-    target = config["chunk_target_sec"]
-    return target, config["chunk_max_sec"], min(CHUNK_MIN_SEC, target)
+    target, maximum = config["chunk_target_sec"], config["chunk_max_sec"]
+    context = min(CHUNK_CONTEXT_SEC, maximum / 4) if config["family"] == "parakeet" else 0.0
+    return target, maximum, min(CHUNK_MIN_SEC, target), context
 
 
 def _validate_format(response_format: str) -> str:
@@ -239,6 +245,7 @@ def _prepare_audio(
     target_sec: float,
     max_sec: float,
     min_sec: float,
+    context_sec: float = 0.0,
 ) -> _PreparedAudio:
     waveform = load_audio(raw)
     duration = float(waveform.size) / TARGET_SR
@@ -248,8 +255,11 @@ def _prepare_audio(
         raise _AudioTooLong(
             f"audio duration {duration:.1f}s exceeds limit {MAX_AUDIO_SECONDS:.1f}s"
         )
-    ranges = auto_chunk(waveform, target_sec=target_sec, max_sec=max_sec, min_sec=min_sec)
-    pieces = slice_chunks(waveform, ranges)
+    ranges = auto_chunk(
+        waveform, target_sec=target_sec, max_sec=max_sec, min_sec=min_sec, context_sec=context_sec
+    )
+    windows = with_context(ranges, context_sec)
+    pieces = slice_chunks(waveform, windows)
     if len(pieces) > MAX_REQUEST_CHUNKS:
         raise _AudioTooLong(
             f"audio produced {len(pieces)} chunks; limit is {MAX_REQUEST_CHUNKS}"
@@ -257,6 +267,7 @@ def _prepare_audio(
     return _PreparedAudio(
         waveform=waveform,
         ranges=ranges,
+        windows=windows,
         pieces=pieces,
         duration=duration,
     )
@@ -268,6 +279,7 @@ async def _prepare_in_pool(
     target_sec: float,
     max_sec: float,
     min_sec: float,
+    context_sec: float = 0.0,
 ) -> _PreparedAudio:
     loop = asyncio.get_running_loop()
     try:
@@ -278,6 +290,7 @@ async def _prepare_in_pool(
             target_sec,
             max_sec,
             min_sec,
+            context_sec,
         )
     except _AudioTooLong as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
@@ -436,29 +449,74 @@ def _spread(parts: List[str], start: float, end: float) -> List[Dict[str, Any]]:
     return out
 
 
-def _group_words(info: Dict[str, Any]) -> List[Tuple[str, float, float]]:
-    """One chunk's BPE pieces (from _extract) as (word, first_ts, last_ts).
+def _word_spans(tokens: Sequence[str]) -> List[Tuple[str, int, int]]:
+    """A result's BPE pieces as (word, first, last): the indices of the pieces
+    each word starts and ends with.
 
     A piece starting with the word marker ("\u2581" or a plain space, depending
     on export) opens a new word. Parakeet emits the marker as a token of its
     own before digits and currency signs (" was", " ", "\u00a3", "1"...): it
     opens the next piece's word.
     """
-    grouped: List[Tuple[str, float, float]] = []
+    spans: List[Tuple[str, int, int]] = []
     pending_break = False
-    for token, timestamp in zip(info["tokens"], info["timestamps"]):
+    for index, token in enumerate(tokens):
         piece = token.replace("\u2581", " ")
         starts_word = pending_break or piece.startswith(" ")
         piece = piece.strip()
         pending_break = starts_word and not piece
         if not piece:
             continue
-        if grouped and not starts_word:
-            word, first_ts, _last_ts = grouped[-1]
-            grouped[-1] = (word + piece, first_ts, timestamp)
+        if spans and not starts_word:
+            word, first, _last = spans[-1]
+            spans[-1] = (word + piece, first, index)
         else:
-            grouped.append((piece, timestamp, timestamp))
-    return grouped
+            spans.append((piece, index, index))
+    return spans
+
+
+def _group_words(info: Dict[str, Any]) -> List[Tuple[str, float, float]]:
+    """One chunk's BPE pieces (from _extract) as (word, first_ts, last_ts)."""
+    timestamps = info["timestamps"]
+    return [(word, timestamps[first], timestamps[last]) for word, first, last in _word_spans(info["tokens"])]
+
+
+# How onnx_asr joins a result's tokens into its text: the leading space, and
+# any space before a non-word character, go.
+_DECODE_SPACE = re.compile(r"\A\s|\s\B|(\s)\b")
+
+
+def _trimmed(prepared: _PreparedAudio, results: Sequence[Any]) -> List[Any]:
+    """Each piece's result cut back to its own range: the words that start in
+    it, timed from its start, with its text rebuilt from their tokens as
+    onnx_asr builds it. The context either side (with_context) is decoded only
+    so that the piece's edge words are not ones Parakeet makes up as its input
+    ends (#68); the words in it are the neighbours'. A piece decoded without
+    context comes back as it was."""
+    out: List[Any] = []
+    for (start, end), (window_start, window_end), result in zip(prepared.ranges, prepared.windows, results):
+        info = None if (start, end) == (window_start, window_end) else _extract(result)
+        if not (info and info["tokens"]):
+            out.append(result)  # Whisper (no tokens) never gets context: _chunk_bounds
+            continue
+        tokens, timestamps = info["tokens"], info["timestamps"]
+        head = (start - window_start) / TARGET_SR
+        tail = (end - window_start) / TARGET_SR if window_end > end else math.inf
+        kept: List[int] = []
+        previous = -1
+        for _word, first, last in _word_spans(tokens):
+            if head <= timestamps[first] < tail:
+                kept.extend(range(previous + 1, last + 1))  # with the lone markers before it
+            previous = last
+        text = "".join(tokens[index].replace("\u2581", " ") for index in kept)
+        out.append(
+            SimpleNamespace(
+                text=_DECODE_SPACE.sub(lambda match: " " if match.group(1) else "", text),
+                tokens=[tokens[index] for index in kept],
+                timestamps=[max(0.0, timestamps[index] - head) for index in kept],
+            )
+        )
+    return out
 
 
 def _stitch(
@@ -486,6 +544,7 @@ def _stitch(
             f"inference returned {len(results)} results for "
             f"{len(prepared.ranges)} chunks"
         )
+    results = _trimmed(prepared, results)
 
     segments: List[Dict[str, Any]] = []
     words: List[Dict[str, Any]] = []
@@ -494,9 +553,13 @@ def _stitch(
     if retime_words and prepared.waveform is not None:
         gaps = retime.pauses(prepared.waveform)
         gap_ends = [end for _start, end in gaps]
-    for (start_sample, end_sample), chunk_wav, result in zip(
-        prepared.ranges, prepared.pieces, results
+    for (start_sample, end_sample), window, piece, result in zip(
+        prepared.ranges, prepared.windows, prepared.pieces, results
     ):
+        # The aligner hears the range's own audio, as its words were trimmed to.
+        chunk_wav = piece
+        if window != (start_sample, end_sample):
+            chunk_wav = piece[start_sample - window[0] : end_sample - window[0]]
         chunk_start = start_sample / TARGET_SR
         chunk_end = min(prepared.duration, end_sample / TARGET_SR)
         info = _extract(result)
@@ -632,12 +695,14 @@ async def _stitch_request(
     if not (flags.get("align") or says_numbers or flags.get("retime_words")):
         return stitch()
     loop, state = asyncio.get_running_loop(), request.app.state
-    needs = flags.get("align") or says_numbers and await loop.run_in_executor(
-        state.audio_pool,
-        functools.partial(
-            _needs_aligner, results, speak=flags.get("speak", False), aligner_choice=flags.get("aligner_choice")
-        ),
-    )
+
+    def needs_aligner() -> bool:
+        """_needs_aligner over the words _stitch keeps."""
+        return _needs_aligner(
+            _trimmed(prepared, results), speak=flags.get("speak", False), aligner_choice=flags.get("aligner_choice")
+        )
+
+    needs = flags.get("align") or says_numbers and await loop.run_in_executor(state.audio_pool, needs_aligner)
     return await loop.run_in_executor(state.align_pool if needs else state.audio_pool, stitch)
 
 
@@ -1114,7 +1179,7 @@ async def transcribe(
     model_name = _validate_model(model)
     model_key = _variant(model_name, quantization)
     family = _family(model_name)
-    target_sec, max_sec, min_sec = _chunk_bounds(model_name)
+    target_sec, max_sec, min_sec, context_sec = _chunk_bounds(model_name)
     output_format = _validate_format(response_format)
     granularities = set(timestamp_granularities or []) | set(
         timestamp_granularities_plain or []
@@ -1142,7 +1207,7 @@ async def transcribe(
     raw = await _read_upload_limited(file)
 
     started = time.perf_counter()
-    prepared = await _prepare_in_pool(request, raw, target_sec, max_sec, min_sec)
+    prepared = await _prepare_in_pool(request, raw, target_sec, max_sec, min_sec, context_sec)
     decode_ms = (time.perf_counter() - started) * 1000
 
     infer_started = time.perf_counter()
@@ -1225,7 +1290,7 @@ async def transcribe_batch(
     model_name = _validate_model(model)
     model_key = _variant(model_name, quantization)
     choice = _validate_aligner(aligner_name)  # it only hears numbers here
-    target_sec, max_sec, min_sec = _chunk_bounds(model_name)
+    target_sec, max_sec, min_sec, context_sec = _chunk_bounds(model_name)
     filenames = [upload.filename or "unnamed" for upload in files]
 
     raws: List[bytes] = []
@@ -1249,6 +1314,7 @@ async def transcribe_batch(
             target_sec,
             max_sec,
             min_sec,
+            context_sec,
         )
         for raw in raws
     ]

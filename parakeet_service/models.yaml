@@ -44,9 +44,11 @@
 # ["en"] marks an English-only model whose word times the aligner may take.
 # Every entry states the chunk length long audio is cut to: "chunk_target_sec"
 # preferred, "chunk_max_sec" at most (and audio no longer than that is not cut
-# at all). Parakeet v2, fp32 and int8 alike, hears whole stretches of clear
-# speech in a chunk of 45 s or more as silence, which ones depending
-# chaotically on where the chunk starts; no 20 or 30 s chunk did (#36).
+# at all). For Parakeet, the most includes the context a chunk decodes past
+# each cut (PARAKEET_CHUNK_CONTEXT_SEC). Parakeet v2, fp32 and int8 alike,
+# hears whole stretches of clear speech in a chunk of 45 s or more as silence,
+# which ones depending chaotically on where the chunk starts; no 20 or 30 s
+# chunk did (#36).
 # Parakeet v3 is the other way round: it loses more speech in 20-30 s chunks
 # than in 60 s ones.
 

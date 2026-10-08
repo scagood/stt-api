@@ -107,8 +107,16 @@ def test_whisper_english_model_reports_en():
 
 
 def test_chunk_bounds_are_tighter_for_whisper_and_parakeet_v2():
-    p_target, p_max, _ = routes._chunk_bounds("parakeet-v3")
+    p_target, p_max, *_ = routes._chunk_bounds("parakeet-v3")
     for name in ("whisper-base", "parakeet-v2"):
-        target, maximum, _ = routes._chunk_bounds(name)
+        target, maximum, *_ = routes._chunk_bounds(name)
         assert maximum <= 30.0 < p_max
         assert target < p_target
+
+
+def test_only_parakeet_decodes_context_and_it_fits_in_the_chunk(monkeypatch):
+    monkeypatch.setattr(routes, "CHUNK_CONTEXT_SEC", 5.0)
+    assert routes._chunk_bounds("parakeet-v3")[3] == 5.0
+    assert routes._chunk_bounds("whisper-base")[3] == 0.0  # no word times to trim it back by
+    monkeypatch.setattr(routes, "CHUNK_CONTEXT_SEC", 20.0)
+    assert routes._chunk_bounds("parakeet-v2")[3] == 7.5  # a quarter of its 30 s

@@ -81,6 +81,37 @@ def test_bounds_override_caps_chunks(monkeypatch):
     assert ranges[-1][1] == total
 
 
+def test_short_audio_is_one_piece_whatever_the_context():
+    waveform = np.zeros(int(MAX_SEC * chunker.TARGET_SR))
+    assert chunker.auto_chunk(waveform, **BOUNDS, context_sec=5.0) == [(0, waveform.size)]
+
+
+def test_ranges_leave_room_for_their_context(monkeypatch):
+    sr = chunker.TARGET_SR
+    total = int(MAX_SEC * 4 * sr)
+    phrases = [(start, start + int(4.5 * sr)) for start in range(0, total, 5 * sr)]  # 0.5 s pauses
+    for speech in (phrases, [(0, total)]):  # cut in pauses, or by length
+        monkeypatch.setattr(chunker, "_speech_segments", lambda _wav, speech=speech: speech)
+        ranges = chunker.auto_chunk(np.ones(total, dtype=np.float32), **BOUNDS, context_sec=5.0)
+        windows = chunker.with_context(ranges, 5.0)
+        _assert_valid(ranges, total, int((MAX_SEC - 10) * sr))
+        assert max(end - start for start, end in ranges) >= 59 * sr  # the 60 s target still fits
+        assert all(left[1] == right[0] for left, right in zip(ranges, ranges[1:]))
+        assert windows[0] == (0, ranges[0][1] + 5 * sr) and windows[-1] == (ranges[-1][0] - 5 * sr, total)
+        assert windows[1:-1] == [(start - 5 * sr, end + 5 * sr) for start, end in ranges[1:-1]]
+        assert all(end - start <= MAX_SEC * sr for start, end in windows)
+
+
+def test_context_comes_from_the_neighbour_at_cuts_only():
+    sr = chunker.TARGET_SR
+    # cuts at 10 s and 40 s; 20-30 s is a long silence, cut out; the last range is 2 s
+    ranges = [(0, 10 * sr), (10 * sr, 20 * sr), (30 * sr, 40 * sr), (40 * sr, 42 * sr)]
+    assert chunker.with_context(ranges, 3.0) == [
+        (0, 13 * sr), (7 * sr, 20 * sr), (30 * sr, 42 * sr), (37 * sr, 42 * sr)
+    ]
+    assert chunker.with_context(ranges, 0.0) == ranges
+
+
 def test_slice_chunks_returns_views():
     waveform = np.arange(20, dtype=np.float32)
     pieces = chunker.slice_chunks(waveform, [(2, 8), (8, 12)])

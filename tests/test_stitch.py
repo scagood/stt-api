@@ -1,23 +1,31 @@
 from __future__ import annotations
 
+import io
+import wave
 from types import SimpleNamespace
 
 import numpy as np
 
-from parakeet_service import routes
+from parakeet_service import chunker, routes
 from parakeet_service.config import TARGET_SR
 
 # The aligner a request names (option C: there is no default).
 EAR = ("wav2vec2-base-960h", "int8")
 
 
-def _prepared(ranges_sec, pieces=None):
-    ranges = [(int(s * TARGET_SR), int(e * TARGET_SR)) for s, e in ranges_sec]
+def _samples(ranges_sec):
+    return [(int(s * TARGET_SR), int(e * TARGET_SR)) for s, e in ranges_sec]
+
+
+def _prepared(ranges_sec, pieces=None, windows_sec=None):
+    ranges = _samples(ranges_sec)
+    windows = _samples(windows_sec) if windows_sec else ranges
     duration = max(e for _s, e in ranges_sec)
     return routes._PreparedAudio(
         waveform=None,
         ranges=ranges,
-        pieces=pieces or [None] * len(ranges),
+        windows=windows,
+        pieces=pieces or [np.zeros(end - start, dtype=np.float32) for start, end in windows],
         duration=duration,
     )
 
@@ -188,3 +196,72 @@ def test_aligned_words_are_not_retimed(monkeypatch):
         prepared, [_result(*LATE_AND_EARLY)], align=True, aligner_choice=EAR, retime_words=True
     )
     assert [(w["start"], w["end"]) for w in words] == [(0.25 + i, 0.5 + i) for i in range(4)]
+
+
+def _timed(words):
+    return [(w["word"], round(w["start"], 3)) for w in words]
+
+
+def test_each_piece_keeps_only_the_words_starting_in_its_own_range():
+    # Two pieces cut at 10 s, each decoding 3 s of the other (with_context).
+    # The first hears the second's "Now, comrades" and makes up an "and" as its
+    # input ends; the second hears the first's "there." (times from 7 s).
+    first = _result(
+        [" Hello", " there", ".", " Now", ",", " comrades", " and"],
+        [1.0, 9.0, 9.3, 11.0, 11.3, 11.6, 12.8],
+    )
+    second = _result([" there", ".", " Now", ",", " comrades", "."], [2.0, 2.3, 4.0, 4.3, 4.6, 5.2])
+    text, segments, words = routes._stitch(
+        _prepared([(0.0, 10.0), (10.0, 20.0)], windows_sec=[(0.0, 13.0), (7.0, 20.0)]), [first, second]
+    )
+    assert text == "Hello there. Now, comrades."
+    assert [s["segment"] for s in segments] == ["Hello there.", "Now, comrades."]
+    assert _timed(words) == [("Hello", 1.0), ("there.", 9.0), ("Now,", 11.0), ("comrades.", 11.6)]
+    assert round(segments[1]["start"], 3) == 11.0
+
+
+def test_trimmed_text_is_rebuilt_as_onnx_asr_joins_it():
+    # "So" is in the context before the range; the lone marker before "£" stays with its word
+    result = SimpleNamespace(
+        text="So it was£1.10.",
+        tokens=[" So", " it", " was", " ", "£", "1", ".", "1", "0", "."],
+        timestamps=[0.2, 2.5, 2.8, 3.0, 3.0, 3.1, 3.2, 3.3, 3.4, 3.5],
+    )
+    text, _segments, words = routes._stitch(_prepared([(2.0, 6.0)], windows_sec=[(0.0, 6.0)]), [result])
+    assert text == "it was £1.10."
+    assert _timed(words) == [("it", 2.5), ("was", 2.8), ("£1.10.", 3.0)]
+
+
+def test_aligner_hears_the_ranges_own_audio_not_its_context(monkeypatch):
+    wav = np.arange(20 * TARGET_SR, dtype=np.float32)
+    windows = [(0.0, 13.0), (7.0, 20.0)]
+    pieces = [wav[start:end] for start, end in _samples(windows)]
+    calls = []
+    monkeypatch.setattr(routes.aligner, "for_chunk", lambda wav, *_: _FakeChunk(wav, calls))
+    _text, _segments, words = routes._stitch(
+        _prepared([(0.0, 10.0), (10.0, 20.0)], pieces=pieces, windows_sec=windows),
+        [_result([" one"], [5.0]), _result([" two"], [4.0])],
+        align=True, aligner_choice=EAR)
+    assert [(heard[0], heard.size) for heard, _words in calls] == [(0, 10 * TARGET_SR), (10 * TARGET_SR, 10 * TARGET_SR)]
+    assert _timed(words) == [("one", 0.25), ("two", 10.25)]
+
+
+def _wav_bytes(wav):
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(TARGET_SR)
+        out.writeframes((wav * 32767).astype("<i2").tobytes())
+    return buffer.getvalue()
+
+
+def test_long_audio_decodes_each_range_with_its_context():
+    # 200 s of 4.5 s tones and 0.5 s pauses: cut in pauses, about every 60 s
+    tone = 0.3 * np.sin(2 * np.pi * 220 * np.arange(int(4.5 * TARGET_SR)) / TARGET_SR)
+    wav = np.tile(np.concatenate([tone, np.zeros(TARGET_SR // 2)]), 40).astype(np.float32)
+    prepared = routes._prepare_audio(_wav_bytes(wav), 60.0, 75.0, 20.0, 5.0)
+    assert len(prepared.ranges) > 2
+    assert all(end - start <= 65 * TARGET_SR for start, end in prepared.ranges)
+    assert prepared.windows == chunker.with_context(prepared.ranges, 5.0)
+    assert [piece.size for piece in prepared.pieces] == [end - start for start, end in prepared.windows]

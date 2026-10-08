@@ -475,11 +475,26 @@ the catalog)
 |---|---|---|
 | `PARAKEET_CHUNK_MIN_SEC` | `20` | shortest chunk before neighbours are merged |
 | `PARAKEET_CHUNK_TRIM_SILENCE_SEC` | `3` | cut silences at least this long out of a chunk; the first and last chunks keep up to this much before and after the speech |
+| `PARAKEET_CHUNK_CONTEXT_SEC` | `5` | Parakeet only: each chunk also decodes this much of its neighbours' audio either side, and keeps only the words that start in its own range (see below); at most a quarter of the model's `chunk_max_sec`; `0` turns it off |
 | `PARAKEET_VAD` | `volume` | how pauses are found: `volume`, frames quieter than a gate, or `silero`, a speech model, 30x slower or more (see below) |
 | `PARAKEET_VAD_GATE_DB` | each file's own | `volume`'s gate in dBFS, such as `-45`; unset, 0.4× the file's average 20 ms frame level (about 8 dB below it), never under -60 dBFS |
 | `PARAKEET_VAD_THRESHOLD` | `0.5` | `silero`'s speech probability |
 | `PARAKEET_VAD_MIN_SILENCE_MS` | `400` | shortest pause to cut at |
 | `PARAKEET_VAD_SPEECH_PAD_MS` | `120` | padding kept around speech |
+
+**Context at the cuts.** Parakeet makes up a word (`and`, `the`, `I`) when
+its input ends shortly after speech. Chunks cut in a pause with no audio past
+the cut gained one at about one cut in five. So each chunk now decodes
+up to `PARAKEET_CHUNK_CONTEXT_SEC` of real audio past each cut, and keeps only
+the words that start in its own range. The context fits inside the model's
+`chunk_max_sec`, so a chunk's own range is shorter by twice the context:
+`parakeet-v3` still cuts at about 60 s (at most 65 s), `parakeet-v2` at 20 s
+instead of 25 s. That decodes up to 1.17× the audio on `parakeet-v3` and 1.5×
+on `parakeet-v2`. Long silences are still cut out, with no context across
+them. Tried client-side on a 3 h 23 m audiobook, the same 5 s overlap removed
+all 39 made-up words at cuts and added none at its own edges, and took 168 s
+instead of 156 s. Whisper gets no context: it returns no word times to trim
+it back by.
 
 **Finding pauses.** By default a pause is any stretch of 20 ms frames quieter
 than the gate, which takes under 0.3 ms of CPU per second of audio.

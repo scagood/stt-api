@@ -174,13 +174,15 @@ def auto_chunk(
     target_sec: float,
     max_sec: float,
     min_sec: float = CHUNK_MIN_SEC,
+    context_sec: float = 0.0,
 ) -> List[Range]:
     """Return ordered, non-empty, bounded ranges in the original waveform.
 
     Short clips bypass VAD. Long clips with no detected speech return no ranges,
     allowing the API to skip expensive ASR inference for silence.
 
-    Bounds are the model's own (models.yaml).
+    Bounds are the model's own (models.yaml). A long clip's ranges leave room
+    for `context_sec` more on either side (with_context) within max_sec.
     """
     total = int(wav.size)
     if total <= 0:
@@ -188,9 +190,11 @@ def auto_chunk(
 
     target = max(1, int(target_sec * TARGET_SR))
     maximum = max(target, int(max_sec * TARGET_SR))
-    minimum = max(0, int(min_sec * TARGET_SR))
     if total <= maximum:
         return [(0, total)]
+    maximum = max(1, maximum - 2 * int(context_sec * TARGET_SR))
+    target = min(target, maximum)
+    minimum = min(target, max(0, int(min_sec * TARGET_SR)))
 
     segments = _normalize_segments(_speech_segments(wav), total)
     if not segments:
@@ -238,6 +242,22 @@ def auto_chunk(
         for start, end in output
         if 0 <= start < end <= total and end - start <= maximum
     ]
+
+
+def with_context(ranges: List[Range], context_sec: float) -> List[Range]:
+    """The audio to decode for each of auto_chunk's ranges: up to context_sec
+    more on each side where it meets the next range (a cut in a pause, or one
+    by length in long speech), taken from that range. Never past the
+    neighbour's far end, nor into a long silence cut out between two ranges."""
+    context = int(context_sec * TARGET_SR)
+    windows: List[Range] = []
+    for index, (start, end) in enumerate(ranges):
+        if index and ranges[index - 1][1] == start:
+            start = max(ranges[index - 1][0], start - context)
+        if index + 1 < len(ranges) and ranges[index + 1][0] == end:
+            end = min(ranges[index + 1][1], end + context)
+        windows.append((start, end))
+    return windows
 
 
 def slice_chunks(wav: np.ndarray, ranges: List[Range]) -> List[np.ndarray]:
