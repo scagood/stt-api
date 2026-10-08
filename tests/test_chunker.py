@@ -86,6 +86,32 @@ def test_bounds_override_caps_chunks(monkeypatch):
     assert ranges[-1][1] == total
 
 
+@pytest.mark.parametrize(
+    ("seconds", "bounds", "own_maximum_sec"),
+    [
+        # parakeet-v2 with 5 s of context: target and maximum both 20 s; was 20 + 20 + 0.1 s
+        (40.1, {"target_sec": 25.0, "max_sec": 30.0, "min_sec": 20.0, "context_sec": 5.0}, 20.0),
+        (125.5, {**BOUNDS, "context_sec": 5.0}, 65.0),  # parakeet-v3: was 60 + 60 + 5.5 s
+        (55.1, {"target_sec": 25.0, "max_sec": 30.0, "min_sec": 20.0}, 30.0),  # Whisper: was 25 + 25 + 5.1 s
+    ],
+)
+def test_speech_with_no_pause_is_split_evenly(monkeypatch, seconds, bounds, own_maximum_sec):
+    # One long stretch of speech (a fixed volume gate under the noise, say)
+    # is cut by length. Target-length pieces left the rest as the last one,
+    # a sliver once the target is cut to the maximum for context.
+    total = int(seconds * SR)
+    own_maximum = int(own_maximum_sec * SR)
+    monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: [(0, total)])
+    ranges = _ranges(np.ones(total, dtype=np.float32), **bounds)
+    _assert_valid(ranges, total, own_maximum)
+    assert ranges[0][0] == 0 and ranges[-1][1] == total
+    assert all(left[1] == right[0] for left, right in zip(ranges, ranges[1:]))
+    assert len(ranges) == -(-total // own_maximum)  # no more pieces than fit
+    lengths = [end - start for start, end in ranges]
+    assert max(lengths) - min(lengths) <= 1
+    assert min(lengths) > 5 * SR
+
+
 def test_short_audio_is_one_piece_whatever_the_context():
     waveform = np.zeros(int(MAX_SEC * chunker.TARGET_SR))
     assert _ranges(waveform, **BOUNDS, context_sec=5.0) == [(0, waveform.size)]
