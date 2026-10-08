@@ -951,8 +951,8 @@ _TRANSCRIPTION_RESPONSES: Dict[Union[int, str], Dict[str, Any]] = {
     },
     400: _error(
         "An unknown model, quantization, response_format, timestamp_granularities, "
-        "language or aligner; a language the aligner doesn't align; or no file, or "
-        "an empty one.",
+        "language or aligner; a language the aligner doesn't align; `aligner_quantization`, "
+        "now a suffix on `aligner`; or no file, or an empty one.",
         "language must be an ISO 639-1 code, e.g. 'en'; got 'English'",
     ),
     413: _error(
@@ -971,7 +971,11 @@ _BATCH_RESPONSES: Dict[Union[int, str], Dict[str, Any]] = {
             "batch_size": 1,
         },
     ),
-    400: _error("No files, an empty file, or an unknown model, quantization or aligner.", "No files provided"),
+    400: _error(
+        "No files, an empty file, an unknown model, quantization or aligner, or "
+        "`aligner_quantization`, now a suffix on `aligner`.",
+        "No files provided",
+    ),
     413: _error(
         "Over a request limit: too many files, too many bytes in all, or a file "
         "too big, too long or making too many chunks.",
@@ -1226,11 +1230,24 @@ async def _plain_granularities(request: Request) -> Optional[List[str]]:
     return (await request.form()).getlist("timestamp_granularities") or None
 
 
+async def _no_aligner_quantization(request: Request) -> None:
+    """A 400 for `aligner_quantization`, gone before 2.0.0 but in the `latest`
+    images for six days: FastAPI ignores a field it doesn't know, so its
+    precision would quietly become the aligner's default."""
+    if "aligner_quantization" in await request.form():
+        raise HTTPException(
+            status_code=400,
+            detail="aligner_quantization is gone: put the precision after a colon in aligner, "
+            "e.g. aligner=wav2vec2-base-960h:fp32",
+        )
+
+
 @router.post(
     "/v1/audio/transcriptions",
     tags=["transcription"],
     summary="Transcribe audio",
     responses=_TRANSCRIPTION_RESPONSES,
+    dependencies=[Depends(_no_aligner_quantization)],
 )
 async def transcribe(
     request: Request,
@@ -1381,6 +1398,7 @@ async def transcribe(
     tags=["transcription"],
     summary="Transcribe several files",
     responses=_BATCH_RESPONSES,
+    dependencies=[Depends(_no_aligner_quantization)],
 )
 async def transcribe_batch(
     request: Request,
