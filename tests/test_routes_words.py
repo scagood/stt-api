@@ -251,6 +251,24 @@ async def test_a_colon_and_the_quantization_field_must_agree(calls):
 
 
 @pytest.mark.asyncio
+async def test_aligner_quantization_is_a_400_pointing_at_the_colon():
+    # FastAPI drops a form field it doesn't know: without this, its precision would be ignored
+    async def form(*pairs):
+        return FormData(list(pairs))
+
+    sent = SimpleNamespace(form=lambda: form(("aligner", BASE), ("aligner_quantization", "fp32")))
+    with pytest.raises(HTTPException) as caught:
+        await routes._no_aligner_quantization(sent)
+    assert caught.value.status_code == 400 and f"aligner={BASE}:fp32" in caught.value.detail
+    assert await routes._no_aligner_quantization(SimpleNamespace(form=lambda: form(("aligner", BASE)))) is None
+    checked = {
+        route.path for route in routes.router.routes
+        if any(depends.dependency is routes._no_aligner_quantization for depends in getattr(route, "dependencies", []))
+    }
+    assert checked == {"/v1/audio/transcriptions", "/v1/audio/transcriptions/batch"}
+
+
+@pytest.mark.asyncio
 async def test_a_model_that_cannot_load_is_a_503_naming_it(calls, monkeypatch):
     def unavailable():  # the first step of a cold load
         raise RuntimeError("PARAKEET_USE_GPU=true but CUDAExecutionProvider is unavailable")
