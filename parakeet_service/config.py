@@ -327,7 +327,8 @@ CHUNK_MIN_SEC = _env_float("PARAKEET_CHUNK_MIN_SEC", 20.0, minimum=0.0)
 CHUNK_TRIM_SILENCE_SEC = _env_float("PARAKEET_CHUNK_TRIM_SILENCE_SEC", 3.0, minimum=0.5)
 
 # Each piece of long audio also decodes this much of its neighbours' audio
-# on either side, and keeps only the words that start in its own range.
+# on either side, and keeps only the words that start in its own range (near
+# a cut, as matched with its neighbour's words: routes._seam).
 # Parakeet makes up a word ("and", "the", "I") when its input ends shortly
 # after speech, and pieces cut mid-pause with nothing past the cut gained one
 # at about one join in five (#68). The context starts and ends in a pause, as

@@ -222,6 +222,43 @@ def test_each_piece_keeps_only_the_words_starting_in_its_own_range():
     assert round(segments[1]["start"], 3) == 11.0
 
 
+@pytest.mark.parametrize(
+    "first_three, second_start",
+    [
+        # Lost: "three" (at 20.02 s) is at the cut, 20.00, on the first piece's
+        # grid, so not before it; 15.03 + 4.96 = 19.99 on the second's, before it.
+        (20.0, 15.03),
+        # Duplicated: before the cut on the first piece's grid, 19.92; at
+        # 15.07 + 4.96 = 20.03, after it, on the second's.
+        (19.92, 15.07),
+    ],
+)
+def test_a_word_at_a_cut_in_speech_is_kept_once(first_three, second_start):
+    # A length cut at 20 s, in speech: each piece decodes 5 s of the other and
+    # times each word on its own 80 ms grid, from its own window's start.
+    first = _result([" one", " two", " three", " four", " five"], [18.4, 19.2, first_three, 20.8, 21.6])
+    second = _result([" one", " two", " three", " four", " five"], [3.36, 4.16, 4.96, 5.76, 6.56])
+    prepared = _prepared([(0.0, 20.0), (20.0, 40.0)], windows_sec=[(0.0, 25.0), (second_start, 40.0)])
+    text, segments, words = routes._stitch(prepared, [first, second])
+    assert text == "one two three four five"
+    assert [s["segment"] for s in segments] == ["one two", "three four five"]
+    assert [w["word"] for w in words] == ["one", "two", "three", "four", "five"]
+    assert [round(w["start"], 2) for w in words][:2] == [18.4, 19.2]
+    assert 20.0 <= words[2]["start"] <= 20.03 < words[2]["end"]
+
+
+def test_a_word_said_again_at_a_cut_is_matched_with_itself_not_its_twin():
+    # "I I I" across the cut: the first piece's first "I" (19.84) and the
+    # second's middle one (15.03 + 5.04 = 20.07) are nearest the cut, but are
+    # not the same "I"; taken as one, an "I" would be lost.
+    first = _result([" it", " I", " I", " I"], [19.44, 19.84, 20.08, 20.4])
+    second = _result([" it", " I", " I", " I"], [4.4, 4.8, 5.04, 5.44])
+    prepared = _prepared([(0.0, 20.0), (20.0, 40.0)], windows_sec=[(0.0, 25.0), (15.03, 40.0)])
+    text, _segments, words = routes._stitch(prepared, [first, second])
+    assert text == "it I I I"
+    assert _timed(words) == [("it", 19.44), ("I", 19.84), ("I", 20.07), ("I", 20.47)]
+
+
 def test_trimmed_text_is_rebuilt_as_onnx_asr_joins_it():
     # "So" is in the context before the range; the lone marker before "£" stays with its word
     result = SimpleNamespace(
