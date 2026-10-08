@@ -48,6 +48,7 @@ def _hermetic_aligner(monkeypatch):
     # fails before its download, and this guard would never see it.
     monkeypatch.setattr(aligner.ort, "InferenceSession", lambda *a, **k: None, raising=False)
     monkeypatch.setattr(aligner, "_loaded", OrderedDict())
+    monkeypatch.setattr(aligner, "_last_used", {})
     monkeypatch.setattr(aligner, "_failed_at", {})
     monkeypatch.setattr(aligner, "_loading", {})
     yield

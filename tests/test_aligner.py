@@ -484,6 +484,7 @@ class _Download:
 def _fake_hub(monkeypatch, download):
     monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(hf_hub_download=download))
     monkeypatch.setattr(aligner, "_loaded", OrderedDict())
+    monkeypatch.setattr(aligner, "_last_used", {})
     monkeypatch.setattr(aligner, "_failed_at", {})
 
 
@@ -515,6 +516,37 @@ def test_aligners_share_the_model_cache_cap(monkeypatch, tmp_path):
     aligner._load("omnilingual-ctc-300m", "int8")
     assert list(aligner._loaded) == ["omnilingual-ctc-300m:int8"]  # least recent evicted
     assert aligner.status()["wav2vec2-base-960h:int8"] == "not loaded"
+
+
+def test_aligners_unused_for_the_idle_timeout_are_evicted(monkeypatch, tmp_path):
+    _fake_hub(monkeypatch, _Download(tmp_path, fail_times=0))
+    (tmp_path / "tokens.txt").write_text("<s> 0\n  1\n", encoding="utf-8")
+    monkeypatch.setattr(aligner.ort, "InferenceSession", lambda *a, **k: object(), raising=False)
+    monkeypatch.setattr(aligner, "_build_sess_options", lambda *a, **k: None)
+    now = [1000.0]
+    monkeypatch.setattr(aligner.time, "monotonic", lambda: now[0])
+    english = aligner._load("wav2vec2-base-960h", "int8")
+    aligner._load("omnilingual-ctc-300m", "int8")
+    now[0] += 50
+    assert aligner._load("wav2vec2-base-960h", "int8") is english  # a hit is a use
+    now[0] += 60
+    assert aligner.evict_idle(100) == ["omnilingual-ctc-300m:int8"]
+    assert aligner.status()["omnilingual-ctc-300m:int8"] == "not loaded"
+    assert aligner.status()["wav2vec2-base-960h:int8"] == "loaded"
+    now[0] += 50
+    assert aligner.evict_idle(100) == ["wav2vec2-base-960h:int8"]
+    assert aligner._load("wav2vec2-base-960h", "int8") is not english  # loaded again on use
+
+
+def test_an_aligner_the_cache_cap_evicted_is_not_evicted_again(monkeypatch, tmp_path):
+    _fake_hub(monkeypatch, _Download(tmp_path, fail_times=0))
+    (tmp_path / "tokens.txt").write_text("<s> 0\n  1\n", encoding="utf-8")
+    monkeypatch.setattr(aligner.ort, "InferenceSession", lambda *a, **k: object(), raising=False)
+    monkeypatch.setattr(aligner, "_build_sess_options", lambda *a, **k: None)
+    monkeypatch.setattr(aligner, "MODEL_CACHE_SIZE", 1)
+    aligner._load("wav2vec2-base-960h", "int8")
+    aligner._load("omnilingual-ctc-300m", "int8")  # evicts wav2vec2
+    assert aligner.evict_idle(0) == ["omnilingual-ctc-300m:int8"]
 
 
 def _held_download(monkeypatch, tmp_path):

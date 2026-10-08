@@ -10,17 +10,22 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from . import aligner
 from .batchworker import build_worker
 from .config import (
     AUDIO_WORKERS,
+    MODEL_IDLE_TIMEOUT_SEC,
     PRELOAD_MODELS,
     WARMUP,
     WARMUP_SEC,
     WARMUP_TIMEOUT_SEC,
     logger,
 )
-from .model import get_model, load_model, variant_key, warmup_waveform
+from .model import evict_idle, get_model, load_model, trim_heap, variant_key, warmup_waveform
 from .routes import router
+
+# How often idle models are looked for: one goes at most this long after its timeout.
+_IDLE_CHECK_SEC = 60.0
 
 
 def _shutdown_pool(pool: ThreadPoolExecutor) -> None:
@@ -67,6 +72,25 @@ async def _warmup(app: FastAPI, model_key: str) -> None:
     logger.info("Warm-up of %s completed in %.2fs", model_key, time.perf_counter() - started)
 
 
+def _unload_idle(timeout: float) -> None:
+    """Unload every model and aligner unused for `timeout` seconds, and give
+    the memory they held back to the OS."""
+    if evict_idle(timeout) + aligner.evict_idle(timeout):
+        trim_heap()
+
+
+async def _unload_idle_periodically(timeout: float) -> None:
+    """_unload_idle every _IDLE_CHECK_SEC (or `timeout`, if shorter) until
+    cancelled. In a thread: a model load holds the lock eviction takes, through
+    its download."""
+    while True:
+        await asyncio.sleep(min(timeout, _IDLE_CHECK_SEC))
+        try:
+            await asyncio.to_thread(_unload_idle, timeout)
+        except Exception:
+            logger.exception("Unloading idle models failed; trying again in %.0fs", _IDLE_CHECK_SEC)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.ready = False
@@ -81,6 +105,7 @@ async def lifespan(app: FastAPI):
     # number to hear (routes._needs_aligner), queue here; add a worker-count knob
     # if their throughput matters.
     app.state.align_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="align")
+    evictor = None
     try:
         # An unknown model or quantization fails startup, as it would 400 a request.
         preload = [variant_key(*entry.split(":", 1)) for entry in PRELOAD_MODELS]
@@ -94,10 +119,20 @@ async def lifespan(app: FastAPI):
                 await _warmup(app, key)
         app.state.ready = True
         logger.info("Service ready")
+        if MODEL_IDLE_TIMEOUT_SEC > 0:
+            evictor = asyncio.create_task(
+                _unload_idle_periodically(MODEL_IDLE_TIMEOUT_SEC), name="unload_idle"
+            )
         yield
     finally:
         app.state.ready = False
         logger.info("Lifespan shutdown")
+        if evictor is not None:
+            evictor.cancel()
+            try:
+                await evictor
+            except asyncio.CancelledError:
+                pass
         if app.state.worker is not None:
             await app.state.worker.stop()
         await asyncio.to_thread(_shutdown_pool, app.state.audio_pool)

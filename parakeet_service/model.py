@@ -1,9 +1,11 @@
 """Thread-safe ONNX Runtime model loading for Parakeet TDT."""
 from __future__ import annotations
 
+import ctypes
 import os
 import tempfile
 import threading
+import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -32,6 +34,8 @@ import onnxruntime as ort
 
 _ModelKey = Tuple[str, bool]
 _MODELS: "OrderedDict[_ModelKey, object]" = OrderedDict()
+# When each of _MODELS was last asked for (time.monotonic()), for evict_idle().
+_LAST_USED: Dict[_ModelKey, float] = {}
 _MODEL_LOCK = threading.RLock()
 _CUDA_PRELOADED = False
 _RUNTIMES: Dict[str, dict] = {}
@@ -226,6 +230,7 @@ def load_model(key: str, *, with_timestamps: bool = True):
         cached = _MODELS.get(cache_key)
         if cached is not None:
             _MODELS.move_to_end(cache_key)
+            _LAST_USED[cache_key] = time.monotonic()
             return cached
 
         name, _, quant = key.partition(":")
@@ -268,10 +273,12 @@ def load_model(key: str, *, with_timestamps: bool = True):
             logger.exception("%s", error)
             raise error from exc
         _MODELS[cache_key] = model
+        _LAST_USED[cache_key] = time.monotonic()
         _RUNTIMES[key] = _runtime(providers, _session_provider_report(model))
         # ponytail: LRU cap, drop least-recent so a many-model sweep fits RAM.
         while MODEL_CACHE_SIZE and len(_MODELS) > MODEL_CACHE_SIZE:
             evicted, _ = _MODELS.popitem(last=False)
+            del _LAST_USED[evicted]
             logger.info("Evicted %s (cache size %d)", evicted, MODEL_CACHE_SIZE)
         logger.info("Loaded %s", key)
         return model
@@ -279,6 +286,33 @@ def load_model(key: str, *, with_timestamps: bool = True):
 
 def get_model(key: str):
     return load_model(key, with_timestamps=True)
+
+
+def evict_idle(timeout: float) -> List[str]:
+    """Unload the models no one has asked for in `timeout` seconds; return
+    their keys. Call trim_heap() after, to give their memory back.
+
+    Each inference asks for its model (get_model), so a model in use is never
+    idle for long; one evicted mid-call lives until that call returns.
+    """
+    cutoff = time.monotonic() - timeout
+    with _MODEL_LOCK:
+        idle = [cache_key for cache_key, used in _LAST_USED.items() if used <= cutoff]
+        for cache_key in idle:
+            del _MODELS[cache_key], _LAST_USED[cache_key]
+            logger.info("Evicted %s (unused for %.0fs)", cache_key[0], timeout)
+    return [key for key, _timestamps in idle]
+
+
+def trim_heap() -> None:
+    """Hand memory freed by unloading back to the OS. glibc keeps most of what
+    ONNX Runtime frees: unloading parakeet-v3:int8 on the CPU after three 30 s
+    calls took RSS from 2.0 GiB only to 1.3 GiB, and this to 0.1 GiB. A no-op
+    without glibc (macOS, musl)."""
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
 
 
 def warmup_waveform(seconds: float | None = None) -> np.ndarray:

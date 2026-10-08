@@ -61,6 +61,14 @@ def _env_bool(name: str, default: bool) -> bool:
     raise RuntimeError(f"{name} must be a boolean, got {raw!r}")
 
 
+def _env_timeout(name: str, default: float) -> float:
+    """Seconds, above 0, or -1 for no timeout."""
+    value = _env_float(name, default, minimum=-1.0)
+    if value <= 0 and value != -1:
+        raise RuntimeError(f"{name} must be above 0, or -1 for no timeout, got {value}")
+    return value
+
+
 def _env_choice(name: str, default: str, choices: Iterable[str]) -> str:
     allowed = {choice.lower() for choice in choices}
     value = os.getenv(name, default).strip().lower()
@@ -357,10 +365,14 @@ VAD = _env_choice("PARAKEET_VAD", "volume", {"silero", "volume"})
 # (about 8 dB below it), never under -60 dBFS.
 VAD_GATE_DB = _env_dbfs("PARAKEET_VAD_GATE_DB")
 
-# Loaded models and aligners are cached forever by default (0 = unbounded). Set
+# Any number of models and aligners stay loaded by default (0 = unbounded). Set
 # a small N to LRU-evict all but the N most-recent models, and likewise aligners,
 # when clients can ask for more than fits in RAM.
 MODEL_CACHE_SIZE = _env_int("PARAKEET_MODEL_CACHE_SIZE", 0, minimum=0)
+# A model or aligner, preloaded or not, that no request has used for this long
+# is unloaded to free its memory; the next request that names it loads it again,
+# without a warm-up. -1 keeps everything loaded until the process exits.
+MODEL_IDLE_TIMEOUT_SEC = _env_timeout("PARAKEET_MODEL_IDLE_TIMEOUT_SEC", 6 * 3600.0)
 
 GPU_DEVICE_ID = _env_int("PARAKEET_GPU_DEVICE_ID", 0, minimum=0)
 # CUDA execution provider tuning. The defaults keep the settings the service

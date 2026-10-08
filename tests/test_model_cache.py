@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 import types
 from collections import OrderedDict
 
+import pytest
+
+from parakeet_service import config, main
 from parakeet_service import model as m
 
 
 def _stub_loader(monkeypatch, tmp_path, cache_size, calls=None):
     monkeypatch.setattr(m, "MODEL_CACHE_SIZE", cache_size)
     monkeypatch.setattr(m, "_MODELS", OrderedDict())
+    monkeypatch.setattr(m, "_LAST_USED", {})
     monkeypatch.setattr(m, "_RUNTIMES", {})
     monkeypatch.setattr(m, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(m, "_resolve_providers", lambda: ["CPUExecutionProvider"])
@@ -114,3 +119,77 @@ def test_runtime_reports_cuda_and_forgets_evicted_models(monkeypatch, tmp_path):
     assert list(status) == ["whisper-base:fp32"]
     assert status["whisper-base:fp32"]["backend"] == "cuda"
     assert status["whisper-base:fp32"]["fallback_reason"] is None
+
+
+def test_models_unused_for_the_idle_timeout_are_evicted(monkeypatch, tmp_path):
+    _stub_loader(monkeypatch, tmp_path, cache_size=0)
+    now = [1000.0]
+    monkeypatch.setattr(m.time, "monotonic", lambda: now[0])
+    tiny = m.load_model("whisper-tiny:fp32", with_timestamps=False)
+    m.load_model("whisper-base:fp32", with_timestamps=False)
+    now[0] += 50
+    assert m.load_model("whisper-tiny:fp32", with_timestamps=False) is tiny  # a hit is a use
+    now[0] += 60
+    assert m.evict_idle(100) == ["whisper-base:fp32"]
+    assert m.loaded_models() == ["whisper-tiny:fp32"]
+    assert m.evict_idle(100) == []
+    now[0] += 50
+    assert m.evict_idle(100) == ["whisper-tiny:fp32"]
+    assert m.loaded_models() == [] and m.runtime_status() == {}
+    assert m.load_model("whisper-tiny:fp32", with_timestamps=False) is not tiny  # loaded again on use
+
+
+def test_a_model_the_cache_cap_evicted_is_not_evicted_again(monkeypatch, tmp_path):
+    _stub_loader(monkeypatch, tmp_path, cache_size=1)
+    m.load_model("whisper-tiny:fp32", with_timestamps=False)
+    m.load_model("whisper-base:fp32", with_timestamps=False)  # evicts tiny
+    assert m.evict_idle(0) == ["whisper-base:fp32"]
+
+
+def test_trim_heap_never_raises():
+    m.trim_heap()  # glibc's malloc_trim here; a no-op where there is none
+
+
+@pytest.mark.parametrize(("raw", "expected"), [(None, 21600.0), ("-1", -1.0), ("0.5", 0.5), ("3600", 3600.0)])
+def test_idle_timeout_setting_parses(monkeypatch, raw, expected):
+    if raw is None:
+        monkeypatch.delenv("PARAKEET_MODEL_IDLE_TIMEOUT_SEC", raising=False)
+    else:
+        monkeypatch.setenv("PARAKEET_MODEL_IDLE_TIMEOUT_SEC", raw)
+    assert config._env_timeout("PARAKEET_MODEL_IDLE_TIMEOUT_SEC", 21600.0) == expected
+
+
+@pytest.mark.parametrize("raw", ["0", "-0.5", "-2", "6h"])
+def test_idle_timeout_setting_rejects_zero_and_other_negatives(monkeypatch, raw):
+    monkeypatch.setenv("PARAKEET_MODEL_IDLE_TIMEOUT_SEC", raw)
+    with pytest.raises(RuntimeError, match="PARAKEET_MODEL_IDLE_TIMEOUT_SEC"):
+        config._env_timeout("PARAKEET_MODEL_IDLE_TIMEOUT_SEC", 21600.0)
+
+
+def test_unloading_trims_the_heap_only_when_something_was_unloaded(monkeypatch):
+    trims, unloaded = [], {"models": [], "aligners": []}
+    monkeypatch.setattr(main, "trim_heap", lambda: trims.append(True))
+    monkeypatch.setattr(main, "evict_idle", lambda timeout: unloaded["models"])
+    monkeypatch.setattr(main.aligner, "evict_idle", lambda timeout: unloaded["aligners"])
+    main._unload_idle(10)
+    assert trims == []
+    unloaded["aligners"] = ["wav2vec2-base-960h:int8"]
+    main._unload_idle(10)
+    assert trims == [True]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("timeout", "unloads"), [(0.01, True), (-1, False)])
+async def test_lifespan_unloads_idle_models_until_shutdown(monkeypatch, timeout, unloads):
+    from fastapi import FastAPI
+
+    calls = []
+    monkeypatch.setattr(main, "PRELOAD_MODELS", [])
+    monkeypatch.setattr(main, "MODEL_IDLE_TIMEOUT_SEC", timeout)
+    monkeypatch.setattr(main, "_unload_idle", calls.append)
+    async with main.lifespan(FastAPI()):
+        await asyncio.sleep(0.1)
+    assert bool(calls) is unloads and set(calls) <= {timeout}
+    stopped = len(calls)
+    await asyncio.sleep(0.05)
+    assert len(calls) == stopped  # nothing after shutdown

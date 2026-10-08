@@ -209,6 +209,7 @@ ran it.
 | — | `PARAKEET_PRELOAD_MODELS`: models to load and warm up before ready (next section). |
 | — | `PARAKEET_MODEL_CATALOG`: a YAML file that replaces the built-in model catalog. |
 | — | `PARAKEET_MODEL_CACHE_SIZE`: keep at most N loaded models, and separately at most N loaded aligners, evicting the least recently used. `0` (the default) means no limit. |
+| — | `PARAKEET_MODEL_IDLE_TIMEOUT_SEC` (`21600`, 6 hours): a model or aligner, preloaded or not, that no request has used for this long is unloaded, and the next request that names it loads it again, without a warm-up. 1.5.0 kept its model loaded until it exited; `-1` does that. |
 | — | `PARAKEET_SPOKEN_NUMBERS`: the answer for requests that don't send `spoken_numbers`. Defaults to `false`. There is no server-wide switch for alignment: a request names its `aligner`. |
 | — | `PARAKEET_RETIME_WORDS`: the answer for requests that don't send `retime_words`. Defaults to `false`. See [Word timestamps](README.md#word-timestamps). |
 | — | `PARAKEET_VAD`: how long audio finds its pauses. **The default is now `volume`**, frames quieter than a gate, 30x faster or more than Silero-VAD, which 1.5.0 always used; long audio is cut in slightly different places, so transcripts can differ a little. `PARAKEET_VAD=silero` brings Silero back. `PARAKEET_VAD_GATE_DB` fixes `volume`'s gate in dBFS. See [Configuration](README.md#configuration). |
@@ -276,8 +277,8 @@ repos and revisions to go back to. Put them in your own catalog (next section).
 
 Any client can now ask for any model in the catalog: 12 models × 3
 quantizations. Each one is downloaded on first request and, by default, kept in
-memory forever. On a shared host, set `PARAKEET_MODEL_CACHE_SIZE`, or serve a
-smaller catalog:
+memory until it goes 6 hours unused (`PARAKEET_MODEL_IDLE_TIMEOUT_SEC`). On a
+shared host, set `PARAKEET_MODEL_CACHE_SIZE`, or serve a smaller catalog:
 
 ```bash
 cp parakeet_service/models.yaml /etc/parakeet/models.yaml   # edit: delete what you don't serve
