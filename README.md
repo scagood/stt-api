@@ -200,8 +200,25 @@ transcription time on a CPU, but it is not as good: the aligner times every
 word from the audio. Against the aligner's times on three LibriVox chapters, it
 cut the words lying inside a pause from 249, 68 and 79 to 15, 14 and 43, and
 the words starting over 200 ms from the aligner's start from 9.4%, 9.3% and
-17.8% to 3.1%, 3.8% and 11.4%. With an aligner named, it only re-times chunks the aligner
-could not. `PARAKEET_RETIME_WORDS=true` turns it on for requests that don't say.
+17.8% to 3.1%, 3.8% and 11.4%.
+
+A pause holds one word at each edge, the last before it and the first after
+it. When more than one word wholly inside a pause would go to the same side,
+or one going after it comes before one going before it, it is no pause: it is
+speech the gate missed, or times off by more than a word, and those words keep
+Parakeet's times rather than pile up at its edge.
+A quiet stretch of 3 s or more is heard again at its own level, as when
+[finding pauses](#configuration) in long audio, so a quieter speaker's turn
+gets pauses of its own instead of being one. In a 25-word turn 20 dB quieter
+than the rest, `retime_words` used to move 24 words' starts over 200 ms from
+the aligner's (aligning the turn on its own) and squeeze 23 into 40 ms; now 3
+and 1, against Parakeet's own 5 and 0. On three LibriVox chapters it moves 23
+of 5,967 words differently than before, 15 of them closer to the aligner and
+8 farther: most are runs Parakeet timed more than a word early or late, which
+no edge fixes.
+
+With an aligner named, it only re-times chunks the aligner could not.
+`PARAKEET_RETIME_WORDS=true` turns it on for requests that don't say.
 
 ```bash
 curl http://localhost:5092/v1/audio/transcriptions \
@@ -482,7 +499,7 @@ the catalog)
 | `PARAKEET_CHUNK_TRIM_SILENCE_SEC` | `3` | cut silences at least this long out of a chunk; the first and last chunks keep up to this much before and after the speech |
 | `PARAKEET_CHUNK_CONTEXT_SEC` | `5` | Parakeet only: each chunk also decodes this much of its neighbours' audio either side, from and to a pause, and keeps only the words that start in its own range (see below); at most a quarter of the model's `chunk_max_sec`; `0` turns it off |
 | `PARAKEET_VAD` | `volume` | how pauses are found: `volume`, frames quieter than a gate, or `silero`, a speech model, 30x slower or more (see below) |
-| `PARAKEET_VAD_GATE_DB` | each file's own | `volume`'s gate in dBFS, such as `-45`; unset, 0.4× the file's average 20 ms frame level (about 8 dB below it), never under -60 dBFS |
+| `PARAKEET_VAD_GATE_DB` | each file's own | `volume`'s gate in dBFS, such as `-45`; unset, 0.4× the file's average 20 ms frame level (about 8 dB below it), never under -60 dBFS, and a long quiet stretch is heard again at its own level (see below) |
 | `PARAKEET_VAD_THRESHOLD` | `0.5` | `silero`'s speech probability |
 | `PARAKEET_VAD_MIN_SILENCE_MS` | `400` | shortest pause to cut at |
 | `PARAKEET_VAD_SPEECH_PAD_MS` | `120` | padding kept around speech |
@@ -531,6 +548,37 @@ gate rises with the noise: at -40 dBFS it still found every pause, at -35 dBFS
 (5 dB under the speech) it missed some and 10 chunks were cut mid-speech. A
 fixed gate below the noise finds no pause at all, and the whole file is cut
 mid-speech, into the fewest equal chunks that fit. Music hasn't been measured.
+
+**Quieter speakers.** The file's own gate follows its average, so a speaker
+far quieter than the rest (a remote guest, a phone leg, a question from the
+audience) can sit under it for a whole turn, which would then be cut out as a
+long silence and never decoded. So a quiet stretch at least
+`PARAKEET_CHUNK_TRIM_SILENCE_SEC` long is heard again at its own level: 100 ms
+of it louder than 0.4× its own average, and 10 dB over its quietest tenth, is
+loud. The 100 ms is a median, so no click or knock passes, and room tone stays
+within a few dB of its floor. A loud sound (joined across dips shorter than
+`PARAKEET_VAD_MIN_SILENCE_MS`) is speech if half a second of it is loud, and
+so is any shorter one within `PARAKEET_CHUNK_TRIM_SILENCE_SEC` of such a sound:
+a quiet speaker's short words, which would otherwise leave a stretch to cut
+out between two phrases. Breaths alone in a pause never add up to speech,
+however many. On LibriVox narration a long pause's breaths and rustles were
+0.1-0.34 s (decoded alone, one made Parakeet say "yeah"); 26 dB down, a
+quieter reader's phrases were 0.58-1.18 s and the words between them 0.12-0.32 s. With a 15 s turn (25 words) of one LibriVox reader between
+two minutes of another:
+
+| Quiet turn | words heard before | now |
+|---|---|---|
+| 14 dB quieter | 25 | 25 |
+| 20 dB quieter | 6, and an "Oh." not said | 25 |
+| 26 dB quieter | 0 | 25 |
+
+On other recordings of the three chapters above (not the table's), and the
+two noise beds, the chunks, and so the transcripts, are the same as before.
+Still taken for a pause: a sound under half a second with no longer one near
+it (a quiet "Yes." alone in a long pause), a quiet stretch that never rises
+10 dB over its own floor (a steady tone, or speech under noise within 10 dB of
+it), and all under a fixed `PARAKEET_VAD_GATE_DB`, which is never heard
+again.
 
 **Words and numbers**
 
