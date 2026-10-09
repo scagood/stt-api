@@ -828,7 +828,7 @@ async def _infer(request: Request, pieces: List[Any], model_key: str):
 # it, and returns nothing for tens of seconds of speech, depending on exactly
 # where the window starts or ends (#69); a clip short enough to be one piece
 # does it too (#77). A piece with this much speech, by VAD, between two of
-# its tokens inside its own range has skipped it.
+# its tokens that hold a word character inside its own range has skipped it.
 _STALL_SEC = 3.0
 
 
@@ -846,11 +846,19 @@ def _untimed(prepared: _PreparedAudio, results: Sequence[Any]) -> Dict[int, List
     """Each piece's stretches of at least _STALL_SEC in its own range with no
     token, in samples: from where the token before ends at the latest
     (_WORD_TAIL_SEC), or the range's start, to the next token, or the range's
-    end. Only pieces with one."""
+    end. Only pieces with one. Only tokens with a word character count: a lone
+    "." or "\u2581-" in a skipped stretch hears no speech, so must not split it,
+    while each piece of a long word (a number read digit by digit) is speech
+    heard."""
     stall, tail = int(_STALL_SEC * TARGET_SR), int(_WORD_TAIL_SEC * TARGET_SR)
     untimed: Dict[int, List[Tuple[int, int]]] = {}
     for index, ((start, end), window, result) in enumerate(zip(prepared.ranges, prepared.windows, results)):
-        heard = sorted(window[0] + int(at * TARGET_SR) for at in _extract(result)["timestamps"])
+        info = _extract(result)
+        heard = sorted(
+            window[0] + int(at * TARGET_SR)
+            for token, at in zip(info["tokens"], info["timestamps"])
+            if re.search(r"\w", token)
+        )
         for low, high in zip([window[0]] + [at + tail for at in heard], heard + [window[1]]):
             low, high = max(low, start), min(high, end)
             if high - low >= stall:
@@ -1044,7 +1052,7 @@ def _merged(
     tokens, timestamps, others = info["tokens"], info["timestamps"], _word_spans(heard["tokens"])
     spans = _word_spans(tokens)
     firsts = [origin + int(timestamps[first] * TARGET_SR) for _word, first, _last in spans]
-    lasts = [origin + int(timestamps[last] * TARGET_SR) for _word, _first, last in spans]
+    lasts = [origin + int(timestamps[_spoken(tokens, first, last)] * TARGET_SR) for _word, first, last in spans]
     theirs = [start + int(heard["timestamps"][first] * TARGET_SR) for _word, first, _last in others]
     keys = [_seam_key(word) for word, _first, _last in others]
     reach, near, tail = (int(sec * TARGET_SR) for sec in (_SEAM_MATCH_SEC, _SAME_SPEECH_SEC, _WORD_TAIL_SEC))
@@ -1153,6 +1161,12 @@ def _merged(
     return SimpleNamespace(text=_decoded(out_tokens), tokens=out_tokens, timestamps=out_times), added
 
 
+def _spoken(tokens: Sequence[str], first: int, last: int) -> int:
+    """The last of a word's tokens, `first` to `last`, with a word character:
+    where its speech ends. A "." after it can be timed well after that."""
+    return next((index for index in range(last, first, -1) if re.search(r"\w", tokens[index])), first)
+
+
 def _heard_near(result: Any, origin: int, cut: int) -> List[Tuple[int, int, str]]:
     """The first and last token, in samples, and _seam_key of each of
     `result`'s words, decoded from sample `origin`, that start within
@@ -1163,7 +1177,7 @@ def _heard_near(result: Any, origin: int, cut: int) -> List[Tuple[int, int, str]
     for word, first, last in _word_spans(info["tokens"]):
         at = origin + int(timestamps[first] * TARGET_SR)
         if abs(at - cut) <= reach:
-            near.append((at, origin + int(timestamps[last] * TARGET_SR), _seam_key(word)))
+            near.append((at, origin + int(timestamps[_spoken(info["tokens"], first, last)] * TARGET_SR), _seam_key(word)))
     return near
 
 

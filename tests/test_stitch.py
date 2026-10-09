@@ -808,6 +808,20 @@ async def test_a_word_the_neighbour_keeps_timed_early_at_the_cut_is_not_put_in_a
 
 
 @pytest.mark.asyncio
+async def test_words_after_a_word_whose_full_stop_is_timed_late_are_put_in():
+    # #79 review: the piece hears "Rome" and its "." a second later, then
+    # skips to 30 s. The redo hears "The next thing" before that ".".
+    before, after = _filler("a", 0.5, 19.5) + [(" Rome", 20.0), (".", 21.0)], _filler("b", 30.0, 39.5)
+    prepared = _one_piece(40.0, speech=_samples([(0.0, 40.0)]))
+    middle = [(" The", 20.6), (" next", 20.9), (" thing", 21.2)] + _filler("c", 21.7, 29.2)
+    redo = _heard(18.32, [(" a36", 18.5), (" a37", 19.0), (" a38", 19.5), (" Rome", 20.0), (".", 20.16)] + middle + after[:3])
+    worker = _Redo([redo])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_heard(0.0, before + after)], "parakeet-v3:fp32")
+    words = routes._stitch(prepared, results)[0].split()
+    assert words == [w.strip() for w, _at in before[:-2]] + ["Rome."] + [w.strip() for w, _at in middle + after]
+
+
+@pytest.mark.asyncio
 async def test_the_stretches_a_piece_skipped_count_together(caplog):
     # One word in each of two skipped stretches: two new words in all
     heard = _filler("a", 0.5, 19.5) + _filler("b", 24.0, 29.5) + _filler("c", 34.0, 39.5)
@@ -958,3 +972,50 @@ async def test_whisper_is_never_decoded_again(monkeypatch):
     worker = _Redo([])
     prepared = _one_piece(30.0, speech=_samples([(0.0, 30.0)]))
     assert await routes._redo_stalled(_request(worker), [prepared], results, f"{whisper}:fp32") == results
+
+
+@pytest.mark.asyncio
+async def test_a_lone_full_stop_does_not_split_a_skipped_stretch():
+    # The second piece skips 12.6-17 s of speech, but for a "." at 14.4 s: no
+    # word starts there, so the stretch is one, not two under _STALL_SEC.
+    prepared = _two_pieces()
+    prepared.speech = _samples([(0.0, 20.0)])
+    skipping = _result(
+        [" a", " b", " c", " could", ".", " This", " y"],  # from 7 s: 10, 10.6, 11.2, 12.6, 14.4, 17, 18
+        [3.0, 3.6, 4.2, 5.6, 7.4, 10.0, 11.0],
+    )
+    assert routes._stalled(prepared, [_words(10, 0.5), skipping]) == {1: _samples([(12.6 + 0.32, 17.0)])}
+    again = _result(
+        [" a", " b", " c", " could", ".", " The", " next", " thing", " This", " y"],
+        [0.0, 0.6, 1.2, 2.6, 4.4, 4.5, 5.0, 5.5, 7.0, 8.0],
+    )
+    worker = _Redo([again])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_words(10, 0.5), skipping], "parakeet-v3:fp32")
+    assert results[1] is again and len(worker.pieces) == 1
+
+
+@pytest.mark.parametrize("mark", ["▁.", "▁-", "▁,", '▁"'])
+def test_a_lone_marked_punctuation_token_does_not_split_a_skipped_stretch(mark):
+    # As above, but the token opens a word of its own: it still has no word
+    # character, so hears no speech.
+    prepared = _two_pieces()
+    prepared.speech = _samples([(0.0, 20.0)])
+    skipping = _result(
+        [" a", " b", " c", " could", mark, " This", " y"],  # from 7 s: 10, 10.6, 11.2, 12.6, 14.4, 17, 18
+        [3.0, 3.6, 4.2, 5.6, 7.4, 10.0, 11.0],
+    )
+    assert routes._stalled(prepared, [_words(10, 0.5), skipping]) == {1: _samples([(12.6 + 0.32, 17.0)])}
+
+
+def test_a_long_word_of_many_tokens_is_not_a_skipped_stretch():
+    # A phone number read digit by digit, 11-16 s, is one word of eleven
+    # tokens: each is speech heard, so nothing from its first to the next word
+    # is skipped.
+    prepared = _two_pieces()
+    prepared.speech = _samples([(0.0, 20.0)])
+    digits = list("18005550199")
+    number = _result(
+        [" at", " " + digits[0], *digits[1:], " call", " us", " today", "."],
+        [3.5, 4.0, *[4.0 + 0.5 * i for i in range(1, 11)], 9.5, 10.0, 10.5, 11.0],
+    )
+    assert routes._stalled(prepared, [_words(10, 0.5), number]) == {}

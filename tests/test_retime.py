@@ -138,3 +138,35 @@ def test_the_words_given_are_left_as_they_were():
     words = [_w("late", 2.2, 2.5)]
     retime.retime(words, GAP, 0.0, 10.0)
     assert words == [_w("late", 2.2, 2.5)]
+
+
+def test_a_quiet_word_reaching_past_a_phrases_reach_is_no_pause():
+    # A quiet 1 s phrase in a pause, then a word reaching past the 3 s around
+    # it: no pause starts inside the word. Kept frame by frame, one did at 3 s.
+    rng = np.random.default_rng(1)
+    pause = rng.standard_normal(20 * SR) * 10 ** (-55 / 20)
+    for at, seconds in [(5.0, 1.0), (8.95, 0.4)]:
+        n = int(seconds * SR)
+        pause[int(at * SR): int(at * SR) + n] += rng.standard_normal(n) * 10 ** (-40 / 20)
+    first = _turn(40, -20)
+    word = (first.size / SR + 8.95, first.size / SR + 9.35)
+    wav = np.concatenate([first, pause.astype(np.float32), _turn(40, -20)])
+    assert not [(a, b) for a, b in retime.pauses(wav) if a < word[1] and b > word[0]]
+
+
+def test_a_quieter_aside_past_a_quiet_turns_reach_is_no_pause():
+    # A quiet guest's 8 s, a breath across the 3 s past it, then an aside
+    # 12 dB quieter still: heard again at its own level, it is no pause. With
+    # the breath kept whole, under 3 s was left after it, not heard again: one
+    # pause over the aside, and its word moved 1.2 s early.
+    rng = np.random.default_rng(3)
+    quiet = rng.standard_normal(int(14.05 * SR)) * 10 ** (-64 / 20)
+    quiet[: 8 * SR] += rng.standard_normal(8 * SR) * 10 ** (-36 / 20)
+    for at, seconds, level_db in [(10.9, 0.3, -42), (11.65, 0.8, -48)]:
+        n = int(seconds * SR)
+        quiet[int(at * SR): int(at * SR) + n] += rng.standard_normal(n) * 10 ** (level_db / 20)
+    first = _turn(30.5, -20)
+    aside = (first.size / SR + 11.75, first.size / SR + 12.35)
+    wav = np.concatenate([first, quiet.astype(np.float32), _turn(30, -20)])
+    assert not [(a, b) for a, b in retime.pauses(wav) if a < aside[1] and b > aside[0]]
+

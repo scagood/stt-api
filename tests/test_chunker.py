@@ -466,6 +466,8 @@ def _pause_between_turns(pause_sec, sounds):
         (5, [(2.4, 0.3, -42)]),  # a breath: 13 dB over it, for 300 ms
         (15, [(3.5, 0.25, -42), (8.0, 0.25, -42), (12.5, 0.25, -42)]),  # three: 0.75 s summed, under 0.5 s each
         (10, [(4.6, 0.17, -42), (5.07, 0.17, -42)]),  # a rustle: 0.64 s from end to end, 0.34 s of it loud
+        (10, [(4.8, 0.45, -40)]),  # 450 ms 15 dB over it: as long as a breath, under half a second
+        (10, [(4.5, 0.3, -42), (5.25, 0.3, -42)]),  # two breaths 0.45 s apart: two sounds, not one of 0.6 s
     ],
 )
 def test_volume_still_cuts_out_a_long_pause_with_sounds_in_it(volume, pause_sec, sounds):
@@ -491,13 +493,65 @@ def test_volume_keeps_a_quieter_speakers_short_words_between_phrases(volume):
     assert sum(max(0, min(b, end) - max(a, start)) for a, b in plan.ranges) == quiet.size
 
 
-def test_volume_keeps_a_quiet_reply_over_half_a_second(volume):
-    # 550 ms 15 dB over the room tone, alone in a 10 s pause: decoded.
-    wav = _pause_between_turns(10, [(4.8, 0.55, -40)])
+@pytest.mark.parametrize(
+    "sounds",
+    [
+        [(4.8, 0.55, -40)],  # 550 ms 15 dB over the room tone
+        [(4.8, 0.3, -40), (5.4, 0.3, -40)],  # two 0.3 s 0.3 s apart: one sound, 0.6 s of it loud
+    ],
+)
+def test_volume_keeps_a_quiet_reply_over_half_a_second(volume, sounds):
+    # Alone in a 10 s pause: decoded.
+    wav = _pause_between_turns(10, sounds)
     ranges = chunker.plan_chunks(wav, **BOUNDS, context_sec=5.0).ranges
-    reply = (int(44.8 * SR), int(45.35 * SR))
+    reply = (int((40 + sounds[0][0]) * SR), int((40 + sum(sounds[-1][:2])) * SR))
     assert any(a <= reply[0] and reply[1] <= b for a, b in ranges)
     assert [(round(a / SR), round(b / SR)) for a, b in ranges if b < reply[0] or a > reply[1]] == [(0, 40), (50, 90)]
+
+
+@pytest.mark.parametrize("word", [(8.5, 0.3), (8.95, 0.4)])
+def test_volume_keeps_a_quiet_word_near_a_phrase_whole(volume, word):
+    # A quiet 1 s phrase, then a word 2.5 s after it, or one reaching past the
+    # 3 s around it, then a pause: the whole word is decoded. Kept frame by
+    # frame, the second was cut at 3 s, 0.23 s of it never decoded.
+    wav = _pause_between_turns(20, [(5.0, 1.0, -40), (*word, -40)])
+    start, end = int((40 + word[0]) * SR), int((40 + sum(word)) * SR)
+    assert any(a <= start and end <= b for a, b in chunker.plan_chunks(wav, **BOUNDS).ranges)
+
+
+def test_volume_keeps_no_train_of_clicks_far_past_a_phrase(volume):
+    # Seven clicks 0.36 s apart, one sound, from just inside the 3 s past a
+    # quiet phrase: kept no more than half a second past it, so the rest of
+    # the pause is still cut out. Kept whole, the clicks left too little to.
+    clicks = [(4.8 + 0.36 * k, 0.06, -44) for k in range(7)]
+    wav = _pause_between_turns(10, [(1.0, 1.0, -40)] + clicks)
+    ranges = chunker.plan_chunks(wav, **BOUNDS, context_sec=5.0).ranges
+    assert [(round(a / SR), round(b / SR)) for a, b in ranges] == [(0, 45), (50, 90)]
+
+
+def test_volume_hears_quiet_sounds_whatever_the_shortest_pause(volume, monkeypatch):
+    # Joined across PARAKEET_VAD_MIN_SILENCE_MS alone, at 60 ms a quiet turn's
+    # syllables were each a sound too short to be speech, and so were two
+    # 0.3 s words 0.3 s apart. Still 400 ms.
+    monkeypatch.setattr(chunker, "VAD_MIN_SILENCE_MS", 60)
+    first, quiet, last = _turn(50, -20), _turn(10, -44), _turn(50, -20)
+    plan = chunker.plan_chunks(np.concatenate([first, quiet, last]), **BOUNDS, context_sec=5.0)
+    start, end = first.size, first.size + quiet.size
+    assert sum(max(0, min(b, end) - max(a, start)) for a, b in plan.ranges) == quiet.size
+    wav = _pause_between_turns(10, [(4.8, 0.3, -40), (5.4, 0.3, -40)])
+    ranges = chunker.plan_chunks(wav, **BOUNDS, context_sec=5.0).ranges
+    assert any(a <= int(44.8 * SR) and int(45.7 * SR) <= b for a, b in ranges)
+
+
+def test_volume_joins_quiet_words_across_a_longer_shortest_pause(volume, monkeypatch):
+    # Ten 0.35 s words 0.5 s apart, alone in a pause: each under half a second,
+    # but one sound across a PARAKEET_VAD_MIN_SILENCE_MS of 1 s, decoded.
+    # Joined across 400 ms alone, they were dropped.
+    monkeypatch.setattr(chunker, "VAD_MIN_SILENCE_MS", 1000)
+    wav = _pause_between_turns(12, [(1.0 + 0.85 * k, 0.35, -42) for k in range(10)])
+    start, end = int(41.0 * SR), int(48.7 * SR)
+    ranges = chunker.plan_chunks(wav, **BOUNDS, context_sec=5.0).ranges
+    assert sum(max(0, min(b, end) - max(a, start)) for a, b in ranges) == end - start
 
 
 def test_a_fixed_gate_is_not_heard_again(volume, monkeypatch):

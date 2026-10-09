@@ -572,15 +572,18 @@ long silence and never decoded. So a quiet stretch at least
 `PARAKEET_CHUNK_TRIM_SILENCE_SEC` long is heard again at its own level: 100 ms
 of it louder than 0.4× its own average, and 10 dB over its quietest tenth, is
 loud. The 100 ms is a median, so no click or knock passes, and room tone stays
-within a few dB of its floor. A loud sound (joined across dips shorter than
-`PARAKEET_VAD_MIN_SILENCE_MS`) is speech if half a second of it is loud, and
-so is any shorter one within `PARAKEET_CHUNK_TRIM_SILENCE_SEC` of such a sound:
-a quiet speaker's short words, which would otherwise leave a stretch to cut
-out between two phrases. Breaths alone in a pause never add up to speech,
-however many. On LibriVox narration a long pause's breaths and rustles were
-0.1-0.34 s (decoded alone, one made Parakeet say "yeah"); 26 dB down, a
-quieter reader's phrases were 0.58-1.18 s and the words between them 0.12-0.32 s. With a 15 s turn (25 words) of one LibriVox reader between
-two minutes of another:
+within a few dB of its floor. A loud sound (joined across dips under 400 ms,
+or under `PARAKEET_VAD_MIN_SILENCE_MS` where that is longer) is speech if half
+a second of it is loud, and so is any shorter one reaching within
+`PARAKEET_CHUNK_TRIM_SILENCE_SEC` of such a sound, kept whole up to half a
+second past that: a quiet speaker's short words, which would otherwise leave a
+stretch to cut out between two phrases. Breaths alone in a pause, further
+apart than those dips, never add up to speech, however many; breaths closer
+together (panting), footsteps or typing can join into a sound long enough. On
+LibriVox narration a long pause's breaths and rustles were 0.1-0.34 s (decoded
+alone, one made Parakeet say "yeah"); 26 dB down, a quieter reader's phrases
+were 0.58-1.18 s and the words between them 0.12-0.32 s. With a 15 s turn (25
+words) of one LibriVox reader between two minutes of another:
 
 | Quiet turn | words heard before | now |
 |---|---|---|
@@ -588,13 +591,13 @@ two minutes of another:
 | 20 dB quieter | 6, and an "Oh." not said | 25 |
 | 26 dB quieter | 0 | 25 |
 
-On other recordings of the three chapters above (not the table's), and the
-two noise beds, the chunks, and so the transcripts, are the same as before.
-Still taken for a pause: a sound under half a second with no longer one near
-it (a quiet "Yes." alone in a long pause), a quiet stretch that never rises
-10 dB over its own floor (a steady tone, or speech under noise within 10 dB of
-it), and all under a fixed `PARAKEET_VAD_GATE_DB`, which is never heard
-again.
+On other recordings of the three chapters above (not the table's), and the two
+noise beds, the chunks, and so the transcripts, are the same as before. Still
+taken for a pause: a sound under half a second with no longer one near it (a
+quiet "Yes." alone in a long pause, or a halting quiet speaker's words when
+each comes alone), a quiet stretch that never rises 10 dB over its own floor
+(a steady tone, or speech under noise within 10 dB of it), and all under a
+fixed `PARAKEET_VAD_GATE_DB`, which is never heard again.
 
 **Words and numbers**
 

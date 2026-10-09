@@ -109,6 +109,12 @@ _SYLLABLE = 5  # frames: 100 ms
 # quieter reader's phrases were 0.58-1.18 s and the words between them
 # 0.12-0.32 s. A quiet "Yes." alone in a long pause is lost with the breaths.
 _HEARD_ENOUGH = 25  # frames: 0.5 s
+# A sound in a quiet stretch heard again runs on across dips shorter than this,
+# as a word's stops and a phrase's gaps between words are, or than
+# PARAKEET_VAD_MIN_SILENCE_MS where that is longer. Not the setting alone: at
+# Silero's 100 ms a quiet speaker's phrases fell apart into short sounds. Nor
+# this alone: at 1 s, a halting speaker's words 0.5 s apart fell apart too.
+_SOUND_DIP = 20  # frames: 400 ms
 
 
 def relative_gate(rms: np.ndarray, ratio: float) -> float:
@@ -136,11 +142,6 @@ def _joined(spans: np.ndarray, dip: int) -> np.ndarray:
     return np.stack((spans[opens, 0], spans[closes, 1]), axis=1)
 
 
-def _dip_frames() -> int:
-    """The shortest pause, VAD_MIN_SILENCE_MS, in 20 ms frames."""
-    return max(1, int(VAD_MIN_SILENCE_MS / 20))
-
-
 def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
     """Which frames (their levels, `rms`) are louder than `ratio` x the level
     of the audio around them, and than -60 dBFS.
@@ -150,13 +151,16 @@ def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
     under throughout, and be taken for one long pause. So each run of quiet
     frames at least `relisten` long is heard again at its own level: where
     100 ms of it is louder than `ratio` x its average, and 10 dB over its
-    quietest tenth, it is loud too: in a sound (joined across dips shorter
-    than VAD_MIN_SILENCE_MS) heard for half a second or more, or within
-    `relisten` of one. Then again within each run still that long, until none
-    changes. A pause holding only room tone, clicks, or breaths stays quiet,
-    however long or many.
+    quietest tenth, it is loud too: in a sound (joined across dips under
+    400 ms, or VAD_MIN_SILENCE_MS where longer) heard for half a second or
+    more, or in a shorter one reaching within `relisten` of such a sound. Then
+    again within each run still that long, until none changes. A pause holding
+    only room tone, clicks, or breaths further apart than that stays quiet,
+    however long or many; breaths closer together (panting), footsteps or
+    typing can join into a sound long enough.
     """
     loud = rms > relative_gate(rms, ratio)
+    dip = max(_SOUND_DIP, int(VAD_MIN_SILENCE_MS / 20))
     todo = _runs_of(~loud, relisten)
     while todo:
         start, end = todo.pop()
@@ -166,18 +170,26 @@ def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
         # frame or two loud in a pause, never passes.
         padded = np.pad(part, _SYLLABLE // 2, mode="edge")
         heard = np.median(np.lib.stride_tricks.sliding_window_view(padded, _SYLLABLE), axis=1) > gate
-        # Speech is a sound (joined across dips shorter than a pause) heard for
-        # half a second or more, so that breaths spread through one pause never
-        # add up to any; and the shorter sounds within `relisten` of one, a
-        # quiet speaker's short words, which would otherwise leave a stretch
-        # long enough to cut out between two of their phrases.
+        # Speech is a sound heard for half a second or more, so that breaths
+        # spaced through a pause don't add up to any; and the shorter sounds
+        # within `relisten` of one, a quiet speaker's short words, which would
+        # otherwise leave a stretch long enough to cut out between two of their
+        # phrases. Each is kept whole, a word reaching past `relisten` not cut
+        # in two, but no more than half a second past it: no train of clicks
+        # or footsteps carried on into the pause. What is past `relisten` is
+        # still heard again at its own level.
+        sounds = _joined(runs(heard), dip).tolist()
         near = np.zeros_like(heard)
-        for a, b in _joined(runs(heard), _dip_frames()).tolist():
+        reach = np.zeros_like(heard)
+        for a, b in sounds:
             if heard[a:b].sum() >= _HEARD_ENOUGH:
                 near[max(0, a - relisten): b + relisten] = True
+                reach[max(0, a - relisten - _HEARD_ENOUGH): b + relisten + _HEARD_ENOUGH] = True
         kept = heard & near
         if kept.any():
-            loud[start:end] = kept
+            for a, b in sounds:
+                if near[a:b].any():
+                    loud[start + a: start + b] |= heard[a:b] & reach[a:b]
             todo.extend((start + a, start + b) for a, b in _runs_of(~kept, relisten))
     return loud
 
@@ -202,7 +214,7 @@ def _volume_speech_segments(wav: np.ndarray) -> List[Range]:
     pad = int(VAD_SPEECH_PAD_MS * TARGET_SR / 1000)
     return [
         (max(0, start * FRAME - pad), min(wav.size, end * FRAME + pad))
-        for start, end in _joined(loud, _dip_frames()).tolist()
+        for start, end in _joined(loud, max(1, int(VAD_MIN_SILENCE_MS / 20))).tolist()
     ]
 
 
