@@ -378,12 +378,56 @@ another alphabet is left as written, but Latin-script languages sent without
 `language` are rewritten as if English, so send `language`, or set the default
 empty if you serve them.
 
+## Silence
+
+Given no speech, Parakeet makes some up: two seconds of digital silence come
+back as `Thank you.`, a pause cut out of an audiobook as `Yeah.` or `Okay.`.
+Audio longer than the model's `chunk_max_sec` (75 s for `parakeet-v3`) is cut
+at pauses, and stretches with no speech never reach the model. Shorter audio
+goes to the model whole. With `vad_filter=true`, Silero-VAD first checks it for
+speech, whatever `PARAKEET_VAD` says: audio without any comes back empty (no
+text, segments or words), and audio with speech is transcribed whole, as
+before, never trimmed.
+
+```bash
+curl http://localhost:5092/v1/audio/transcriptions \
+  -F file=@clip.wav -F model=parakeet-v3 -F vad_filter=true
+```
+
+From the OpenAI SDK, send `extra_body={"vad_filter": True}`.
+`PARAKEET_VAD_FILTER=true` turns it on for requests that don't say; they can
+still send `vad_filter=false`. Without silero-vad installed, the filter falls
+back to `volume`, which drops digital silence but lets most noise through.
+
+**What it catches, and what it costs.** It can drop real speech, which is why
+it is off by default. Measured with Silero on CPU, with Parakeet's output
+inferred from #64 rather than run here:
+
+| Clips | Kept (sent to the model) |
+|---|---|
+| 300 one-word recordings (digits, 6 speakers), padded to 1.5 s | 300 |
+| the same, with background noise at 5 dB SNR | 300 |
+| the same, 20 dB quieter (median peak -31 dBFS) | 240 |
+| 352 non-speech sound clips (ESC-50: rain, engines, dogs, ...), 2 and 5 s | 30 |
+| digital silence, dither, white and pink noise at -80 to -20 dBFS, hum, clicks | 0 |
+
+Silero only counts speech it hears for at least
+`PARAKEET_VAD_FILTER_MIN_SPEECH_MS` (default `0`: any 32 ms window). Its own
+default, 250 ms, drops short words it is sure of, such as "up", "go" or "no":
+on the clips above, 250 ms kept 283 of the 300 words and 200 of the quiet ones,
+for 10 noise clips instead of 30. `PARAKEET_VAD_THRESHOLD` applies too: at
+`0.2`, 289 of the quiet words were kept, and 102 noise clips.
+
+It hears the first 2 s first, so audio with speech there costs about 25 ms of
+one CPU core; only audio without pays for the rest (about 12 ms per second of
+audio), and it is then spared the model.
+
 ## Batch transcription
 
 `POST /v1/audio/transcriptions/batch` takes several `files` in one request,
-with the same `model`, `quantization`, `aligner` and `spoken_numbers` fields
-as the single-file endpoint, but no `language` or `response_format`. It
-returns text only:
+with the same `model`, `quantization`, `aligner`, `spoken_numbers` and
+`vad_filter` fields as the single-file endpoint, but no `language` or
+`response_format`. It returns text only:
 
 ```bash
 curl http://localhost:5092/v1/audio/transcriptions/batch \
@@ -503,6 +547,8 @@ the catalog)
 | `PARAKEET_VAD_THRESHOLD` | `0.5` | `silero`'s speech probability |
 | `PARAKEET_VAD_MIN_SILENCE_MS` | `400` | shortest pause to cut at |
 | `PARAKEET_VAD_SPEECH_PAD_MS` | `120` | padding kept around speech |
+| `PARAKEET_VAD_FILTER` | `false` | [`vad_filter`](#silence) for requests that don't send it: audio short enough to go to the model whole goes only if Silero hears speech in it |
+| `PARAKEET_VAD_FILTER_MIN_SPEECH_MS` | `0` | the shortest speech `vad_filter` counts; longer drops more short words and fewer noise clips (see [Silence](#silence)) |
 
 **Context at the cuts.** Parakeet makes up a word (`and`, `the`, `I`) when its
 input ends shortly after speech. Chunks cut in a pause with no audio past the

@@ -13,6 +13,7 @@ from .config import (
     VAD,
     VAD_GATE_DB,
     VAD_MIN_SILENCE_MS,
+    VAD_FILTER_MIN_SPEECH_MS,
     VAD_SPEECH_PAD_MS,
     VAD_THRESHOLD,
     logger,
@@ -62,7 +63,7 @@ def _speech_segments(wav: np.ndarray) -> List[Range]:
     return _silero_speech_segments(wav)
 
 
-def _silero_speech_segments(wav: np.ndarray) -> List[Range]:
+def _silero_speech_segments(wav: np.ndarray, min_speech_ms: int = 250) -> List[Range]:
     model = _get_vad()
     if model == "energy":
         return _volume_speech_segments(wav)
@@ -77,9 +78,29 @@ def _silero_speech_segments(wav: np.ndarray) -> List[Range]:
         threshold=VAD_THRESHOLD,
         min_silence_duration_ms=VAD_MIN_SILENCE_MS,
         speech_pad_ms=VAD_SPEECH_PAD_MS,
+        min_speech_duration_ms=min_speech_ms,
         return_seconds=False,
     )
     return [(int(item["start"]), int(item["end"])) for item in timestamps]
+
+
+# How much of a short clip vad_filter hears first: speech nearly always starts
+# within it, so a clip with speech costs this much VAD, not a pass over all of it.
+_SPEECH_PROBE_SEC = 2.0
+
+
+def has_speech(wav: np.ndarray) -> bool:
+    """Whether Silero hears any speech in `wav` (vad_filter), whatever
+    PARAKEET_VAD says: no loudness gate tells noise from quiet words.
+
+    The first _SPEECH_PROBE_SEC is heard first; only a clip without speech
+    there pays for a pass over all of it, and that one is then usually spared
+    its inference.
+    """
+    probe = int(_SPEECH_PROBE_SEC * TARGET_SR)
+    if wav.size > probe and _silero_speech_segments(wav[:probe], VAD_FILTER_MIN_SPEECH_MS):
+        return True
+    return bool(_silero_speech_segments(wav, VAD_FILTER_MIN_SPEECH_MS))
 
 
 FRAME = int(0.02 * TARGET_SR)  # loudness is measured in 20 ms frames
@@ -486,12 +507,15 @@ def plan_chunks(
     max_sec: float,
     min_sec: float = CHUNK_MIN_SEC,
     context_sec: float = 0.0,
+    vad_filter: bool = False,
 ) -> Plan:
     """Ordered, non-empty, bounded ranges in the original waveform, and the
     window of audio to decode for each (_windows).
 
-    Short clips bypass VAD. Long clips with no detected speech return no ranges,
-    allowing the API to skip expensive ASR inference for silence.
+    Long clips with no detected speech return no ranges, allowing the API to
+    skip expensive ASR inference for silence. Short clips are never cut, and
+    bypass VAD unless `vad_filter` asks Silero whether they have speech at all
+    (has_speech).
 
     Bounds are the model's own (models.yaml). A long clip's ranges leave room
     for `context_sec` more on either side within max_sec.
@@ -503,6 +527,8 @@ def plan_chunks(
     target = max(1, int(target_sec * TARGET_SR))
     maximum = max(target, int(max_sec * TARGET_SR))
     if total <= maximum:
+        if vad_filter and not has_speech(wav):
+            return Plan([], [], [])
         return Plan([(0, total)], [(0, total)], None)
     context = int(context_sec * TARGET_SR)
     own_maximum = max(1, maximum - 2 * context)

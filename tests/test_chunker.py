@@ -874,3 +874,65 @@ def test_frame_rms_in_blocks_matches_one_pass(monkeypatch):
     monkeypatch.setattr(chunker, "_RMS_BLOCK", 7)  # many blocks, one partial
     assert np.array_equal(chunker.frame_rms(wav), whole)
     assert chunker.frame_rms(np.zeros(10, dtype=np.float32)).size == 0
+
+
+def test_vad_filter_sends_short_audio_without_speech_nowhere(monkeypatch):
+    monkeypatch.setattr(chunker, "_silero_speech_segments", lambda _wav, _min_speech_ms=250: [])
+    waveform = np.zeros(2 * chunker.TARGET_SR, dtype=np.float32)
+    assert chunker.plan_chunks(waveform, **BOUNDS, vad_filter=True) == ([], [], [])
+    # off (the default), nothing changes: the clip goes to the model whole
+    assert _ranges(waveform, **BOUNDS) == [(0, waveform.size)]
+
+
+def test_vad_filter_keeps_short_speech_whole(monkeypatch):
+    sr = chunker.TARGET_SR
+    monkeypatch.setattr(
+        chunker, "_silero_speech_segments", lambda wav, _min_speech_ms=250: [(sr, 2 * sr)] if wav.size >= 2 * sr else []
+    )
+    waveform = np.ones(10 * sr, dtype=np.float32)
+    # VAD only decides whether to decode: a short clip is never trimmed to its speech
+    plan = chunker.plan_chunks(waveform, **BOUNDS, vad_filter=True, context_sec=5.0)
+    assert plan.ranges == plan.windows == [(0, waveform.size)]
+
+
+@pytest.mark.parametrize(("speech_at", "heard"), [(0, [2.0]), (5, [2.0, 10.0]), (None, [2.0, 10.0])])
+def test_vad_filter_hears_the_start_first(monkeypatch, speech_at, heard):
+    sr = chunker.TARGET_SR
+    lengths = []
+
+    def segments(wav, _min_speech_ms=250):
+        lengths.append(wav.size / sr)
+        return [] if speech_at is None or wav.size <= speech_at * sr else [(speech_at * sr, wav.size)]
+
+    monkeypatch.setattr(chunker, "_silero_speech_segments", segments)
+    ranges = _ranges(np.ones(10 * sr, dtype=np.float32), **BOUNDS, vad_filter=True)
+    assert lengths == heard  # all 10 s only when the first 2 s have no speech
+    assert ranges == ([] if speech_at is None else [(0, 10 * sr)])
+
+
+@pytest.mark.parametrize("vad", ["volume", "silero"])
+def test_vad_filter_asks_silero_whatever_parakeet_vad_says(monkeypatch, vad):
+    # Noise as loud as speech: volume hears "speech" in it, Silero doesn't (#64)
+    monkeypatch.setattr(chunker, "VAD", vad)
+    monkeypatch.setattr(chunker, "_volume_speech_segments", lambda wav: [(0, wav.size)])
+    asked = []
+
+    def silero(_wav, min_speech_ms=250):
+        asked.append(min_speech_ms)
+        return []
+
+    monkeypatch.setattr(chunker, "_silero_speech_segments", silero)
+    noise = np.random.default_rng(64).standard_normal(chunker.TARGET_SR).astype(np.float32)
+    assert _ranges(noise, **BOUNDS, vad_filter=True) == []
+    # Silero's own 250 ms minimum drops short words such as "up" and "go"
+    assert asked == [chunker.VAD_FILTER_MIN_SPEECH_MS] == [0]
+
+
+def test_vad_filter_without_silero_falls_back_to_volume(monkeypatch):
+    # silero-vad not installed: volume still tells digital silence from sound
+    monkeypatch.setattr(chunker, "_get_vad", lambda: "energy")
+    sr = chunker.TARGET_SR
+    silence = np.zeros(2 * sr, dtype=np.float32)
+    tone = (0.1 * np.sin(2 * np.pi * 220 * np.arange(2 * sr) / sr)).astype(np.float32)
+    assert _ranges(silence, **BOUNDS, vad_filter=True) == []
+    assert _ranges(tone, **BOUNDS, vad_filter=True) == [(0, tone.size)]

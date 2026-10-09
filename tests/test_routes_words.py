@@ -11,6 +11,7 @@ import inspect
 import io
 import json
 import threading
+import wave
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
@@ -18,7 +19,7 @@ import pytest
 from fastapi import FastAPI, HTTPException, UploadFile, params
 from starlette.datastructures import FormData
 
-from parakeet_service import aligner, routes, schemas
+from parakeet_service import aligner, chunker, routes, schemas
 from parakeet_service.config import TARGET_SR
 from parakeet_service.model import get_model
 
@@ -124,6 +125,7 @@ async def _transcribe(
     model="parakeet-v3",
     quantization=None,
     retime_words=None,
+    vad_filter=None,
 ):
     state = _state()
     try:
@@ -141,6 +143,7 @@ async def _transcribe(
             spoken_numbers=spoken_numbers,
             aligner_name=aligner_name,
             retime_words=retime_words,
+            vad_filter=vad_filter,
         )
     finally:
         state.audio_pool.shutdown()
@@ -148,7 +151,7 @@ async def _transcribe(
     return json.loads(response.body) if response_format.endswith("json") else response.body.decode()
 
 
-async def _batch_body(*texts, spoken_numbers=None, aligner_name=None, model="parakeet-v3"):
+async def _batch_body(*texts, spoken_numbers=None, aligner_name=None, model="parakeet-v3", vad_filter=None):
     state = _state()
     try:
         body = await routes.transcribe_batch(
@@ -158,6 +161,7 @@ async def _batch_body(*texts, spoken_numbers=None, aligner_name=None, model="par
             quantization=None,
             spoken_numbers=spoken_numbers,
             aligner_name=aligner_name,
+            vad_filter=vad_filter,
         )
     finally:
         state.audio_pool.shutdown()
@@ -351,6 +355,8 @@ async def test_alignment_only_runs_when_words_are_returned(calls, stitched, resp
         (routes.transcribe, "aligner_name", ("Optional[str]", "str | None")),
         (routes.transcribe_batch, "aligner_name", ("Optional[str]", "str | None")),
         (routes.transcribe, "retime_words", ("Optional[bool]", "bool | None")),
+        (routes.transcribe, "vad_filter", ("Optional[bool]", "bool | None")),
+        (routes.transcribe_batch, "vad_filter", ("Optional[bool]", "bool | None")),
     ],
 )
 def test_the_switches_are_optional_form_fields(handler, name, annotation):
@@ -761,3 +767,90 @@ async def test_retime_words_is_the_request_s_else_the_server_s(retimed, monkeypa
     monkeypatch.setattr(routes, "RETIME_WORDS", server)
     await _transcribe(response_format=fmt, retime_words=request_says)
     assert retimed == [(expected, "audio" if expected else "inline")]  # off the event loop when it works
+
+
+@pytest.fixture
+def filtered(calls, monkeypatch):
+    """The vad_filter each file's audio was prepared with."""
+    seen = []
+
+    async def fake_prepare(_request, raw, *bounds):
+        seen.append(bounds[4])
+        return _prepared(raw)
+
+    def fake_prepare_audio(raw, *bounds):
+        seen.append(bounds[4])
+        return _prepared(raw)
+
+    monkeypatch.setattr(routes, "_prepare_in_pool", fake_prepare)
+    monkeypatch.setattr(routes, "_prepare_audio", fake_prepare_audio)
+    return seen
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("server", "request_says", "expected"),
+    [(False, None, False), (True, None, True), (True, False, False), (False, True, True)],
+)
+async def test_vad_filter_is_the_request_s_else_the_server_s(filtered, monkeypatch, server, request_says, expected):
+    monkeypatch.setattr(routes, "VAD_FILTER", server)
+    await _transcribe(response_format="json", vad_filter=request_says)
+    await _batch("a", "b", vad_filter=request_says)
+    assert filtered == [expected] * 3
+
+
+def _silent_wav(seconds):
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(TARGET_SR)
+        wav_file.writeframes(bytes(2 * int(seconds * TARGET_SR)))
+    return buffer.getvalue()
+
+
+class _Inventor:
+    """Parakeet given silence: it makes up "Thank you." (#64)."""
+
+    def __init__(self):
+        self.pieces = 0
+
+    async def submit_many(self, pieces, _model_name):
+        self.pieces += len(pieces)
+        return [SimpleNamespace(text="Thank you.", tokens=[" Thank", " you."], timestamps=[0.2, 0.6]) for _ in pieces]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("vad_filter", [True, False])
+async def test_issue_64_two_seconds_of_silence_reach_no_model(monkeypatch, vad_filter):
+    # Silero hears no speech in digital silence; the rest is the real audio path
+    monkeypatch.setattr(chunker, "_silero_speech_segments", lambda _wav, _min_speech_ms=250: [])
+    inventor = _Inventor()
+    state = _state()
+    state.worker = inventor
+    try:
+        response = await routes.transcribe(
+            request=SimpleNamespace(app=SimpleNamespace(state=state)),
+            file=UploadFile(io.BytesIO(_silent_wav(2.0)), filename="a.wav"),
+            model="parakeet-v3",
+            quantization=None,
+            response_format="verbose_json",
+            timestamp_granularities=["word", "segment"],
+            timestamp_granularities_plain=None,
+            language=None,
+            prompt=None,
+            temperature=None,
+            spoken_numbers=None,
+            aligner_name=None,
+            retime_words=None,
+            vad_filter=vad_filter,
+        )
+    finally:
+        state.audio_pool.shutdown()
+        state.align_pool.shutdown()
+    body = json.loads(response.body)
+    if vad_filter:
+        assert inventor.pieces == 0
+        assert (body["text"], body["segments"], body.get("words", [])) == ("", [], [])
+    else:  # unchanged without it: the clip goes to the model whole
+        assert inventor.pieces == 1 and body["text"] == "Thank you."
