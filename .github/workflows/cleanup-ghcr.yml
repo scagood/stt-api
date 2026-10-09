@@ -12,7 +12,8 @@ jobs:
     steps:
       # Re-pushes of latest-cpu/latest-gpu, and of a labelled pull request's
       # pr-<number>-cpu/gpu, leave the manifests they replaced untagged.
-      # docker.yml deletes the pr-<number>-* tags when the pull request closes.
+      # delete-pr-images.yml deletes the pr-<number>-* tags when the pull
+      # request closes.
       - uses: dataaxiom/ghcr-cleanup-action@v1
         with:
           delete-untagged: true

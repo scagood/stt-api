@@ -6,17 +6,19 @@ on:
     tags: ["v*"]
   # A pull request labelled prerelease also pushes pr-<number>-cpu and
   # pr-<number>-gpu, to try a change on hardware CI doesn't have, and lists
-  # them in a section of its description. Labelling needs triage access, so
-  # the label is the approval. Taking it off drops the section; closing the
-  # pull request deletes the images.
+  # them in a section of its description. The label has to exist in the
+  # repository; labelling needs triage access, so it is the approval. Taking
+  # it off drops the section; closing the pull request deletes the images
+  # (delete-pr-images.yml).
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled, closed]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
 
 # One group per pull request: a new push cancels the build of the last one,
-# and closing cancels a build that would push after its images are deleted.
+# and closing it, in delete-pr-images.yml's run of the same group, cancels a
+# build that would push after its images are deleted.
 # Other labels run nothing, and taking prerelease off only drops the section,
 # which a push must not cancel, so neither shares it.
 concurrency:
@@ -38,10 +40,12 @@ jobs:
       pull-requests: read
     outputs:
       image: ${{ steps.files.outputs.image }}
-      # A fork's pull request gets a read-only token, so it never pushes.
+      # A fork's pull request gets a read-only token, so it never pushes. Nor
+      # does a closed one, labelled after it closed: nothing would delete it.
       publish: >-
         ${{ contains(github.event.pull_request.labels.*.name, 'prerelease') &&
-        github.event.pull_request.head.repo.full_name == github.repository }}
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.state == 'open' }}
     steps:
       - id: files
         env:
@@ -195,9 +199,10 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           # The label can come off while the images build. That run drops the
-          # section, so this one must not write it back.
+          # section, so this one must not write it back. Ignoring case, as the
+          # expressions that started this run do.
           labels=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name')
-          if [ "$ACTION" = unlabeled ] || ! grep -qx prerelease <<< "$labels"; then
+          if [ "$ACTION" = unlabeled ] || ! grep -qix prerelease <<< "$labels"; then
             .github/scripts/pull-request-section.sh "$GITHUB_REPOSITORY" "$PR_NUMBER" prerelease
             exit 0
           fi
@@ -233,33 +238,3 @@ jobs:
 
           .github/scripts/pull-request-section.sh \
             "$GITHUB_REPOSITORY" "$PR_NUMBER" prerelease "$section"
-
-  # Every closed pull request from this repository, labelled or not: the label
-  # may have come off after it pushed. Tags that aren't there are skipped.
-  # Each re-push left the manifest it replaced untagged; cleanup-ghcr.yml
-  # deletes those nightly. This doesn't share a concurrency group with it: a
-  # group keeps one pending job and cancels the others, so a delete could be
-  # dropped. The two delete different versions, and the action takes a
-  # version that is already gone as deleted.
-  delete:
-    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      pull-requests: write
-    steps:
-      - uses: dataaxiom/ghcr-cleanup-action@v1
-        with:
-          delete-tags: pr-${{ github.event.pull_request.number }}-cpu,pr-${{ github.event.pull_request.number }}-gpu
-
-      - uses: actions/checkout@v7
-        with:
-          sparse-checkout: .github/scripts
-
-      # Its pull lines name images that are gone now.
-      - name: Drop the prerelease section from the pull request
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: .github/scripts/pull-request-section.sh "$GITHUB_REPOSITORY" "$PR_NUMBER" prerelease

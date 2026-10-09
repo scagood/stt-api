@@ -1,0 +1,53 @@
+name: Delete pull request images
+
+# When a pull request closes, delete the pr-<number>-cpu/gpu images docker.yml
+# pushed while it was labelled prerelease, and the section of its description
+# that lists them.
+on:
+  # Not pull_request: GitHub runs no pull_request workflow for a pull request
+  # with a merge conflict, so a stale one closed unmerged would keep its
+  # images. pull_request_target runs this file from the base branch, and
+  # nothing here checks out the pull request's code.
+  pull_request_target:
+    types: [closed]
+
+permissions: {}
+
+# docker.yml's group for this pull request, so closing it cancels a build
+# that would push after the images are deleted. Groups span workflows.
+concurrency:
+  group: docker-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Every closed pull request from this repository, labelled or not: the label
+  # may have come off after it pushed. Tags that aren't there are skipped.
+  # Forks never push, so they have nothing to delete. Each re-push left the
+  # manifest it replaced untagged; cleanup-ghcr.yml deletes those nightly.
+  # This doesn't share a concurrency group with it: a group keeps one pending
+  # job and cancels the others, so a delete could be dropped. The two delete
+  # different versions, and the action takes a version that is already gone
+  # as deleted.
+  delete:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    steps:
+      - uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          delete-tags: pr-${{ github.event.pull_request.number }}-cpu,pr-${{ github.event.pull_request.number }}-gpu
+
+      # The base branch's copy.
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+
+      # Its pull lines name images that are gone now.
+      - name: Drop the prerelease section from the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: .github/scripts/pull-request-section.sh "$GITHUB_REPOSITORY" "$PR_NUMBER" prerelease
