@@ -162,12 +162,12 @@ def _split_oversized(start: int, end: int, maximum: int) -> List[Range]:
     return list(zip(cuts, cuts[1:]))
 
 
-def _furthest_end(start: int, speech_end: int, maximum: int) -> int:
-    """The latest a range from `start`, its speech ending at `speech_end`,
-    may end: any further into the silence after, and _split_oversized cuts
-    it into one more piece than its speech needs, that cut inside speech
-    too (#69). For a range that fits `maximum`, that is `maximum` long."""
-    return start + -(-(speech_end - start) // maximum) * maximum
+def _room(speech: int, maximum: int) -> int:
+    """The longest a range holding `speech` samples may be with silence
+    either side: any longer, and _split_oversized cuts it into one more
+    piece than the speech needs, that cut inside speech too (#69). For
+    speech that fits `maximum`, that is `maximum`."""
+    return -(-speech // maximum) * maximum
 
 
 class Plan(NamedTuple):
@@ -215,12 +215,10 @@ def plan_chunks(
     # VAD can miss a quiet first or last syllable (the energy fallback in
     # particular), so the first and last chunks reach up to trim_gap past the
     # detected speech: room for the syllable, without feeding the model the
-    # long silences cut out below. Less where the speech fits own_maximum but
-    # the margin too would not: _split_oversized would cut it in two, inside
-    # the speech.
+    # long silences cut out below. Less where the first phrase has no _room
+    # for all of the margin before it.
     current_start, current_end = max(0, segments[0][0] - trim_gap), segments[0][1]
-    if current_end - segments[0][0] <= own_maximum:
-        current_start = max(current_start, current_end - own_maximum)
+    current_start = max(current_start, current_end - _room(current_end - segments[0][0], own_maximum))
     for start, end in segments[1:]:
         # Cut at long silences and skip them entirely: feeding multi-second
         # silence to the model degrades recognition of the following speech,
@@ -234,10 +232,10 @@ def plan_chunks(
             continue
 
         # Mid-way through the pause, or later in it where the next phrase then
-        # fits own_maximum, but no later than _furthest_end.
+        # fits own_maximum, but no later than the range has _room for.
         cut = min(
             max((current_end + start) // 2, min(end - own_maximum, start)),
-            _furthest_end(current_start, current_end, own_maximum),
+            current_start + _room(current_end - current_start, own_maximum),
         )
         # Cut at this pause once the range is the minimum, or before then where
         # taking the next phrase too would pass own_maximum and the phrase fits
@@ -252,7 +250,7 @@ def plan_chunks(
         else:
             current_end = end
 
-    last_end = min(total, current_end + trim_gap, _furthest_end(current_start, current_end, own_maximum))
+    last_end = min(total, current_end + trim_gap, current_start + _room(current_end - current_start, own_maximum))
     if last_end > current_start:
         packed.append((current_start, last_end))
 

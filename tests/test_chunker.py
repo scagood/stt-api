@@ -118,12 +118,13 @@ def test_speech_with_no_pause_is_split_evenly(monkeypatch, seconds, bounds, own_
         ([(0, 38.5)], 41.5, [(0, 20), (20, 40)]),  # the margin past the speech
         ([(0, 38.5)], 45, [(0, 20), (20, 40)]),
         ([(0, 39.8), (40.8, 45.8)], 50, [(0, 20), (20, 40), (40, 48.8)]),  # mid-way through a pause
+        ([(3, 41.5)], 45, [(1.5, 21.5), (21.5, 41.5)]),  # the margin before the first phrase
     ],
 )
-def test_silence_past_the_speech_adds_no_piece(monkeypatch, speech, seconds, expected):
+def test_silence_around_the_speech_adds_no_piece(monkeypatch, speech, seconds, expected):
     # parakeet-v2 with 5 s of context: 38.5 s of speech is two pieces of 20 s
-    # at most. The silence after it would make the range 41.5 s, three equal
-    # pieces, both cuts inside speech: it stops at 40 s instead.
+    # at most. The silence after it, or before it, would make the range
+    # 41.5 s, three equal pieces, both cuts inside speech: it spans 40 s instead.
     monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: [_at(*span) for span in speech])
     ranges = chunker.plan_chunks(
         np.zeros(_at(seconds)[0], dtype=np.float32), target_sec=25.0, max_sec=30.0, min_sec=20.0, context_sec=5.0
