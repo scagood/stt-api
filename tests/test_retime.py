@@ -111,6 +111,13 @@ def test_a_pause_holding_several_words_leaves_them_alone():
     assert _times(retime.retime(words, [(12.0, 18.0)], 0.0, 30.0)) == _times(words)
 
 
+def test_words_that_would_cross_in_a_pause_are_left_alone():
+    # "said" goes after the pause, then "him." before it: moved, they crossed
+    # and piled up at its end (said 18.0-18.4, him. 18.4-18.44).
+    words = [_w("Then", 10.0, 11.8), _w("said", 13.0, 13.4), _w("him.", 14.0, 14.4), _w("Next", 18.5, 19.0)]
+    assert _times(retime.retime(words, [(12.0, 18.0)], 0.0, 30.0)) == _times(words)
+
+
 def test_one_word_inside_a_pause_on_each_side_still_moves():
     # The word before a pause slips late into it, the one after it early.
     words = [_w("him.", 2.2, 2.5), _w("The", 2.6, 2.8)]

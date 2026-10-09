@@ -272,6 +272,20 @@ def test_volume_still_cuts_out_a_long_pause_of_room_tone(volume):
     assert [(round(a / SR), round(b / SR)) for a, b in ranges] == [(0, 40), (50, 90)]
 
 
+@pytest.mark.parametrize(("seconds", "level_db"), [(0.01, -30), (0.03, -35)])
+def test_volume_still_cuts_out_a_long_pause_with_a_click_in_it(volume, seconds, level_db):
+    # A 10 ms click or a 30 ms knock is a frame or two 20-25 dB over the room
+    # tone, no syllable: the pause is still cut out whole, not decoded as a
+    # chunk of its own around it.
+    rng = np.random.default_rng(1)
+    pause = rng.standard_normal(10 * SR) * 10 ** (-55 / 20)
+    at = int(4.9 * SR)
+    pause[at: at + int(seconds * SR)] += rng.standard_normal(int(seconds * SR)) * 10 ** (level_db / 20)
+    first, last = _turn(40, -20, floor_db=-55), _turn(40, -20, floor_db=-55)
+    ranges = chunker.plan_chunks(np.concatenate([first, pause.astype(np.float32), last]), **BOUNDS, context_sec=5.0).ranges
+    assert [(round(a / SR), round(b / SR)) for a, b in ranges] == [(0, 40), (50, 90)]
+
+
 def test_a_fixed_gate_is_not_heard_again(volume, monkeypatch):
     # The operator's gate: all under it is silence, a quiet speaker too.
     monkeypatch.setattr(chunker, "VAD_GATE_DB", -30.0)

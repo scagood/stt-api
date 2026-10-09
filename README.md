@@ -204,15 +204,18 @@ the words starting over 200 ms from the aligner's start from 9.4%, 9.3% and
 
 A pause holds one word at each edge, the last before it and the first after
 it. When more than one word wholly inside a pause would go to the same side,
-it is no pause: it is speech the gate missed, or times off by more than a
-word, and those words keep Parakeet's times rather than pile up at its edge.
+or one going after it comes before one going before it, it is no pause: it is
+speech the gate missed, or times off by more than a word, and those words keep
+Parakeet's times rather than pile up at its edge.
 A quiet stretch of 3 s or more is heard again at its own level, as when
 [finding pauses](#configuration) in long audio, so a quieter speaker's turn
 gets pauses of its own instead of being one. In a 25-word turn 20 dB quieter
 than the rest, `retime_words` used to move 24 words' starts over 200 ms from
 the aligner's (aligning the turn on its own) and squeeze 23 into 40 ms; now 3
-and 1, against Parakeet's own 5 and 0. On three LibriVox chapters it moves 14
-of 5,967 words differently than before, 10 of them closer to the aligner.
+and 1, against Parakeet's own 5 and 0. On three LibriVox chapters it moves 29
+of 5,967 words differently than before, 17 of them closer to the aligner and
+12 farther: most are runs Parakeet timed more than a word early or late, which
+no edge fixes.
 
 With an aligner named, it only re-times chunks the aligner could not.
 `PARAKEET_RETIME_WORDS=true` turns it on for requests that don't say.
@@ -545,9 +548,11 @@ far quieter than the rest (a remote guest, a phone leg, a question from the
 audience) can sit under it for a whole turn, which would then be cut out as a
 long silence and never decoded. So a quiet stretch at least
 `PARAKEET_CHUNK_TRIM_SILENCE_SEC` long is heard again at its own level: 100 ms
-of it louder than 0.4× its own average, and 10 dB over its quietest tenth, is
-speech. Room tone stays within a few dB of its floor, so a long pause stays
-one. With a 15 s turn (25 words) of one LibriVox reader between two minutes of
+of it louder than 0.4× its own average, and 10 dB over its quietest tenth
+(taking the median of the 100 ms, so no click or knock passes), is speech.
+Room tone stays within a few dB of its floor, so a long pause of it stays
+one. A breath 10 dB over the floor does pass, and is decoded: telling it from
+a quiet "Yes." alone in a long pause would take more than loudness. With a 15 s turn (25 words) of one LibriVox reader between two minutes of
 another:
 
 | Quiet turn | words heard before | now |

@@ -119,10 +119,11 @@ def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
     That level is first the whole file's average, which a speaker much quieter
     than the rest (a remote guest, a phone leg) can sit under throughout, and
     be taken for one long pause. So each run of quiet frames at least
-    `relisten` long is heard again at its own level: its frames louder than
-    `ratio` x its average, and 10 dB over its quietest tenth, are loud too.
-    Then again within each run still that long, until none changes. A pause
-    holding only room tone stays quiet, however long.
+    `relisten` long is heard again at its own level: where 100 ms of it is
+    louder than `ratio` x its average, and 10 dB over its quietest tenth, it
+    is loud too. Then again within each run still that long, until none
+    changes. A pause holding only room tone, or clicks, stays quiet, however
+    long.
     """
     loud = rms > max(_GATE_FLOOR, float(rms.mean()) * ratio)
     todo = _runs(~loud, relisten)
@@ -130,10 +131,12 @@ def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
         start, end = todo.pop()
         part = rms[start:end]
         gate = max(_GATE_FLOOR, float(part.mean()) * ratio, float(np.percentile(part, 10)) * _OVER_FLOOR)
-        # Over 100 ms, as a syllable lasts: a click or a breath's rasp can be
-        # one loud frame in a pause.
-        window = np.ones(min(_SYLLABLE, part.size))
-        heard = np.convolve(part, window, "same") / np.convolve(np.ones(part.size), window, "same") > gate
+        # The median of 100 ms, as a syllable lasts: a click or a knock, a
+        # frame or two loud in a pause, never passes. A breath 10 dB over the
+        # floor does, and is decoded; to tell it from a quiet "Yes." in a long
+        # pause would take more than loudness.
+        padded = np.pad(part, _SYLLABLE // 2, mode="edge")
+        heard = np.median(np.lib.stride_tricks.sliding_window_view(padded, _SYLLABLE), axis=1) > gate
         if heard.any():
             loud[start:end] = heard
             todo.extend((start + a, start + b) for a, b in _runs(~heard, relisten))

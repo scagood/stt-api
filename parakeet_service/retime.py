@@ -74,11 +74,11 @@ def _before(word: Dict[str, Any], gap: Span, low: float, high: float) -> bool:
 
 def _crowded(gap: Span, words: Sequence[Dict[str, Any]], starts: Sequence[float], low: float, high: float) -> bool:
     """Whether `gap` holds speech rather than a pause: it is the whole chunk,
-    with no speech beside it to move a word to, or more than one word wholly
-    inside it would go to the same side. A pause has one word at each edge,
-    the last before it and the first after it; more is speech the gate took
-    for quiet, or times off by more than a word, and moving them all to one
-    edge piles them up there."""
+    with no speech beside it to move a word to, or the words wholly inside it
+    are more than one going to a side, or one going after it then one going
+    before. A pause has one word at each edge, the last before it and the
+    first after it; anything else is speech the gate took for quiet, or times
+    off by more than a word, and moving those words piles them up at an edge."""
     start, end = gap
     if start <= low and end >= high:
         return True
@@ -89,6 +89,8 @@ def _crowded(gap: Span, words: Sequence[Dict[str, Any]], starts: Sequence[float]
             break
         if word["end"] <= end:
             side = _before(word, gap, low, high)
+            if side and after:  # they would cross, and pile up
+                return True
             before, after = before + side, after + (not side)
     return before > 1 or after > 1
 
