@@ -556,9 +556,9 @@ long silence and never decoded. So a quiet stretch at least
 `PARAKEET_CHUNK_TRIM_SILENCE_SEC` long is heard again at its own level: 100 ms
 of it louder than 0.4× its own average, and 10 dB over its quietest tenth, is
 loud. The 100 ms is a median, so no click or knock passes, and room tone stays
-within a few dB of its floor. A loud sound (joined across dips shorter than
-`PARAKEET_VAD_MIN_SILENCE_MS`) is speech if half a second of it is loud, and
-so is any shorter one within `PARAKEET_CHUNK_TRIM_SILENCE_SEC` of such a sound:
+within a few dB of its floor. A loud sound (joined across dips under 400 ms)
+is speech if half a second of it is loud, and so is any shorter one within
+`PARAKEET_CHUNK_TRIM_SILENCE_SEC` of such a sound:
 a quiet speaker's short words, which would otherwise leave a stretch to cut
 out between two phrases. Breaths alone in a pause never add up to speech,
 however many. On LibriVox narration a long pause's breaths and rustles were
