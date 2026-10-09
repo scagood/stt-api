@@ -498,6 +498,21 @@ def test_volume_keeps_a_quiet_reply_over_half_a_second(volume):
     assert [(round(a / SR), round(b / SR)) for a, b in ranges if b < reply[0] or a > reply[1]] == [(0, 40), (50, 90)]
 
 
+@pytest.mark.parametrize("min_silence_ms", [60, 3000])
+def test_volume_hears_quiet_sounds_alike_whatever_the_shortest_pause(volume, monkeypatch, min_silence_ms):
+    # PARAKEET_VAD_MIN_SILENCE_MS is where to cut, not what a sound is: joined
+    # across it, at 60 ms a quiet turn's syllables were each too short to be
+    # speech, and at 3 s two breaths were one long enough.
+    monkeypatch.setattr(chunker, "VAD_MIN_SILENCE_MS", min_silence_ms)
+    first, quiet, last = _turn(50, -20), _turn(10, -44), _turn(50, -20)
+    plan = chunker.plan_chunks(np.concatenate([first, quiet, last]), **BOUNDS, context_sec=5.0)
+    start, end = first.size, first.size + quiet.size
+    assert sum(max(0, min(b, end) - max(a, start)) for a, b in plan.ranges) == quiet.size
+    wav = _pause_between_turns(10, [(3.0, 0.3, -42), (5.0, 0.3, -42)])
+    ranges = chunker.plan_chunks(wav, **BOUNDS, context_sec=5.0).ranges
+    assert [(round(a / SR), round(b / SR)) for a, b in ranges] == [(0, 40), (50, 90)]
+
+
 def test_a_fixed_gate_is_not_heard_again(volume, monkeypatch):
     # The operator's gate: all under it is silence, a quiet speaker too.
     monkeypatch.setattr(chunker, "VAD_GATE_DB", -30.0)
