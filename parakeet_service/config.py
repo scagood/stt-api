@@ -315,7 +315,10 @@ PRELOAD_MODELS = [
 TARGET_SR = 16_000
 
 # Chunk lengths are per model (models.yaml). This is the shortest chunk cut
-# at a pause, capped at the model's own target.
+# at a pause, capped at the model's own target. A shorter one is cut at a
+# pause too where taking the next phrase would pass chunk_max_sec less the
+# context on both sides (20 s for parakeet-v2) and the phrase fits a chunk
+# of its own: taking it would cut inside speech.
 CHUNK_MIN_SEC = _env_float("PARAKEET_CHUNK_MIN_SEC", 20.0, minimum=0.0)
 
 # Silence gaps at least this long are cut out of chunks instead of being fed
@@ -324,7 +327,8 @@ CHUNK_MIN_SEC = _env_float("PARAKEET_CHUNK_MIN_SEC", 20.0, minimum=0.0)
 CHUNK_TRIM_SILENCE_SEC = _env_float("PARAKEET_CHUNK_TRIM_SILENCE_SEC", 3.0, minimum=0.5)
 
 # Each piece of long audio also decodes this much of its neighbours' audio
-# on either side, and keeps only the words that start in its own range.
+# on either side, and keeps only the words that start in its own range (near
+# a cut, as matched with its neighbour's words: routes._seam).
 # Parakeet makes up a word ("and", "the", "I") when its input ends shortly
 # after speech, and pieces cut mid-pause with nothing past the cut gained one
 # at about one join in five (#68). The context starts and ends in a pause, as
@@ -431,10 +435,10 @@ if ALIGN_DEFAULT_LANGUAGE and not LANGUAGE_CODE.fullmatch(ALIGN_DEFAULT_LANGUAGE
 SPOKEN_NUMBERS = _env_bool("PARAKEET_SPOKEN_NUMBERS", False)
 # Parakeet's word times slip into pauses: the word before one starts after the
 # speech has stopped, the word after it before the speech starts. On, words
-# touching a pause (found by loudness, retime.py) move to its edge, for a few
-# ms per hour of audio; an aligner, when named, times words better. A request
-# opts in or out with `retime_words=true|false`; this is the answer for
-# requests that don't say.
+# touching a pause (found by loudness, retime.py) move to its edge, for about
+# 0.1 s of CPU per hour of audio; an aligner, when named, times words better.
+# A request opts in or out with `retime_words=true|false`; this is the answer
+# for requests that don't say.
 RETIME_WORDS = _env_bool("PARAKEET_RETIME_WORDS", False)
 # The /compare page: upload a clip and hear where each model and aligner puts
 # every word. Off unless an operator turns it on: each row it runs is a full

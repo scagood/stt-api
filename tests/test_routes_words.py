@@ -251,6 +251,27 @@ async def test_a_colon_and_the_quantization_field_must_agree(calls):
 
 
 @pytest.mark.asyncio
+async def test_aligner_quantization_is_a_400_pointing_at_the_colon():
+    # FastAPI drops a form field it doesn't know: without this, its precision would be ignored
+    async def form(*pairs):
+        return FormData(list(pairs))
+
+    for sent, said in [
+        ([("aligner", "mms-300m-forced-aligner"), ("aligner_quantization", "int8")], "aligner=mms-300m-forced-aligner:int8"),
+        ([("aligner_quantization", "fp32")], "aligner=<name>:fp32"),
+    ]:
+        with pytest.raises(HTTPException) as caught:
+            await routes._no_aligner_quantization(SimpleNamespace(form=lambda sent=sent: form(*sent)))
+        assert caught.value.status_code == 400 and f"send {said} instead" in caught.value.detail
+    assert await routes._no_aligner_quantization(SimpleNamespace(form=lambda: form(("aligner", BASE)))) is None
+    checked = {
+        route.path for route in routes.router.routes
+        if any(depends.dependency is routes._no_aligner_quantization for depends in getattr(route, "dependencies", []))
+    }
+    assert checked == {"/v1/audio/transcriptions", "/v1/audio/transcriptions/batch"}
+
+
+@pytest.mark.asyncio
 async def test_a_model_that_cannot_load_is_a_503_naming_it(calls, monkeypatch):
     def unavailable():  # the first step of a cold load
         raise RuntimeError("PARAKEET_USE_GPU=true but CUDAExecutionProvider is unavailable")
@@ -534,6 +555,38 @@ async def test_a_number_only_in_the_context_does_not_queue_to_hear_it(calls, sti
         state.align_pool.shutdown()
     assert text == "Hello."
     assert stitched == ["audio"] and calls == []
+
+
+@pytest.mark.asyncio
+async def test_long_audio_is_never_scanned_or_joined_on_the_event_loop(stitched, monkeypatch):
+    # Hours of audio are thousands of tokens: finding skipped speech, trimming
+    # and joining them run on the audio pool, even for plain text.
+    threads = []
+    stalled = routes._stalled
+
+    def recording(*args):
+        threads.append(_pool(threading.current_thread().name))
+        return stalled(*args)
+
+    monkeypatch.setattr(routes, "_stalled", recording)
+    prepared = routes._PreparedAudio(
+        waveform=None, ranges=[(0, 2 * TARGET_SR), (2 * TARGET_SR, 4 * TARGET_SR)],
+        windows=[(0, 3 * TARGET_SR), (TARGET_SR, 4 * TARGET_SR)], speech=[], pieces=["one", "two"], duration=4.0,
+    )
+    results = [
+        SimpleNamespace(text="hello world", tokens=[" hello", " world"], timestamps=[0.5, 2.5]),
+        SimpleNamespace(text="hello world", tokens=[" hello", " world"], timestamps=[0.5, 1.5]),
+    ]
+    state = _state()
+    request = SimpleNamespace(app=SimpleNamespace(state=state))
+    try:
+        results = await routes._redo_stalled(request, [prepared], results, "parakeet-v3:fp32")
+        text, _segments, _words = await routes._stitch_request(request, prepared, results)
+    finally:
+        state.audio_pool.shutdown()
+        state.align_pool.shutdown()
+    assert text == "hello world"
+    assert threads == ["audio"] and stitched == ["audio"]
 
 
 @pytest.mark.asyncio

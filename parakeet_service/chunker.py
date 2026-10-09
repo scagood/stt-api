@@ -98,7 +98,6 @@ def frame_rms(wav: np.ndarray) -> np.ndarray:
     return np.concatenate([np.sqrt((b * b).mean(axis=1) + 1e-12) for b in blocks])
 
 
-_GATE_FLOOR = 1e-3  # -60 dBFS: no gate is lower
 # A quiet stretch heard again at its own level (loud_frames) is speech where it
 # is this far over its own quietest tenth: 10 dB, where a pause's room tone
 # stays within a few dB of its floor.
@@ -111,38 +110,47 @@ _SYLLABLE = 5  # frames: 100 ms
 _HEARD_ENOUGH = 25  # frames: 0.5 s
 
 
-def _runs(mask: np.ndarray, shortest: int) -> List[Range]:
-    """Each run of True in `mask` at least `shortest` long, as (start, end)."""
-    edges = np.flatnonzero(np.diff(np.concatenate(([0], mask.astype(np.int8), [0]))))
-    return [(int(a), int(b)) for a, b in edges.reshape(-1, 2) if b - a >= shortest]
+def relative_gate(rms: np.ndarray, ratio: float) -> float:
+    """`ratio` times the average 20 ms frame level in `rms`, never under -60 dBFS."""
+    return max(1e-3, float(rms.mean()) * ratio)
+
+
+def runs(frames: np.ndarray) -> np.ndarray:
+    """Each run of true `frames`, as a row of its start and end (exclusive) index."""
+    return np.flatnonzero(np.diff(np.concatenate(([0], frames.astype(np.int8), [0])))).reshape(-1, 2)
+
+
+def _runs_of(frames: np.ndarray, shortest: int) -> List[Range]:
+    """runs() at least `shortest` long, as (start, end) pairs."""
+    return [(start, end) for start, end in runs(frames).tolist() if end - start >= shortest]
 
 
 def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
     """Which frames (their levels, `rms`) are louder than `ratio` x the level
     of the audio around them, and than -60 dBFS.
 
-    That level is first the whole file's average, which a speaker much quieter
-    than the rest (a remote guest, a phone leg) can sit under throughout, and
-    be taken for one long pause. So each run of quiet frames at least
-    `relisten` long is heard again at its own level: where 100 ms of it is
-    louder than `ratio` x its average, and 10 dB over its quietest tenth, it
-    is loud too, if that comes to half a second or more. Then again within
-    each run still that long, until none changes. A pause holding only room
-    tone, clicks, or a breath stays quiet, however long.
+    That level is first the whole file's average (relative_gate), which a
+    speaker much quieter than the rest (a remote guest, a phone leg) can sit
+    under throughout, and be taken for one long pause. So each run of quiet
+    frames at least `relisten` long is heard again at its own level: where
+    100 ms of it is louder than `ratio` x its average, and 10 dB over its
+    quietest tenth, it is loud too, if that comes to half a second or more.
+    Then again within each run still that long, until none changes. A pause
+    holding only room tone, clicks, or a breath stays quiet, however long.
     """
-    loud = rms > max(_GATE_FLOOR, float(rms.mean()) * ratio)
-    todo = _runs(~loud, relisten)
+    loud = rms > relative_gate(rms, ratio)
+    todo = _runs_of(~loud, relisten)
     while todo:
         start, end = todo.pop()
         part = rms[start:end]
-        gate = max(_GATE_FLOOR, float(part.mean()) * ratio, float(np.percentile(part, 10)) * _OVER_FLOOR)
+        gate = max(relative_gate(part, ratio), float(np.percentile(part, 10)) * _OVER_FLOOR)
         # The median of 100 ms, as a syllable lasts: a click or a knock, a
         # frame or two loud in a pause, never passes.
         padded = np.pad(part, _SYLLABLE // 2, mode="edge")
         heard = np.median(np.lib.stride_tricks.sliding_window_view(padded, _SYLLABLE), axis=1) > gate
         if heard.sum() >= _HEARD_ENOUGH:
             loud[start:end] = heard
-            todo.extend((start + a, start + b) for a, b in _runs(~heard, relisten))
+            todo.extend((start + a, start + b) for a, b in _runs_of(~heard, relisten))
     return loud
 
 
@@ -155,38 +163,25 @@ def _volume_speech_segments(wav: np.ndarray) -> List[Range]:
     plan_chunks to cut out (CHUNK_TRIM_SILENCE_SEC), so a quieter speaker's
     turn is decoded rather than dropped. A fixed gate is the operator's: all
     under it is silence."""
-    frame = FRAME
-    if wav.size < frame:
+    if wav.size < FRAME:
         return [(0, wav.size)] if np.any(np.abs(wav) > 1e-4) else []
 
     rms = frame_rms(wav)
-    frame_count = rms.size
     if VAD_GATE_DB is None:
-        voiced = loud_frames(rms, 0.4, max(1, int(CHUNK_TRIM_SILENCE_SEC * TARGET_SR) // frame))
+        loud = runs(loud_frames(rms, 0.4, max(1, int(CHUNK_TRIM_SILENCE_SEC * TARGET_SR) // FRAME)))
     else:
-        voiced = rms > 10.0 ** (VAD_GATE_DB / 20.0)
+        loud = runs(rms > 10.0 ** (VAD_GATE_DB / 20.0))
+    if not loud.size:
+        return []
     minimum_silence_frames = max(1, int(VAD_MIN_SILENCE_MS / 20))
-
-    segments: List[Range] = []
-    index = 0
-    while index < frame_count:
-        if not voiced[index]:
-            index += 1
-            continue
-        start = last = cursor = index
-        silence = 0
-        while cursor < frame_count:
-            if voiced[cursor]:
-                silence, last = 0, cursor
-            else:
-                silence += 1
-                if silence >= minimum_silence_frames:
-                    break
-            cursor += 1
-        segments.append((start * frame, min((last + 1) * frame, wav.size)))
-        index = max(cursor, index + 1)
+    # Each run opens a segment unless the dip before it is too short to be a pause.
+    opens = np.concatenate(([True], loud[1:, 0] - loud[:-1, 1] >= minimum_silence_frames))
+    closes = np.concatenate((opens[1:], [True]))
     pad = int(VAD_SPEECH_PAD_MS * TARGET_SR / 1000)
-    return [(max(0, start - pad), min(wav.size, end + pad)) for start, end in segments]
+    return [
+        (max(0, start * FRAME - pad), min(wav.size, end * FRAME + pad))
+        for start, end in zip(loud[opens, 0].tolist(), loud[closes, 1].tolist())
+    ]
 
 
 def _normalize_segments(segments: List[Range], total: int) -> List[Range]:
@@ -266,8 +261,12 @@ def plan_chunks(
     # VAD can miss a quiet first or last syllable (the energy fallback in
     # particular), so the first and last chunks reach up to trim_gap past the
     # detected speech: room for the syllable, without feeding the model the
-    # long silences cut out below.
+    # long silences cut out below. Less where the speech fits own_maximum but
+    # the margin too would not: _split_oversized would cut inside the speech,
+    # or off a sliver of silence.
     current_start, current_end = max(0, segments[0][0] - trim_gap), segments[0][1]
+    if current_end - segments[0][0] <= own_maximum:
+        current_start = max(current_start, current_end - own_maximum)
     for start, end in segments[1:]:
         # Cut at long silences and skip them entirely: feeding multi-second
         # silence to the model degrades recognition of the following speech,
@@ -280,8 +279,17 @@ def plan_chunks(
             current_end = end
             continue
 
-        if current_end - current_start >= minimum:
-            cut = min(total, max(current_end, (current_end + start) // 2))
+        # Mid-way through the pause, or later in it where the next phrase then
+        # fits own_maximum, but never past own_maximum from where the range's
+        # last piece starts: _split_oversized would cut off a sliver of silence.
+        last_piece = _split_oversized(current_start, current_end, target, own_maximum)[-1][0]
+        cut = min(max((current_end + start) // 2, min(end - own_maximum, start)), last_piece + own_maximum)
+        # Cut at this pause once the range is the minimum, or before then where
+        # taking the next phrase too would pass own_maximum and the phrase fits
+        # after the cut: _split_oversized would cut inside speech, which makes
+        # Parakeet drop words (#69), and leave a sliver. With the target cut to
+        # own_maximum for context (parakeet-v2), that is nearly every cut.
+        if current_end - current_start >= minimum or end - current_start > own_maximum >= end - cut:
             if cut > current_start:
                 packed.append((current_start, cut))
             current_start = cut
@@ -290,6 +298,8 @@ def plan_chunks(
             current_end = end
 
     last_end = min(total, current_end + trim_gap)
+    if current_end - current_start <= own_maximum:  # as with the first chunk's margin
+        last_end = min(last_end, current_start + own_maximum)
     if last_end > current_start:
         packed.append((current_start, last_end))
 
@@ -304,20 +314,6 @@ def plan_chunks(
         if 0 <= start < end <= total and end - start <= own_maximum
     ]
     return Plan(ranges, _windows(ranges, segments, context, maximum), segments)
-
-
-def auto_chunk(
-    wav: np.ndarray,
-    *,
-    target_sec: float,
-    max_sec: float,
-    min_sec: float = CHUNK_MIN_SEC,
-    context_sec: float = 0.0,
-) -> List[Range]:
-    """plan_chunks' ranges alone."""
-    return plan_chunks(
-        wav, target_sec=target_sec, max_sec=max_sec, min_sec=min_sec, context_sec=context_sec
-    ).ranges
 
 
 def _windows(ranges: List[Range], speech: List[Range], context: int, maximum: int) -> List[Range]:

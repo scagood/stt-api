@@ -495,7 +495,7 @@ the catalog)
 
 | Variable | Default | |
 |---|---|---|
-| `PARAKEET_CHUNK_MIN_SEC` | `20` | shortest chunk before neighbours are merged |
+| `PARAKEET_CHUNK_MIN_SEC` | `20` | shortest chunk before neighbours are merged, unless merging would pass the model's `chunk_max_sec` less `PARAKEET_CHUNK_CONTEXT_SEC` on both sides (20 s for `parakeet-v2`) while the next phrase fits a chunk of its own, as that would cut inside speech |
 | `PARAKEET_CHUNK_TRIM_SILENCE_SEC` | `3` | cut silences at least this long out of a chunk; the first and last chunks keep up to this much before and after the speech |
 | `PARAKEET_CHUNK_CONTEXT_SEC` | `5` | Parakeet only: each chunk also decodes this much of its neighbours' audio either side, from and to a pause, and keeps only the words that start in its own range (see below); at most a quarter of the model's `chunk_max_sec`; `0` turns it off |
 | `PARAKEET_VAD` | `volume` | how pauses are found: `volume`, frames quieter than a gate, or `silero`, a speech model, 30x slower or more (see below) |
@@ -508,17 +508,23 @@ the catalog)
 input ends shortly after speech. Chunks cut in a pause with no audio past the
 cut gained one at about one cut in five. So each chunk now also decodes some
 of its neighbours' audio, and keeps only the words that start in its own
-range. Both ends of what it decodes go in a pause, because a chunk that starts
-or ends inside speech can make Parakeet skip or drop tens of seconds of words:
-the nearest pause at least `PARAKEET_CHUNK_CONTEXT_SEC` from the cut, else the
-farthest that fits, or, with none, `PARAKEET_CHUNK_CONTEXT_SEC` from the cut.
+range. Each chunk times a word on its own 80 ms grid, so one starting at a cut
+could start before it in one chunk and after it in the other; near a cut the
+two chunks' words are matched up instead, and each word both heard is kept by
+one of them, so once. Both ends of what it decodes go in a pause, because a
+chunk that starts or ends inside speech can make Parakeet skip or drop tens of
+seconds of words: the nearest pause at least `PARAKEET_CHUNK_CONTEXT_SEC` from
+the cut, else the farthest that fits, or, with none,
+`PARAKEET_CHUNK_CONTEXT_SEC` from the cut.
 A chunk that still skips 3 s or more of speech in its own range is decoded
-again without context. All of it fits inside the model's `chunk_max_sec`, so a
-chunk's own range is shorter by twice the context: `parakeet-v3` still cuts at
-about 60 s (at most 65 s), `parakeet-v2` at 20 s instead of 25 s. That decodes
-up to 1.25× the audio on `parakeet-v3` and 1.5× on `parakeet-v2`. Long
-silences are still cut out, with no context across them. Whisper gets no
-context: it returns no word times to trim it back by.
+again without context, and that is kept only if it hears words in what was
+skipped: to VAD, music or noise can be speech. All of it fits inside the
+model's `chunk_max_sec`, so a chunk's own range is shorter by twice the
+context: `parakeet-v3` still cuts at about 60 s (at most 65 s), `parakeet-v2`
+at 20 s instead of 25 s. That decodes up to 1.25× the audio on `parakeet-v3`
+and 1.5× on `parakeet-v2`. Long silences are still cut out, with no context
+across them. Whisper gets no context: it returns no word times to trim it back
+by.
 
 **Finding pauses.** By default a pause is any stretch of 20 ms frames quieter
 than the gate, which takes under 0.3 ms of CPU per second of audio.
