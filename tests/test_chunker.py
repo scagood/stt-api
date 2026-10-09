@@ -272,18 +272,25 @@ def test_volume_still_cuts_out_a_long_pause_of_room_tone(volume):
     assert [(round(a / SR), round(b / SR)) for a, b in ranges] == [(0, 40), (50, 90)]
 
 
-@pytest.mark.parametrize(("seconds", "level_db"), [(0.01, -30), (0.03, -35)])
-def test_volume_still_cuts_out_a_long_pause_with_a_click_in_it(volume, seconds, level_db):
-    # A 10 ms click or a 30 ms knock is a frame or two 20-25 dB over the room
-    # tone, no syllable: the pause is still cut out whole, not decoded as a
-    # chunk of its own around it.
+@pytest.mark.parametrize(
+    ("pause_sec", "seconds", "level_db"),
+    [
+        (10, 0.01, -30),  # a click: a frame 25 dB over the room tone
+        (10, 0.03, -35),  # a knock: two frames 20 dB over it
+        (5, 0.3, -42),  # a breath: 13 dB over it, for 300 ms
+    ],
+)
+def test_volume_still_cuts_out_a_long_pause_with_a_sound_in_it(volume, pause_sec, seconds, level_db):
+    # No syllable, or too little speech to be any: the pause is still cut out
+    # whole, not decoded as a chunk of its own around the sound, where
+    # Parakeet can make up a word.
     rng = np.random.default_rng(1)
-    pause = rng.standard_normal(10 * SR) * 10 ** (-55 / 20)
-    at = int(4.9 * SR)
+    pause = rng.standard_normal(pause_sec * SR) * 10 ** (-55 / 20)
+    at = int((pause_sec / 2 - 0.1) * SR)
     pause[at: at + int(seconds * SR)] += rng.standard_normal(int(seconds * SR)) * 10 ** (level_db / 20)
     first, last = _turn(40, -20, floor_db=-55), _turn(40, -20, floor_db=-55)
     ranges = chunker.plan_chunks(np.concatenate([first, pause.astype(np.float32), last]), **BOUNDS, context_sec=5.0).ranges
-    assert [(round(a / SR), round(b / SR)) for a, b in ranges] == [(0, 40), (50, 90)]
+    assert [(round(a / SR), round(b / SR)) for a, b in ranges] == [(0, 40), (40 + pause_sec, 80 + pause_sec)]
 
 
 def test_a_fixed_gate_is_not_heard_again(volume, monkeypatch):

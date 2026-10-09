@@ -104,6 +104,11 @@ _GATE_FLOOR = 1e-3  # -60 dBFS: no gate is lower
 # stays within a few dB of its floor.
 _OVER_FLOOR = 10.0 ** (10.0 / 20.0)
 _SYLLABLE = 5  # frames: 100 ms
+# Less speech than this in a quiet stretch heard again is none. Breaths and
+# rustles in LibriVox narration's long pauses came to 0.1-0.34 s of one, and
+# decoded alone, made up a word ("yeah"); a quieter reader's stretches held
+# 1.9-5.5 s. A quiet "Yes." alone in a long pause is lost with them.
+_HEARD_ENOUGH = 25  # frames: 0.5 s
 
 
 def _runs(mask: np.ndarray, shortest: int) -> List[Range]:
@@ -121,9 +126,9 @@ def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
     be taken for one long pause. So each run of quiet frames at least
     `relisten` long is heard again at its own level: where 100 ms of it is
     louder than `ratio` x its average, and 10 dB over its quietest tenth, it
-    is loud too. Then again within each run still that long, until none
-    changes. A pause holding only room tone, or clicks, stays quiet, however
-    long.
+    is loud too, if that comes to half a second or more. Then again within
+    each run still that long, until none changes. A pause holding only room
+    tone, clicks, or a breath stays quiet, however long.
     """
     loud = rms > max(_GATE_FLOOR, float(rms.mean()) * ratio)
     todo = _runs(~loud, relisten)
@@ -132,12 +137,10 @@ def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
         part = rms[start:end]
         gate = max(_GATE_FLOOR, float(part.mean()) * ratio, float(np.percentile(part, 10)) * _OVER_FLOOR)
         # The median of 100 ms, as a syllable lasts: a click or a knock, a
-        # frame or two loud in a pause, never passes. A breath 10 dB over the
-        # floor does, and is decoded; to tell it from a quiet "Yes." in a long
-        # pause would take more than loudness.
+        # frame or two loud in a pause, never passes.
         padded = np.pad(part, _SYLLABLE // 2, mode="edge")
         heard = np.median(np.lib.stride_tricks.sliding_window_view(padded, _SYLLABLE), axis=1) > gate
-        if heard.any():
+        if heard.sum() >= _HEARD_ENOUGH:
             loud[start:end] = heard
             todo.extend((start + a, start + b) for a, b in _runs(~heard, relisten))
     return loud
