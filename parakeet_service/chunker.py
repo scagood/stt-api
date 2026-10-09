@@ -172,19 +172,22 @@ def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
         # spaced through a pause don't add up to any; and the shorter sounds
         # within `relisten` of one, a quiet speaker's short words, which would
         # otherwise leave a stretch long enough to cut out between two of their
-        # phrases. Each is kept whole: a word reaching past `relisten` is not
-        # cut in two.
+        # phrases. Each is kept whole, a word reaching past `relisten` not cut
+        # in two, but no more than half a second past it: no train of clicks
+        # or footsteps carried on into the pause. What is past `relisten` is
+        # still heard again at its own level.
         sounds = _joined(runs(heard), _SOUND_DIP).tolist()
         near = np.zeros_like(heard)
+        reach = np.zeros_like(heard)
         for a, b in sounds:
             if heard[a:b].sum() >= _HEARD_ENOUGH:
                 near[max(0, a - relisten): b + relisten] = True
-        kept = np.zeros_like(heard)
-        for a, b in sounds:
-            if near[a:b].any():
-                kept[a:b] = heard[a:b]
+                reach[max(0, a - relisten - _HEARD_ENOUGH): b + relisten + _HEARD_ENOUGH] = True
+        kept = heard & near
         if kept.any():
-            loud[start:end] = kept
+            for a, b in sounds:
+                if near[a:b].any():
+                    loud[start + a: start + b] |= heard[a:b] & reach[a:b]
             todo.extend((start + a, start + b) for a, b in _runs_of(~kept, relisten))
     return loud
 
