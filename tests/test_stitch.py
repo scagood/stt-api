@@ -808,6 +808,63 @@ async def test_a_word_the_neighbour_keeps_timed_early_at_the_cut_is_not_put_in_a
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("word, reading, sooner", [(" day", " everyday", 0.32), (" to", " into", 0.32), (" Rome", " roam", 0.4), (" Rome", " roam", 0.48)])
+async def test_a_word_the_redo_hears_another_way_and_sooner_is_not_put_in_again(word, reading, sooner):
+    # #79 review: the piece skips to "day" (20.08 s); the redo hears "every
+    # day" as one word from "every", up to half a second before it.
+    before, after = _filler("a", 0.5, 9.5), [(word, 20.08)] + _filler("b", 20.5, 29.5)
+    prepared = _one_piece(30.0, speech=_samples([(0.0, 30.0)]))
+    middle = _filler("c", 10.0, 19.0)
+    redo = _heard(7.82, before[-4:] + middle + [(reading, 20.08 - sooner)] + after[1:5])
+    worker = _Redo([redo])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_heard(0.0, before + after)], "parakeet-v3:fp32")
+    assert _decoded_spans(worker) == [(7.82, 22.08)]
+    assert routes._stitch(prepared, results)[0].split() == [w.strip() for w, _at in before + middle + after]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reading, word",
+    [([(" homes", 9.84)], (" Holmes", 10.07)), ([(" under", 9.6), ("stand", 9.84), ("ing", 10.08)], (" standing", 10.0))],
+)
+async def test_a_word_of_the_neighbour_s_the_redo_hears_another_way_and_sooner_is_not_put_in_again(reading, word):
+    # #79 review: the first piece skips from 6 s, past the cut, and its range
+    # alone skips again. The second hears "Holmes" just after the cut; the
+    # first's redo, "homes" 0.23 s before it.
+    prepared = _two_pieces()
+    first, middle, later = _filler("a", 0.5, 5.5), _filler("c", 6.0, 9.0), _filler("b", 10.5, 19.5)
+    left, right = _heard(0.0, first), _heard(7.0, middle[2:] + [word] + later)
+    stretch = _heard(3.82, first[-4:] + middle + reading + later[:3])
+    worker = _Redo([_heard(0.0, first), stretch])
+    results = await routes._redo_stalled(_request(worker), [prepared], [left, right], "parakeet-v3:fp32")
+    assert _decoded_spans(worker) == [(0.0, 10.0), (3.82, 12.0)]
+    words = routes._stitch(prepared, results)[0].split()
+    assert words == [w.strip() for w, _at in first + middle + [word] + later]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("late", [0.0, 0.16, 0.24])
+@pytest.mark.parametrize("heard_as", [" a", " uh"])
+async def test_the_neighbour_s_words_at_the_cut_stay_when_the_redo_times_them_late(late, heard_as):
+    # #79 review: the first piece hears "in a" just before the cut, or "in
+    # uh" for "in a". The second skips to 14 s, whole and on its own; its redo
+    # hears "in" (not "a") or "in a" up to 0.24 s late, "in" past the cut, and
+    # _seam then took it from the first piece, with all after it.
+    prepared = _two_pieces()
+    first, later = _filler("a", 0.5, 9.5) + [(" in", 9.85), (heard_as, 9.97)], _filler("b", 14.0, 19.5)
+    middle = _filler("c", 10.3, 13.3)
+    left, right = _heard(0.0, first), _heard(7.0, later)
+    again = first[-4:-1] + ([(" a", 9.97)] if heard_as == " uh" else [])
+    stretch = _heard(8.0, [(token, at + late) for token, at in again + middle + later[:5]])
+    worker = _Redo([_heard(10.0, later), stretch])
+    results = await routes._redo_stalled(_request(worker), [prepared], [left, right], "parakeet-v3:fp32")
+    assert _decoded_spans(worker) == [(10.0, 20.0), (8.0, 16.0)]
+    words = routes._stitch(prepared, results)[0].split()
+    assert words[: len(first)] == [w.strip() for w, _at in first]
+    assert words.count("in") == 1 and words[-len(later) :] == [w.strip() for w, _at in later]
+
+
+@pytest.mark.asyncio
 async def test_words_after_a_word_whose_full_stop_is_timed_late_are_put_in():
     # #79 review: the piece hears "Rome" and its "." a second later, then
     # skips to 30 s. The redo hears "The next thing" before that ".".
