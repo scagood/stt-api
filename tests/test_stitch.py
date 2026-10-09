@@ -679,6 +679,34 @@ async def test_words_the_redo_times_early_as_its_input_ends_are_not_put_in_again
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("heard_as", "at"), [(" roam", 25.04), (" Rome", 25.12)])
+async def test_a_word_timed_early_as_the_redo_meets_the_end_of_the_audio_is_not_put_in_again(heard_as, at):
+    # The piece skips 17-25.6 s of a 26 s clip and hears "Rome" last. Its
+    # redo, ending where the audio does, hears it about half a second early,
+    # as another word or the same, then makes up "uh".
+    before = _filler("a", 0.5, 17.0)
+    middle = _filler("c", 17.5, 24.5)
+    prepared = _one_piece(26.0, speech=_samples([(0.0, 26.0)]))
+    redo = _heard(15.28, before[-3:] + middle + [(heard_as, at), (" uh", 25.8)])
+    worker = _Redo([redo])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_heard(0.0, before + [(" Rome", 25.6)])], "parakeet-v3:fp32")
+    assert routes._stitch(prepared, results)[0].split() == [w.strip() for w, _at in before + middle] + ["Rome"]
+
+
+@pytest.mark.asyncio
+async def test_the_second_half_of_a_word_the_redo_splits_is_not_put_in_either():
+    # The piece hears one-token "today" at 9 s, then skips to 20 s; the redo
+    # hears "to" at 9.16 s and "day" 0.4 s after it.
+    before, after = _filler("a", 0.5, 8.5) + [(" today", 9.0)], _filler("b", 20.0, 29.5)
+    prepared = _one_piece(30.0, speech=_samples([(0.0, 30.0)]))
+    middle = _filler("c", 10.0, 19.5)
+    redo = _heard(7.32, [(" a14", 7.5), (" a15", 8.0), (" a16", 8.5), (" to", 9.16), (" day", 9.56)] + middle + after[:5])
+    worker = _Redo([redo])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_heard(0.0, before + after)], "parakeet-v3:fp32")
+    assert routes._stitch(prepared, results)[0].split() == [w.strip() for w, _at in before + middle + after]
+
+
+@pytest.mark.asyncio
 async def test_a_word_split_across_a_cut_is_not_put_in_again():
     # The first piece stops after 5 s; its redo hears "word" just before the
     # cut. The second piece heard it as "wo" (its context) and "rd" (its own).
