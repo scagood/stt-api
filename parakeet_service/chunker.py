@@ -110,9 +110,10 @@ _SYLLABLE = 5  # frames: 100 ms
 # 0.12-0.32 s. A quiet "Yes." alone in a long pause is lost with the breaths.
 _HEARD_ENOUGH = 25  # frames: 0.5 s
 # A sound in a quiet stretch heard again runs on across dips shorter than this,
-# as a word's stops and a phrase's gaps between words are. Fixed, not
-# PARAKEET_VAD_MIN_SILENCE_MS: that is where to cut, and at Silero's 100 ms a
-# quiet speaker's phrases fell apart into short sounds, at 3 s breaths joined.
+# as a word's stops and a phrase's gaps between words are, or than
+# PARAKEET_VAD_MIN_SILENCE_MS where that is longer. Not the setting alone: at
+# Silero's 100 ms a quiet speaker's phrases fell apart into short sounds. Nor
+# this alone: at 1 s, a halting speaker's words 0.5 s apart fell apart too.
 _SOUND_DIP = 20  # frames: 400 ms
 
 
@@ -151,14 +152,15 @@ def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
     frames at least `relisten` long is heard again at its own level: where
     100 ms of it is louder than `ratio` x its average, and 10 dB over its
     quietest tenth, it is loud too: in a sound (joined across dips under
-    400 ms) heard for half a second or more, or in a shorter one reaching
-    within `relisten` of such a sound. Then again within each run still that
-    long, until none changes. A pause holding only room tone, clicks, or
-    breaths 400 ms or more apart stays quiet, however long or many; breaths
-    closer together (panting), footsteps or typing can join into a sound long
-    enough.
+    400 ms, or VAD_MIN_SILENCE_MS where longer) heard for half a second or
+    more, or in a shorter one reaching within `relisten` of such a sound. Then
+    again within each run still that long, until none changes. A pause holding
+    only room tone, clicks, or breaths further apart than that stays quiet,
+    however long or many; breaths closer together (panting), footsteps or
+    typing can join into a sound long enough.
     """
     loud = rms > relative_gate(rms, ratio)
+    dip = max(_SOUND_DIP, int(VAD_MIN_SILENCE_MS / 20))
     todo = _runs_of(~loud, relisten)
     while todo:
         start, end = todo.pop()
@@ -176,7 +178,7 @@ def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
         # in two, but no more than half a second past it: no train of clicks
         # or footsteps carried on into the pause. What is past `relisten` is
         # still heard again at its own level.
-        sounds = _joined(runs(heard), _SOUND_DIP).tolist()
+        sounds = _joined(runs(heard), dip).tolist()
         near = np.zeros_like(heard)
         reach = np.zeros_like(heard)
         for a, b in sounds:
