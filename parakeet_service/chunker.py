@@ -424,34 +424,14 @@ def _quiet_cuts(wav: np.ndarray, even: List[int], maximum: int, latest_start: in
     return [int(at[index]) for at, index in zip(stages, chosen)]
 
 
-# Louder than this is sound in a margin, whatever its floor: a hum, an offset
-# or a noise bed sets a floor that a quiet word just over it doesn't clear by
-# 10 dB, and a margin holding no room tone, only a quieter talker, sets it at
-# that talker's own gaps between words.
-_SOUND_DB = -50.0
-
-
-def _sounds(wav: np.ndarray, start: int, end: int) -> np.ndarray:
-    """The 20 ms frames of wav[start:end] with sound in them: louder than
-    -60 dBFS and either than 10 dB over the stretch's quietest tenth, as a
-    quiet stretch is heard again in loud_frames, or than _SOUND_DB. None in
-    room tone or silence."""
-    rms = frame_rms(wav[start:end])
-    if not rms.size:
-        return rms.astype(bool)
-    floor = float(np.percentile(rms, 10)) * _OVER_FLOOR
-    return rms > max(1e-3, min(floor, 10 ** (_SOUND_DB / 20)))
-
-
 def _split_all(wav: np.ndarray, packed: List[Range], speech: List[Range], maximum: int) -> List[Range]:
     """Each of the `packed` ranges, split where it passes `maximum`
     (_split_oversized) at the quietest points. A range so split may give up
     silence at its ends, so a cut can reach a quieter point: the pause it
     shares with the range beside it, to that range, as long as that needs no
-    more pieces; at the first range's lead or the last's tail, which nothing
-    else decodes, only the frames with no sound in them (_sounds), keeping
-    VAD_SPEECH_PAD_MS past any that has, as VAD may miss a quiet syllable."""
-    pad = int(VAD_SPEECH_PAD_MS * TARGET_SR / 1000)
+    more pieces. An end with no range beside it (the first range's lead,
+    the last's tail) gives up nothing: nothing else decodes that margin,
+    and VAD may have missed a quiet syllable in it."""
     ends = [stop for _start, stop in speech]
     starts = [begin for begin, _stop in speech]
     packed = list(packed)
@@ -462,18 +442,13 @@ def _split_all(wav: np.ndarray, packed: List[Range], speech: List[Range], maximu
             continue
         first = max(start, speech[bisect.bisect_right(ends, start)][0])
         last = min(end, speech[bisect.bisect_left(starts, end) - 1][1])
-        if output and output[-1][1] == start:
-            latest_start = min(first, output[-1][0] + maximum)
-        else:
-            heard = np.flatnonzero(_sounds(wav, start, first))
-            latest_start = max(start, start + int(heard[0]) * FRAME - pad) if heard.size else first
+        latest_start = min(first, output[-1][0] + maximum) if output and output[-1][1] == start else start
         following = packed[index + 1] if index + 1 < len(packed) else None
         if following and following[0] == end:
             length = following[1] - following[0]
             earliest_end = max(last, following[1] - _room(length, maximum))
         else:
-            heard = np.flatnonzero(_sounds(wav, last, end))
-            earliest_end = min(end, last + (int(heard[-1]) + 1) * FRAME + pad) if heard.size else last
+            earliest_end = end
         pieces = _split_oversized(start, end, maximum, wav, latest_start, earliest_end)
         if output and output[-1][1] == start:
             output[-1] = (output[-1][0], pieces[0][0])
@@ -543,9 +518,7 @@ def plan_chunks(
     # particular), so the first and last chunks reach up to trim_gap past the
     # detected speech: room for the syllable, without feeding the model the
     # long silences cut out below. Less where the first range's speech, however
-    # many phrases it takes in, has no _room for all of the margin before it,
-    # or where a range split by length gives up frames of it with no sound
-    # in them so a cut can reach a gap (_split_all).
+    # many phrases it takes in, has no _room for all of the margin before it.
     first, lead = segments[0][0], max(0, segments[0][0] - trim_gap)
     current_start, current_end = lead, segments[0][1]
     for start, end in segments[1:]:

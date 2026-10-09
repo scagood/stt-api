@@ -448,32 +448,40 @@ def test_speech_as_loud_throughout_keeps_the_even_split(monkeypatch):
     assert ranges == chunker._split_oversized(0, _at(41)[0], _at(20)[0])
 
 
-def test_a_cut_in_speech_reaches_a_gap_past_the_even_split_by_giving_up_silence(monkeypatch):
+def test_a_split_last_range_keeps_its_margin_of_silence(monkeypatch):
     # 38.5 s of speech spans 40 s with the margin after it: two pieces of
     # exactly 20 s, the cut fixed at 20 s. Ending the last range sooner, in
-    # the margin's silence, lets the cut move to the gap at 19.6 s.
+    # the margin's silence, would let the cut move to the gap at 19.6 s, but
+    # nothing else decodes that margin: it is kept, and the cut stays.
     wav = _words(45, [(19.6, 19.75)], word=0.35)  # the even cut at 20 s is mid-word
     wav[_at(38.5)[0]:] *= 1e-3
     ranges = _forced(monkeypatch, wav, [(0, 38.5)], **V2).ranges
-    assert len(ranges) == 2 and ranges[0][0] == 0 and ranges[0][1] == ranges[1][0]
-    assert _at(19.6)[0] < ranges[0][1] < _at(19.75)[0]
-    assert _at(38.5)[0] <= ranges[1][1] <= _at(40)[0]
-    _assert_valid(ranges, _at(45)[0], _at(20)[0])
+    monkeypatch.setattr(chunker, "_quiet_cuts", lambda _wav, even, *_edges: even)
+    assert ranges == _forced(monkeypatch, wav, [(0, 38.5)], **V2).ranges
+    assert ranges[-1][1] == _at(40)[0]
 
 
-def _margin_word(quiet, word):
-    """45 s: words from 3.15 s to 37.3 s (all VAD hears), the gap `quiet`
-    among them 35 dB down, room tone either side, and if `word`, a word VAD
-    missed there at -42 dBFS, 22 dB under the rest."""
-    wav = _words(45, [quiet])
-    wav[: _at(3.15)[0]] *= 10 ** (-55 / 20)
-    wav[_at(37.3)[0]:] *= 10 ** (-55 / 20)
+def _margin_word(quiet, word, db=0.0, word_db=-42.0):
+    """45 s: words from 3.15 s to 37.3 s (all VAD hears) at `db` dB, the gap
+    `quiet` among them 35 dB down, room tone at -75 dBFS either side, and if
+    `word`, a word VAD missed there at `word_db` dBFS."""
+    wav = _words(45, [quiet]) * np.float32(10 ** (db / 20))
+    wav[: _at(3.15)[0]] *= 10 ** ((-55 - db) / 20)
+    wav[_at(37.3)[0]:] *= 10 ** ((-55 - db) / 20)
     if word:
         span = slice(*_at(*word))
-        wav[span] = np.random.default_rng(5).standard_normal(span.stop - span.start) * 10 ** (-42 / 20)
+        wav[span] = np.random.default_rng(5).standard_normal(span.stop - span.start) * 10 ** (word_db / 20)
     return wav
 
 
+@pytest.mark.parametrize(
+    ("db", "word_db"),
+    [
+        (0.0, None),  # room tone alone
+        (0.0, -42.0),  # a word 22 dB under the speech
+        (-20.0, -62.0),  # the same, all 20 dB quieter: under -60 dBFS
+    ],
+)
 @pytest.mark.parametrize(
     ("quiet", "word"),
     [
@@ -481,16 +489,17 @@ def _margin_word(quiet, word):
         ((21.7, 21.85), (1.4, 1.8)),  # ... only if it starts from 1.7 s
     ],
 )
-def test_a_split_first_or_last_range_keeps_a_quiet_word_in_its_margin(monkeypatch, quiet, word):
+def test_a_split_first_or_last_range_keeps_its_whole_margin(monkeypatch, quiet, word, db, word_db):
     # The first and last ranges reach up to CHUNK_TRIM_SILENCE_SEC past the
     # speech, in case VAD missed a quiet syllable there; nothing else decodes
-    # that audio. A cut may have that margin's silence, never a sound in it.
-    plan = _forced(monkeypatch, _margin_word(quiet, None), [(3.15, 37.3)], **V2)
-    assert _at(quiet[0])[0] < plan.ranges[0][1] < _at(quiet[1])[0]  # silence alone gives way
-    plan = _forced(monkeypatch, _margin_word(quiet, word), [(3.15, 37.3)], **V2)
+    # that audio. A cut has none of it, whatever it holds, as an even split.
+    wav = _margin_word(quiet, word if word_db else None, db, word_db or -42.0)
+    plan = _forced(monkeypatch, wav, [(3.15, 37.3)], **V2)
+    monkeypatch.setattr(chunker, "_quiet_cuts", lambda _wav, even, *_edges: even)
+    even = _forced(monkeypatch, wav, [(3.15, 37.3)], **V2).ranges
+    assert len(plan.ranges) == len(even) == 2
+    assert plan.ranges[0][0] == even[0][0] and plan.ranges[-1][1] == even[-1][1]
     low, high = _at(*word)
-    assert len(plan.ranges) == 2
-    assert plan.ranges[0][0] <= low and high <= plan.ranges[-1][1]
     assert plan.windows[0][0] <= low and high <= plan.windows[-1][1]
     _assert_valid(plan.ranges, _at(45)[0], _at(20)[0])
 
