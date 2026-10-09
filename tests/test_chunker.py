@@ -147,10 +147,10 @@ def test_ordinary_speech_is_cut_in_pauses_after_room_for_context(monkeypatch, na
     own_target = min(int(target_sec * SR), own_maximum)
     speech, total = _ordinary_speech(seconds)
     monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: speech)
-    ranges = chunker.auto_chunk(
+    ranges = chunker.plan_chunks(
         np.broadcast_to(np.float32(0), (total,)),  # hours of samples in no memory
         target_sec=target_sec, max_sec=max_sec, min_sec=min_sec, context_sec=context_sec,
-    )
+    ).ranges
     assert len(ranges) <= most
     _assert_valid(ranges, total, own_maximum)
     assert all(left[1] == right[0] for left, right in zip(ranges, ranges[1:]))
@@ -162,18 +162,33 @@ def test_ordinary_speech_is_cut_in_pauses_after_room_for_context(monkeypatch, na
     assert all(end - start > own_target - 7.5 * SR for start, end in ranges[:-1])
 
 
-def test_ranges_close_in_a_pause_rather_than_pass_their_maximum(monkeypatch):
+@pytest.mark.parametrize(
+    ("speech", "seconds", "expected"),
+    [
+        # 19.8 s at the pause, short of the minimum, but the next phrase would
+        # pass 20 s: it closes in the pause, at 20 s rather than mid-way at
+        # 20.2 s, and the last range's margin past the speech stops at 20 s
+        ([(3, 19.8), (20.6, 39.5)], 45, [(0, 20), (20, 40)]),
+        # the next phrase fits from late in the pause, not from mid-way
+        ([(3, 13), (14, 33.8)], 40, [(0, 13.8), (13.8, 33.8)]),
+        # the margin before the first phrase gives way to it
+        ([(2, 21.5), (22.5, 30)], 40, [(1.5, 21.5), (21.5, 33)]),
+        ([(2, 21.5), (26, 40)], 40, [(1.5, 21.5), (26, 40)]),  # before a long silence
+        ([(2, 21.5)], 40, [(1.5, 21.5)]),  # the last range too
+        # a phrase too long for a range is cut by length, but the pause after
+        # it goes with the next range, not into a sliver
+        ([(3, 40), (41, 50)], 60, [(0, 20), (20, 40), (40, 53)]),
+    ],
+)
+def test_ranges_close_in_a_pause_rather_than_pass_their_maximum(monkeypatch, speech, seconds, expected):
     # parakeet-v2 with 5 s of context: ranges of 20 s at most, target 20 s,
-    # minimum 20 s. The first range is 19.8 s at the pause, short of the
-    # minimum, but taking the next phrase would pass 20 s: it closes in the
-    # pause, at 20 s rather than mid-way at 20.2 s, and the last range's
-    # margin past the speech stops at 20 s too. Neither leaves a sliver.
-    speech = [_at(3, 19.8), _at(20.6, 39.5)]
-    monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: speech)
-    ranges = chunker.auto_chunk(
-        np.zeros(_at(45)[0], dtype=np.float32), target_sec=25.0, max_sec=30.0, min_sec=20.0, context_sec=5.0
-    )
-    assert ranges == [_at(0, 20), _at(20, 40)]
+    # minimum 20 s. None is cut inside a phrase that fits one, or leaves a
+    # sliver of silence.
+    monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: [_at(*span) for span in speech])
+    ranges = chunker.plan_chunks(
+        np.zeros(_at(seconds)[0], dtype=np.float32), target_sec=25.0, max_sec=30.0, min_sec=20.0, context_sec=5.0
+    ).ranges
+    assert ranges == [_at(*span) for span in expected]
 
 
 def _at(*seconds):

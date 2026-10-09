@@ -214,8 +214,12 @@ def plan_chunks(
     # VAD can miss a quiet first or last syllable (the energy fallback in
     # particular), so the first and last chunks reach up to trim_gap past the
     # detected speech: room for the syllable, without feeding the model the
-    # long silences cut out below.
+    # long silences cut out below. Less where the speech fits own_maximum but
+    # the margin too would not: _split_oversized would cut inside the speech,
+    # or off a sliver of silence.
     current_start, current_end = max(0, segments[0][0] - trim_gap), segments[0][1]
+    if current_end - segments[0][0] <= own_maximum:
+        current_start = max(current_start, current_end - own_maximum)
     for start, end in segments[1:]:
         # Cut at long silences and skip them entirely: feeding multi-second
         # silence to the model degrades recognition of the following speech,
@@ -228,11 +232,11 @@ def plan_chunks(
             current_end = end
             continue
 
-        # Mid-way through the pause, but where the range fits own_maximum no
-        # later than that: _split_oversized would cut off a sliver of silence.
-        cut = min(total, max(current_end, (current_end + start) // 2))
-        if current_end - current_start <= own_maximum:
-            cut = min(cut, current_start + own_maximum)
+        # Mid-way through the pause, or later in it where the next phrase then
+        # fits own_maximum, but never past own_maximum from where the range's
+        # last piece starts: _split_oversized would cut off a sliver of silence.
+        last_piece = _split_oversized(current_start, current_end, target, own_maximum)[-1][0]
+        cut = min(max((current_end + start) // 2, min(end - own_maximum, start)), last_piece + own_maximum)
         # Cut at this pause once the range is the minimum, or before then where
         # taking the next phrase too would pass own_maximum and the phrase fits
         # after the cut: _split_oversized would cut inside speech, which makes
@@ -247,7 +251,7 @@ def plan_chunks(
             current_end = end
 
     last_end = min(total, current_end + trim_gap)
-    if current_end - current_start <= own_maximum:  # as with the cuts
+    if current_end - current_start <= own_maximum:  # as with the first chunk's margin
         last_end = min(last_end, current_start + own_maximum)
     if last_end > current_start:
         packed.append((current_start, last_end))
