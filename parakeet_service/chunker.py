@@ -316,7 +316,23 @@ def plan_chunks(
         # after the cut: _split_oversized would cut inside speech, which makes
         # Parakeet drop words (#69). With the target cut to own_maximum for
         # context (parakeet-v2), that is nearly every cut.
-        if current_end - current_start >= minimum or end - current_start > own_maximum >= end - cut:
+        # Also where the phrase does not fit, but the two sides need no more
+        # pieces than the whole (whose first range is as long as its speech: its
+        # lead margin gives way), so the pause takes a cut _split_oversized
+        # would put in speech. Only while the side after the cut keeps trim_gap
+        # of its _room spare, or what the whole would: the next cut, capped by
+        # that _room, must still reach over a pause to the phrase after it, or
+        # the range after opens on silence that can cost it a piece.
+        whole = end - (current_start if packed else first)
+        after = end - cut
+        if (
+            current_end - current_start >= minimum
+            or end - current_start > own_maximum >= after
+            or (
+                _room(cut - current_start, own_maximum) + _room(after, own_maximum) <= _room(whole, own_maximum)
+                and _room(after, own_maximum) - after >= min(trim_gap, _room(whole, own_maximum) - whole)
+            )
+        ):
             if cut > current_start:
                 packed.append((current_start, cut))
             current_start = cut

@@ -230,6 +230,14 @@ def test_ordinary_speech_is_cut_in_pauses_after_room_for_context(monkeypatch, na
         # a phrase too long for a range is cut by length, but the pause after
         # it goes with the next range, not into a sliver
         ([(3, 40), (41, 50)], 60, [(0, 20), (20, 40), (40, 53)]),
+        # 18.8 s at the pause, short of the minimum, and the next phrase does
+        # not fit after it: still cut there, as both sides need no more pieces
+        # than the whole, which would be cut evenly inside speech twice
+        ([(0, 18.8), (21.5, 43.5)], 43.5, [(0, 20), (20, 31.75), (31.75, 43.5)]),
+        # but not where the side after the cut has no room spare: the next cut
+        # could not reach the last phrase, and the silence before it would
+        # cost a piece
+        ([(0, 10), (11.5, 51.45), (54, 93.9)], 97, [(0, 18), (18, 36), (36, 54), (54, 74), (74, 94)]),
     ],
 )
 def test_ranges_close_in_a_pause_rather_than_pass_their_maximum(monkeypatch, speech, seconds, expected):
