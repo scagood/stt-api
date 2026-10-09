@@ -233,21 +233,23 @@ def _normalize_segments(segments: List[Range], total: int) -> List[Range]:
     return normalized
 
 
-# A cut inside speech goes where the 80 ms around it is quietest, looked for
-# every 5 ms: a gap between words, not a dip mid-vowel. At most this far from
-# where an even split puts it, and an eighth of the range's maximum, so no
-# part is much shorter than an even split's.
+# A cut inside speech goes where the _QUIET_SPAN around it is quietest,
+# looked for every 5 ms: a gap between words, not a stop closure (60-120 ms)
+# or a dip mid-vowel. At most this far from where an even split puts it, and
+# an eighth of the range's maximum, so no part is much shorter than an even
+# split's.
 QUIET_CUT_SEARCH_SEC = 3.0
 _QUIET_SPAN = int(0.2 * TARGET_SR)
 _DIP_SPAN = int(0.08 * TARGET_SR)
 _QUIET_STEP = int(0.005 * TARGET_SR)
-# A cut stays where the even split puts it if that is already _QUIET: power
-# under this share of the speech's around it (the median 20 ms frame's
-# within _LOCAL_SEC; 3 dB down). Else it moves only to a point _QUIETER than
-# that by this share (3 dB more), so a cut never trades a gap it has for a
-# dip inside a word, and never wanders after a level that only flickers.
-# What moving a cut a second costs, in the same share: enough to keep cuts
-# near the even split among points as quiet, never to keep one in a word.
+# A cut stays where the even split puts it if that is already _QUIET over
+# _QUIET_SPAN or _DIP_SPAN (a short gap): power under this share of the
+# speech's around it (the median 20 ms frame's within _LOCAL_SEC; 3 dB down).
+# Else it moves only to a point _QUIETER than that by this share (3 dB more),
+# so a cut never trades a gap it has for a dip inside a word, and never
+# wanders after a level that only flickers. What moving a cut a second costs,
+# in the same share: enough to keep cuts near the even split among points as
+# quiet, never to keep one in a word.
 _QUIET = 0.5
 _QUIETER = 0.5
 _LOCAL_SEC = 1.5
@@ -268,8 +270,8 @@ def _split_oversized(
     once the target is cut to maximum for context (parakeet-v2): a decode of
     mostly context, and Parakeet invents words in very short input.
 
-    With `wav`, each cut moves from the even split to the quietest point near
-    it (_quiet_cuts): a gap between words, where a cut at an arbitrary point
+    With `wav`, a cut that falls in a word moves to a quieter point near it
+    (_quiet_cuts): a gap between words, where a cut at an arbitrary point
     likely splits one. The range may then start as late as `latest_start`
     and end as early as `earliest_end` (silence it can give up) where that
     lets a cut reach a quieter point."""
@@ -284,11 +286,12 @@ def _split_oversized(
 
 def _quiet_cuts(wav: np.ndarray, even: List[int], maximum: int, latest_start: int, earliest_end: int) -> List[int]:
     """`even` (an even split of wav[even[0]:even[-1]] into parts of half
-    `maximum` or more) with each inner cut moved, within
-    QUIET_CUT_SEARCH_SEC (or maximum / 8) of it, to where the power of the
-    _QUIET_SPAN around it is least, plus _QUIET_CUT_COST_PER_SEC for each
-    second moved; and the ends as late or early as `latest_start` and
-    `earliest_end`, as far, where the cuts need it. Every part stays
+    `maximum` or more) with each inner cut not already in a dip (_QUIET)
+    moved, within QUIET_CUT_SEARCH_SEC (or maximum / 8) of it, to where the
+    power of the _QUIET_SPAN around it is least, if that is _QUIETER, plus
+    _QUIET_CUT_COST_PER_SEC for each second moved; and the ends as late or
+    early as `latest_start` and `earliest_end`, as far, where the cuts need
+    it. Every part stays
     <= maximum, and none moves an eighth of maximum either end, so each
     stays over a quarter of it.
 
@@ -296,7 +299,7 @@ def _quiet_cuts(wav: np.ndarray, even: List[int], maximum: int, latest_start: in
     as each one's room depends on where its neighbours go. Scored by power,
     not decibels: a deep pause scores barely better than a gap between words,
     so the search seldom puts one cut in a word to put another in a pause.
-    Where no point near a cut is _QUIET, it stays where the even split puts it."""
+    Where no point near a cut is _QUIETER, it stays where the even split puts it."""
     start, end = even[0], even[-1]
     reach = min(int(QUIET_CUT_SEARCH_SEC * TARGET_SR), maximum // 8)
     frames = frame_rms(wav[start:end]).astype(np.float64) ** 2
@@ -470,7 +473,9 @@ def plan_chunks(
     # particular), so the first and last chunks reach up to trim_gap past the
     # detected speech: room for the syllable, without feeding the model the
     # long silences cut out below. Less where the first range's speech, however
-    # many phrases it takes in, has no _room for all of the margin before it.
+    # many phrases it takes in, has no _room for all of the margin before it,
+    # or where a range split by length gives up frames of it with no sound
+    # in them so a cut can reach a gap (_split_all).
     first, lead = segments[0][0], max(0, segments[0][0] - trim_gap)
     current_start, current_end = lead, segments[0][1]
     for start, end in segments[1:]:
