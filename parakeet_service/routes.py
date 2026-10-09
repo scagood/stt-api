@@ -812,7 +812,8 @@ async def _infer(request: Request, pieces: List[Any], model_key: str):
 # Parakeet sometimes stops partway through a window, or skips a stretch of
 # it, and returns nothing for tens of seconds of speech, depending on exactly
 # where the window starts or ends (#69). A piece with this much speech, by
-# VAD, between two of its words inside its own range has skipped it.
+# VAD, between two of its tokens that hold a word character inside its own
+# range has skipped it.
 _STALL_SEC = 3.0
 
 
@@ -828,12 +829,13 @@ def _speech_within(speech: Sequence[Tuple[int, int]], starts: Sequence[int], low
 
 def _stalled(prepared: _PreparedAudio, results: Sequence[Any]) -> Dict[int, List[Tuple[int, int]]]:
     """The pieces that decoded context (plan_chunks) and skipped at least
-    _STALL_SEC of speech in their own range: before their first word's start,
-    between two, or after their last. Each comes with the stretches it skipped,
-    in samples. Only word starts count (_word_spans, as _words_in): a lone "."
-    in a skipped stretch hears no speech, so must not split it. A piece decoded
-    as just its range is the same audio as before context, which has not done
-    this."""
+    _STALL_SEC of speech in their own range: before their first token, between
+    two, or after their last. Each comes with the stretches it skipped, in
+    samples. Only tokens with a word character count: a lone "." or "\u2581-"
+    in a skipped stretch hears no speech, so must not split it, while each
+    piece of a long word (a number read digit by digit) is speech heard. A
+    piece decoded as just its range is the same audio as before context, which
+    has not done this."""
     starts = [start for start, _end in prepared.speech]
     stall, tail = int(_STALL_SEC * TARGET_SR), int(_WORD_TAIL_SEC * TARGET_SR)
     skipped: Dict[int, List[Tuple[int, int]]] = {}
@@ -842,7 +844,9 @@ def _stalled(prepared: _PreparedAudio, results: Sequence[Any]) -> Dict[int, List
             continue
         info = _extract(result)
         heard = sorted(
-            window[0] + int(info["timestamps"][first] * TARGET_SR) for _word, first, _last in _word_spans(info["tokens"])
+            window[0] + int(at * TARGET_SR)
+            for token, at in zip(info["tokens"], info["timestamps"])
+            if re.search(r"\w", token)
         )
         for low, high in zip([window[0]] + [at + tail for at in heard], heard + [window[1]]):
             low, high = max(low, start), min(high, end)
