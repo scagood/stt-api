@@ -571,19 +571,15 @@ fewest chunks that fit, as evenly as before, but a cut that falls inside a
 word moves, within 3 s (and an eighth of the chunk), to a quieter point: one 3
 dB under where it was, over 200 ms. A cut that already looks like a gap stays
 where it is: one 3 dB under the speech around it, or one in a stretch of 40 ms
-or more that is 1.5 dB under the loudest speech within 1.2 s either side, and
-moves from there only to a pause far deeper (13 dB under that gap, 17 dB under
-the speech). That second test catches a short gap the cut sits at the edge of,
-and a gap beside a quieter word or a fricative. Loudness can't always tell a
-gap from a quieter word or a fricative, so a cut that moves can still land in
-one. A split chunk may give up silence at its ends so a cut can reach a gap: a
-pause it shares with the next chunk, to that chunk, as long as it needs no
-more chunks; and at the first chunk's lead or the last one's tail, which
-nothing else decodes, only frames with no sound in them. A frame there is
-sound if it is louder than -50 dBFS, or louder than -60 dBFS and 10 dB over
-the margin's quietest tenth, so a word under a hum, an offset or a noise bed,
-or a quieter talker filling the margin, is kept. A word VAD missed there that
-is quieter than -50 dBFS and within 10 dB of the margin's floor is given up.
+or more that is 1.5 dB under the loudest speech on each side (within 1.2 s),
+and moves from there only to a pause far deeper (13 dB under that gap, 17 dB
+under the speech). That second test catches a short gap the cut sits at the
+edge of, and a gap beside a quieter word or a fricative. Loudness can't always
+tell a gap from a quieter word or a fricative, so a cut that moves can still
+land in one. A split chunk may give the pause it shares with the next chunk to
+that chunk, so a cut can reach a gap, as long as the next chunk still needs no
+more pieces. The first chunk's lead and the last one's tail, which nothing else
+decodes, keep all of their margin, as before.
 
 How much this helps varies by recording, and by the room the cuts have.
 `scripts/quiet_cuts_real.py` measures it on a recording against word times
