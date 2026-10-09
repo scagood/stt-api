@@ -507,3 +507,30 @@ async def test_a_lone_full_stop_does_not_split_a_skipped_stretch():
     worker = _Redo([again])
     results = await routes._redo_stalled(_request(worker), [prepared], [_words(10, 0.5), skipping], "parakeet-v3:fp32")
     assert results[1] is again and len(worker.pieces) == 1
+
+
+@pytest.mark.parametrize("mark", ["▁.", "▁-", "▁,", '▁"'])
+def test_a_lone_marked_punctuation_token_does_not_split_a_skipped_stretch(mark):
+    # As above, but the token opens a word of its own: it still has no word
+    # character, so hears no speech.
+    prepared = _two_pieces()
+    prepared.speech = _samples([(0.0, 20.0)])
+    skipping = _result(
+        [" a", " b", " c", " could", mark, " This", " y"],  # from 7 s: 10, 10.6, 11.2, 12.6, 14.4, 17, 18
+        [3.0, 3.6, 4.2, 5.6, 7.4, 10.0, 11.0],
+    )
+    assert routes._stalled(prepared, [_words(10, 0.5), skipping]) == {1: _samples([(12.6 + 0.32, 17.0)])}
+
+
+def test_a_long_word_of_many_tokens_is_not_a_skipped_stretch():
+    # A phone number read digit by digit, 11-16 s, is one word of eleven
+    # tokens: each is speech heard, so nothing from its first to the next word
+    # is skipped.
+    prepared = _two_pieces()
+    prepared.speech = _samples([(0.0, 20.0)])
+    digits = list("18005550199")
+    number = _result(
+        [" at", " " + digits[0], *digits[1:], " call", " us", " today", "."],
+        [3.5, 4.0, *[4.0 + 0.5 * i for i in range(1, 11)], 9.5, 10.0, 10.5, 11.0],
+    )
+    assert routes._stalled(prepared, [_words(10, 0.5), number]) == {}
