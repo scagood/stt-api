@@ -487,3 +487,23 @@ async def test_no_piece_is_decoded_again_when_the_rest_is_silence():
     worker = _Redo([])
     assert await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:fp32") == results
     assert worker.pieces == [] and prepared.windows == _samples([(0.0, 13.0), (7.0, 20.0)])
+
+
+@pytest.mark.asyncio
+async def test_a_lone_full_stop_does_not_split_a_skipped_stretch():
+    # The second piece skips 12.6-17 s of speech, but for a "." at 14.4 s: no
+    # word starts there, so the stretch is one, not two under _STALL_SEC.
+    prepared = _two_pieces()
+    prepared.speech = _samples([(0.0, 20.0)])
+    skipping = _result(
+        [" a", " b", " c", " could", ".", " This", " y"],  # from 7 s: 10, 10.6, 11.2, 12.6, 14.4, 17, 18
+        [3.0, 3.6, 4.2, 5.6, 7.4, 10.0, 11.0],
+    )
+    assert routes._stalled(prepared, [_words(10, 0.5), skipping]) == {1: _samples([(12.6 + 0.32, 17.0)])}
+    again = _result(
+        [" a", " b", " c", " could", ".", " The", " next", " thing", " This", " y"],
+        [0.0, 0.6, 1.2, 2.6, 4.4, 4.5, 5.0, 5.5, 7.0, 8.0],
+    )
+    worker = _Redo([again])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_words(10, 0.5), skipping], "parakeet-v3:fp32")
+    assert results[1] is again and len(worker.pieces) == 1
