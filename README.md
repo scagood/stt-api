@@ -563,7 +563,21 @@ Volume needs pauses quieter than the speech. Under a noise bed the file's own
 gate rises with the noise: at -40 dBFS it still found every pause, at -35 dBFS
 (5 dB under the speech) it missed some and 10 chunks were cut mid-speech. A
 fixed gate below the noise finds no pause at all, and the whole file is cut
-mid-speech, into the fewest equal chunks that fit. Music hasn't been measured.
+mid-speech, into the fewest chunks that fit. Music hasn't been measured.
+
+**Speech with no pause.** A stretch of speech too long for one chunk, with no
+pause in it as long as `PARAKEET_VAD_MIN_SILENCE_MS`, is still cut into the
+fewest chunks that fit, but each cut goes where the 80 ms around it is
+quietest: the gap between two words, within 3 s (and an eighth of the chunk)
+of where an even split would put it. A chunk ending in silence may give some
+up, to its neighbour where that still fits one chunk, else down to 1 s past
+its speech, so the cuts can reach a gap. Where no point is 6 dB quieter than
+the rest, the split stays even. Under a noise bed a fixed gate can't hear
+through, three LibriVox chapters had 552 such cuts: 48% of `parakeet-v2`'s
+fell inside a word (by wav2vec2's word times) and 38% now do; 36% and 10% of
+`parakeet-v3`'s, whose longer chunks leave the cuts more room to move. A
+chunk that is exactly its maximum leaves none, and a noise bed fills the gaps
+between words.
 
 **Quieter speakers.** The file's own gate follows its average, so a speaker
 far quieter than the rest (a remote guest, a phone leg, a question from the

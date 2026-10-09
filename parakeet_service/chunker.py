@@ -233,17 +233,155 @@ def _normalize_segments(segments: List[Range], total: int) -> List[Range]:
     return normalized
 
 
-def _split_oversized(start: int, end: int, maximum: int) -> List[Range]:
+# A cut inside speech goes where the 80 ms around it is quietest, looked for
+# every 5 ms: a gap between words, not a dip mid-vowel. At most this far from
+# where an even split puts it, and an eighth of the range's maximum, so no
+# part is much shorter than an even split's.
+QUIET_CUT_SEARCH_SEC = 3.0
+_QUIET_SPAN = int(0.08 * TARGET_SR)
+_QUIET_STEP = int(0.005 * TARGET_SR)
+# A point is quiet where its power is under this share of the range's median
+# (6 dB down); all louder points cost the same, so a cut never wanders after
+# a level that only flickers. What moving a cut a second costs, in the same
+# share: as much as a point 20 dB under the median. Enough to keep cuts near
+# the even split where none is quieter, never to keep one in a word.
+_QUIET = 0.25
+_QUIET_CUT_COST_PER_SEC = 0.01
+# The silence before a long silence (or the audio's end) a range keeps past
+# its speech when its edge gives way to let a cut reach a quieter point.
+EDGE_KEEP_SEC = 1.0
+
+
+def _split_oversized(
+    start: int,
+    end: int,
+    maximum: int,
+    wav: np.ndarray | None = None,
+    latest_start: int | None = None,
+    earliest_end: int | None = None,
+) -> List[Range]:
     """Split one range into the fewest parts <= maximum, all about the same
-    length: where it is cut at all, each part is at least half of maximum.
+    length: where it is cut at all, no part is under a quarter of maximum.
     Cutting target-length parts left whatever remained, down to a sliver
     once the target is cut to maximum for context (parakeet-v2): a decode of
-    mostly context, and Parakeet invents words in very short input."""
+    mostly context, and Parakeet invents words in very short input.
+
+    With `wav`, each cut moves from the even split to the quietest point near
+    it (_quiet_cuts): a gap between words, where a cut at an arbitrary point
+    likely splits one. The range may then start as late as `latest_start`
+    and end as early as `earliest_end` (silence it can give up) where that
+    lets a cut reach a quieter point."""
     if end <= start:
         return []
     count = -(-(end - start) // maximum)
     cuts = [start + (end - start) * index // count for index in range(count + 1)]
+    if wav is not None and count > 1:
+        cuts = _quiet_cuts(wav, cuts, maximum, max(start, latest_start or start), min(end, earliest_end or end))
     return list(zip(cuts, cuts[1:]))
+
+
+def _quiet_cuts(wav: np.ndarray, even: List[int], maximum: int, latest_start: int, earliest_end: int) -> List[int]:
+    """`even` (an even split of wav[even[0]:even[-1]] into parts of half
+    `maximum` or more) with each inner cut moved, within
+    QUIET_CUT_SEARCH_SEC (or maximum / 8) of it, to where the power of the
+    _QUIET_SPAN around it is least, plus _QUIET_CUT_COST_PER_SEC for each
+    second moved; and the ends as late or early as `latest_start` and
+    `earliest_end`, as far, where the cuts need it. Every part stays
+    <= maximum, and none moves an eighth of maximum either end, so each
+    stays over a quarter of it.
+
+    The cuts are chosen together, the cheapest chain by dynamic programming,
+    as each one's room depends on where its neighbours go. Scored by power,
+    not decibels: a deep pause scores barely better than a gap between words,
+    so the search seldom puts one cut in a word to put another in a pause.
+    Where no point near a cut is _QUIET, it stays where the even split puts it."""
+    start, end = even[0], even[-1]
+    reach = min(int(QUIET_CUT_SEARCH_SEC * TARGET_SR), maximum // 8)
+    rms = frame_rms(wav[start:end])
+    scale = 1.0 / (float(np.median(rms)) ** 2 + 1e-12)
+
+    def candidates(point: int, low: int, high: int) -> np.ndarray:
+        """`point`, and every _QUIET_STEP from it, from `low` to `high`."""
+        return np.concatenate((
+            np.arange(point - (point - low) // _QUIET_STEP * _QUIET_STEP, point, _QUIET_STEP),
+            np.arange(point, high + 1, _QUIET_STEP),
+        ))
+
+    def power(at: np.ndarray) -> np.ndarray:
+        """Mean power of the _QUIET_SPAN around each of `at`, over the median's,
+        or 1 where that is not _QUIET."""
+        low = max(0, int(at[0]) - _QUIET_SPAN // 2)
+        part = wav[low: min(wav.size, int(at[-1]) + _QUIET_SPAN // 2)].astype(np.float64)
+        sums = np.concatenate(([0.0], np.cumsum(part * part)))
+        first = np.clip(at - _QUIET_SPAN // 2 - low, 0, part.size)
+        last = np.clip(at + _QUIET_SPAN // 2 - low, 0, part.size)
+        level = (sums[last] - sums[first]) / np.maximum(last - first, 1) * scale
+        return np.where(level < _QUIET, level, 1.0)
+
+    stages = [candidates(start, start, min(latest_start, start + reach))]
+    stages += [candidates(point, point - reach, point + reach) for point in even[1:-1]]
+    stages.append(candidates(end, max(earliest_end, end - reach), end))
+    costs = [_QUIET_CUT_COST_PER_SEC * np.abs(at - point) / TARGET_SR for point, at in zip(even, stages)]
+    for index in range(1, len(stages) - 1):
+        costs[index] = costs[index] + power(stages[index])
+
+    # A cut's options are the previous cut's candidates no more than maximum
+    # before it: a tail of them, sorted, so the cheapest is a suffix minimum.
+    total, back = costs[0], []
+    for previous, at, cost in zip(stages, stages[1:], costs[1:]):
+        best = np.minimum.accumulate(total[::-1])[::-1]
+        where = np.searchsorted(previous, at - maximum)
+        valid = where < previous.size
+        where = np.minimum(where, previous.size - 1)
+        # index of the suffix minimum from each `where`
+        order = np.arange(previous.size)
+        arg = np.where(total == best, order, previous.size)
+        arg = np.minimum.accumulate(arg[::-1])[::-1]
+        back.append(arg[where])
+        total = np.where(valid, cost + best[where], np.inf)
+    pick = int(np.argmin(total))
+    if not np.isfinite(total[pick]):
+        return even
+    chosen = [pick]
+    for step in reversed(back):
+        chosen.append(int(step[chosen[-1]]))
+    chosen.reverse()
+    return [int(at[index]) for at, index in zip(stages, chosen)]
+
+
+def _split_all(wav: np.ndarray, packed: List[Range], speech: List[Range], maximum: int) -> List[Range]:
+    """Each of the `packed` ranges, split where it passes `maximum`
+    (_split_oversized) at the quietest points. A range so split may give up
+    the silence at its ends: to the range beside it where they meet, as long
+    as that needs no more pieces; else down to EDGE_KEEP_SEC past its speech."""
+    keep = int(EDGE_KEEP_SEC * TARGET_SR)
+    ends = [stop for _start, stop in speech]
+    starts = [begin for begin, _stop in speech]
+    packed = list(packed)
+    output: List[Range] = []
+    for index, (start, end) in enumerate(packed):
+        if end - start <= maximum:
+            output.append((start, end))
+            continue
+        first = max(start, speech[bisect.bisect_right(ends, start)][0])
+        last = min(end, speech[bisect.bisect_left(starts, end) - 1][1])
+        if output and output[-1][1] == start:
+            latest_start = min(first, output[-1][0] + maximum)
+        else:
+            latest_start = max(start, first - keep)
+        following = packed[index + 1] if index + 1 < len(packed) else None
+        if following and following[0] == end:
+            length = following[1] - following[0]
+            earliest_end = max(last, following[1] - _room(length, maximum))
+        else:
+            earliest_end = min(end, last + keep)
+        pieces = _split_oversized(start, end, maximum, wav, latest_start, earliest_end)
+        if output and output[-1][1] == start:
+            output[-1] = (output[-1][0], pieces[0][0])
+        if following and following[0] == end:
+            packed[index + 1] = (pieces[-1][1], following[1])
+        output.extend(pieces)
+    return output
 
 
 def _room(speech: int, maximum: int) -> int:
@@ -369,9 +507,7 @@ def plan_chunks(
     if last_end > current_start:
         packed.append((current_start, last_end))
 
-    output: List[Range] = []
-    for start, end in packed:
-        output.extend(_split_oversized(start, end, own_maximum))
+    output = _split_all(wav, packed, segments, own_maximum)
 
     # Defensive invariant filter: malformed VAD output must never reach ORT.
     ranges = [

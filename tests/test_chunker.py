@@ -324,6 +324,129 @@ def test_context_stays_out_of_long_silences():
     assert chunker._windows(ranges, speech, 0, _at(75)[0]) == ranges
 
 
+V2 = {"target_sec": 25.0, "max_sec": 30.0, "min_sec": 20.0, "context_sec": 5.0}  # ranges of 20 s at most
+
+
+def _words(seconds, quiet=(), word_db=-20.0, gap_db=-30.0, seed=0):
+    """Noise like speech: 0.3 s words with 0.1 s gaps 10 dB down between them,
+    and each (start, end) second span in `quiet` a gap 35 dB down."""
+    rng = np.random.default_rng(seed)
+    total = int(seconds * SR)
+    level = np.full(total, 10 ** (word_db / 20), dtype=np.float32)
+    phase = np.arange(total) % int(0.4 * SR)
+    level[phase >= int(0.3 * SR)] = 10 ** (gap_db / 20)
+    for start, end in quiet:
+        level[_at(start)[0]: _at(end)[0]] = 10 ** ((word_db - 35) / 20)
+    return rng.standard_normal(total).astype(np.float32) * level
+
+
+def _forced(monkeypatch, wav, speech, **bounds):
+    monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: [_at(*span) for span in speech])
+    return chunker.plan_chunks(wav, **bounds)
+
+
+def test_a_cut_in_speech_lands_in_the_quietest_gap_near_it(monkeypatch):
+    # 41 s with no pause is three pieces of 20 s at most; split evenly, the
+    # cuts fall at 13.67 s and 27.33 s, mid-word. Each moves into the deep
+    # gap 2 s from it instead, past the shallower gaps between nearer words.
+    quiet = [(11.7, 11.85), (29.3, 29.45)]
+    ranges = _forced(monkeypatch, _words(41, quiet), [(0, 41)], **V2).ranges
+    assert len(ranges) == 3 and ranges[0][0] == 0 and ranges[-1][1] == _at(41)[0]
+    assert all(left[1] == right[0] for left, right in zip(ranges, ranges[1:]))
+    for (_start, cut), (low, high) in zip(ranges, quiet):
+        assert _at(low)[0] < cut < _at(high)[0]
+    _assert_valid(ranges, _at(41)[0], _at(20)[0])
+
+
+def test_a_cut_in_speech_without_a_deep_gap_still_lands_between_words(monkeypatch):
+    # gaps 10 dB down every 0.4 s: each cut goes in one near the even split
+    ranges = _forced(monkeypatch, _words(41), [(0, 41)], **V2).ranges
+    assert len(ranges) == 3
+    for index, (_start, cut) in enumerate(ranges[:-1], 1):
+        assert cut % _at(0.4)[0] > _at(0.3)[0]
+        assert abs(cut - _at(41)[0] * index // 3) < SR
+
+
+def test_a_dip_shorter_than_a_syllable_does_not_draw_the_cut(monkeypatch):
+    # 20 ms of silence mid-word at the even split, and a 150 ms gap 1 s off
+    wav = _words(41, gap_db=-20.0)  # no gaps between words
+    wav[_at(13.66)[0]: _at(13.68)[0]] = 0
+    wav[_at(14.6)[0]: _at(14.75)[0]] *= 10 ** (-35 / 20)
+    cut = _forced(monkeypatch, wav, [(0, 41)], **V2).ranges[0][1]
+    assert _at(14.6)[0] < cut < _at(14.75)[0]
+
+
+def test_speech_as_loud_throughout_keeps_the_even_split(monkeypatch):
+    # nothing 6 dB under the rest: no cut wanders after noise in the level
+    wav = _words(41, gap_db=-20.0)
+    ranges = _forced(monkeypatch, wav, [(0, 41)], **V2).ranges
+    assert ranges == chunker._split_oversized(0, _at(41)[0], _at(20)[0])
+
+
+def test_a_cut_in_speech_reaches_a_gap_past_the_even_split_by_giving_up_silence(monkeypatch):
+    # 38.5 s of speech spans 40 s with the margin after it: two pieces of
+    # exactly 20 s, the cut fixed at 20 s. Ending the last range sooner, in
+    # the margin (never closer than EDGE_KEEP_SEC to the speech), lets the
+    # cut move to the gap at 19.6 s.
+    wav = _words(45, [(19.6, 19.75)])
+    wav[_at(38.5)[0]:] *= 1e-3
+    ranges = _forced(monkeypatch, wav, [(0, 38.5)], **V2).ranges
+    assert len(ranges) == 2 and ranges[0][0] == 0 and ranges[0][1] == ranges[1][0]
+    assert _at(19.6)[0] < ranges[0][1] < _at(19.75)[0]
+    assert _at(39.5)[0] <= ranges[1][1] <= _at(40)[0]
+    _assert_valid(ranges, _at(45)[0], _at(20)[0])
+
+
+def test_a_cut_in_speech_may_give_the_pause_after_it_to_the_next_range(monkeypatch):
+    # The first phrase's range is cut at 40 s, early in the pause, to stay
+    # two pieces; ending it at the pause's start instead gives the next range
+    # 0.4 s more, which still fits one piece, and lets its cut reach 19.7 s.
+    wav = _words(60, [(19.7, 19.85)])
+    wav[_at(39.6)[0]: _at(41)[0]] *= 1e-3
+    speech = [(0, 39.6), (41, 50)]
+    ranges = _forced(monkeypatch, wav, speech, **V2).ranges
+    assert len(ranges) == 3
+    assert _at(19.7)[0] < ranges[0][1] < _at(19.85)[0]
+    assert _at(39.6)[0] <= ranges[1][1] <= _at(40)[0] and ranges[2][0] == ranges[1][1]
+    _assert_valid(ranges, _at(60)[0], _at(20)[0])
+
+
+@pytest.mark.parametrize(
+    "bounds",
+    [V2, {**V2, "context_sec": 0.0}, {**BOUNDS, "context_sec": 5.0}],
+)
+def test_quiet_cuts_keep_every_bound_and_add_no_piece(monkeypatch, bounds):
+    # Random layouts of long and short phrases, with words in them: the
+    # pieces are those of an even split, all fit, and none is a sliver.
+    rng = np.random.default_rng(3)
+    own_maximum = _at(bounds["max_sec"] - 2 * bounds["context_sec"])[0]
+    for seed in range(8):
+        wav = _words(200, seed=seed) * rng.uniform(0.2, 1, 1).astype(np.float32)
+        speech, at = [], rng.uniform(0, 2)
+        while at < 190:
+            length = rng.uniform(20, 90) if rng.random() < 0.4 else rng.uniform(1, 6)
+            speech.append((at, min(199, at + length)))
+            at += length + rng.uniform(0.45, 4)
+        for start, end in zip([s[1] for s in speech], [s[0] for s in speech[1:]] + [200]):
+            wav[_at(start)[0]: _at(end)[0]] *= 1e-3
+        plan = _forced(monkeypatch, wav, speech, **bounds)
+        monkeypatch.setattr(chunker, "_quiet_cuts", lambda _wav, even, *_edges: even)
+        even = _forced(monkeypatch, wav, speech, **bounds).ranges
+        monkeypatch.undo()
+        ranges, windows = plan.ranges, plan.windows
+        assert len(ranges) == len(even)
+        _assert_valid(ranges, wav.size, own_maximum)
+        for (start, end), (window_start, window_end) in zip(ranges, windows):
+            assert window_start <= start < end <= window_end
+            assert window_end - window_start <= bounds["max_sec"] * SR
+        # nothing VAD heard is outside every range
+        for start, end in speech:
+            covered = sum(max(0, min(_at(end)[0], b) - max(_at(start)[0], a)) for a, b in ranges)
+            assert covered == _at(end)[0] - _at(start)[0]
+        # no piece shorter than a quarter of the maximum, where an even split had none
+        assert min(b - a for a, b in ranges) >= min(min(b - a for a, b in even), own_maximum // 4)
+
+
 def test_slice_chunks_returns_views():
     waveform = np.arange(20, dtype=np.float32)
     pieces = chunker.slice_chunks(waveform, [(2, 8), (8, 12)])
