@@ -37,7 +37,9 @@ def test_short_audio_bypasses_vad(monkeypatch):
         lambda _wav: (_ for _ in ()).throw(AssertionError("VAD should not run")),
     )
     waveform = np.zeros(int(MAX_SEC * chunker.TARGET_SR) - 1)
-    assert _ranges(waveform, **BOUNDS) == [(0, waveform.size)]
+    plan = chunker.plan_chunks(waveform, **BOUNDS)
+    assert plan.ranges == [(0, waveform.size)]
+    assert plan.speech is None  # not run, rather than none heard
 
 
 def test_long_silence_skips_inference(monkeypatch):

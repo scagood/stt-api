@@ -4,7 +4,7 @@ from __future__ import annotations
 import bisect
 import logging
 import threading
-from typing import List, NamedTuple, Tuple
+from typing import List, NamedTuple, Optional, Tuple
 
 from .config import (
     CHUNK_MIN_SEC,
@@ -242,10 +242,16 @@ def _room(speech: int, maximum: int) -> int:
     return -(-speech // maximum) * maximum
 
 
+def speech_segments(wav: np.ndarray) -> List[Range]:
+    """What VAD (PARAKEET_VAD) hears as speech in `wav`: sorted, disjoint,
+    non-empty sample ranges."""
+    return _normalize_segments(_speech_segments(wav), int(wav.size))
+
+
 class Plan(NamedTuple):
     ranges: List[Range]  # where each piece's words come from
     windows: List[Range]  # the audio each piece decodes: its range and context
-    speech: List[Range]  # what VAD heard as speech; nothing for a clip it skipped
+    speech: Optional[List[Range]]  # what VAD heard as speech; None for a clip short enough to skip it
 
 
 def plan_chunks(
@@ -272,13 +278,13 @@ def plan_chunks(
     target = max(1, int(target_sec * TARGET_SR))
     maximum = max(target, int(max_sec * TARGET_SR))
     if total <= maximum:
-        return Plan([(0, total)], [(0, total)], [])
+        return Plan([(0, total)], [(0, total)], None)
     context = int(context_sec * TARGET_SR)
     own_maximum = max(1, maximum - 2 * context)
     target = min(target, own_maximum)
     minimum = min(target, max(0, int(min_sec * TARGET_SR)))
 
-    segments = _normalize_segments(_speech_segments(wav), total)
+    segments = speech_segments(wav)
     if not segments:
         return Plan([], [], [])
 

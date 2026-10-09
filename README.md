@@ -516,15 +516,23 @@ chunk that starts or ends inside speech can make Parakeet skip or drop tens of
 seconds of words: the nearest pause at least `PARAKEET_CHUNK_CONTEXT_SEC` from
 the cut, else the farthest that fits, or, with none,
 `PARAKEET_CHUNK_CONTEXT_SEC` from the cut.
-A chunk that still skips 3 s or more of speech in its own range is decoded
-again without context, and that is kept only if it hears words in what was
-skipped: to VAD, music or noise can be speech. All of it fits inside the
-model's `chunk_max_sec`, so a chunk's own range is shorter by twice the
-context: `parakeet-v3` still cuts at about 60 s (at most 65 s), `parakeet-v2`
-at 20 s instead of 25 s. That decodes up to 1.25× the audio on `parakeet-v3`
-and 1.5× on `parakeet-v2`. Long silences are still cut out, with no context
-across them. Whisper gets no context: it returns no word times to trim it back
-by.
+All of it fits inside the model's `chunk_max_sec`, so a chunk's own range is
+shorter by twice the context: `parakeet-v3` still cuts at about 60 s (at most
+65 s), `parakeet-v2` at 20 s instead of 25 s. That decodes up to 1.25× the
+audio on `parakeet-v3` and 1.5× on `parakeet-v2`. Long silences are still cut
+out, with no context across them. Whisper gets no context: it returns no word
+times to trim it back by.
+
+**Skipped speech.** Parakeet can still skip a stretch of speech, which one
+depending on where its input starts and ends: a narrated opening over a music
+bed was lost in most clips of 70 s or more, single chunks among them, and heard
+in every clip of 68 s or less tried. So where a chunk, or a clip short enough
+to be one, has 3 s or more of speech (to VAD) with no word, that stretch is
+decoded again on its own, with 2 s either side, and the words heard in it are
+put in among the chunk's own, if there are two or more: to VAD, music or noise
+can be speech, and one word may be made up. Each such stretch costs one more
+decode, at most 4 s longer than it. On a clip short enough to be one chunk, VAD runs
+only once it has 3 s or more with no word.
 
 **Finding pauses.** By default a pause is any stretch of 20 ms frames quieter
 than the gate, which takes under 0.3 ms of CPU per second of audio.

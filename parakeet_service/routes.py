@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 
 from . import aligner, retime, spoken
 from .audio import load_audio
-from .chunker import plan_chunks, slice_chunks
+from .chunker import plan_chunks, slice_chunks, speech_segments
 from .config import (
     ALIGNER_CONFIGS,
     CHUNK_CONTEXT_SEC,
@@ -68,7 +68,7 @@ class _PreparedAudio:
     waveform: Any
     ranges: List[Tuple[int, int]]  # where each piece's words come from
     windows: List[Tuple[int, int]]  # what each piece decodes: its range and context
-    speech: List[Tuple[int, int]]  # what VAD heard as speech (none for a short clip)
+    speech: Optional[List[Tuple[int, int]]]  # what VAD heard as speech; None for a one-piece clip (not run)
     pieces: List[Any]  # the windows' audio
     duration: float
 
@@ -488,6 +488,12 @@ def _group_words(info: Dict[str, Any]) -> List[Tuple[str, float, float]]:
 _DECODE_SPACE = re.compile(r"\A\s|\s\B|(\s)\b")
 
 
+def _decoded(tokens: Sequence[str]) -> str:
+    """The text onnx_asr makes of `tokens`."""
+    text = "".join(token.replace("\u2581", " ") for token in tokens)
+    return _DECODE_SPACE.sub(lambda match: " " if match.group(1) else "", text)
+
+
 # Two neighbouring pieces both decode the audio around their cut, and each
 # times a word there on its own 80 ms grid, from its own window's start: one
 # starting at the cut can be before it in one piece and after it in the other,
@@ -595,10 +601,9 @@ def _trimmed(prepared: _PreparedAudio, results: Sequence[Any]) -> List[Any]:
             if after_start and before_end:
                 kept.extend(range(previous + 1, last + 1))  # with the lone markers before it
             previous = last
-        text = "".join(tokens[index].replace("\u2581", " ") for index in kept)
         out.append(
             SimpleNamespace(
-                text=_DECODE_SPACE.sub(lambda match: " " if match.group(1) else "", text),
+                text=_decoded([tokens[index] for index in kept]),
                 tokens=[tokens[index] for index in kept],
                 timestamps=[max(0.0, timestamps[index] - head) for index in kept],
             )
@@ -811,8 +816,9 @@ async def _infer(request: Request, pieces: List[Any], model_key: str):
 
 # Parakeet sometimes stops partway through a window, or skips a stretch of
 # it, and returns nothing for tens of seconds of speech, depending on exactly
-# where the window starts or ends (#69). A piece with this much speech, by
-# VAD, between two of its tokens inside its own range has skipped it.
+# where the window starts or ends (#69); a clip short enough to be one piece
+# does it too (#77). A piece with this much speech, by VAD, between two of
+# its tokens inside its own range has skipped it.
 _STALL_SEC = 3.0
 
 
@@ -827,101 +833,155 @@ def _speech_within(speech: Sequence[Tuple[int, int]], starts: Sequence[int], low
 
 
 def _stalled(prepared: _PreparedAudio, results: Sequence[Any]) -> Dict[int, List[Tuple[int, int]]]:
-    """The pieces that decoded context (plan_chunks) and skipped at least
-    _STALL_SEC of speech in their own range: before their first token, between
-    two, or after their last. Each comes with the stretches it skipped, in
-    samples. A piece decoded as just its range is the same audio as before
-    context, which has not done this."""
-    starts = [start for start, _end in prepared.speech]
+    """The pieces that skipped at least _STALL_SEC of speech in their own
+    range: before their first token, between two, or after their last. Each
+    comes with the stretches it skipped, in samples: from where the token
+    before ends at the latest (_WORD_TAIL_SEC), or the range's start, to the
+    next token, or the range's end. A clip short enough to be one piece has
+    had no VAD: it runs here, once the piece has a stretch that long."""
     stall, tail = int(_STALL_SEC * TARGET_SR), int(_WORD_TAIL_SEC * TARGET_SR)
-    skipped: Dict[int, List[Tuple[int, int]]] = {}
+    untimed: Dict[int, List[Tuple[int, int]]] = {}  # stretches that long with no token
     for index, ((start, end), window, result) in enumerate(zip(prepared.ranges, prepared.windows, results)):
-        if window == (start, end):
-            continue
         heard = sorted(window[0] + int(at * TARGET_SR) for at in _extract(result)["timestamps"])
         for low, high in zip([window[0]] + [at + tail for at in heard], heard + [window[1]]):
             low, high = max(low, start), min(high, end)
-            if high - low >= stall and _speech_within(prepared.speech, starts, low, high) >= stall:
+            if high - low >= stall:
+                untimed.setdefault(index, []).append((low, high))
+    if not untimed:
+        return {}
+    speech = prepared.speech if prepared.speech is not None else speech_segments(prepared.waveform)
+    starts = [start for start, _end in speech]
+    skipped: Dict[int, List[Tuple[int, int]]] = {}
+    for index, stretches in untimed.items():
+        for low, high in stretches:
+            if _speech_within(speech, starts, low, high) >= stall:
                 skipped.setdefault(index, []).append((low, high))
     return skipped
 
 
-# A piece decoded again without context keeps the redo only if it hears at
-# least this many words in the speech the first decode skipped, and no fewer
-# words in all. What VAD calls speech may be music, laughter or noise, with no
-# words to find (PARAKEET_VAD=volume above all), and without context Parakeet
-# may make up a word as its input ends (#68): one new word there is no sign of
-# a skip.
+# A stretch a piece skipped is decoded again with this much audio either
+# side, within the piece's window: the word after it is whole, and one
+# Parakeet cuts off where its input starts, or makes up as it ends (#68),
+# falls outside the stretch, whose words alone are taken.
+_REDO_MARGIN_SEC = 2.0
+
+# The words a redo hears in the stretch go into the piece's result only if
+# there are at least this many. What VAD calls speech may be music, laughter
+# or noise, with no words to find (PARAKEET_VAD=volume above all), and a
+# stretch that runs to the end of the piece's audio has no margin after it,
+# so Parakeet may make up a word there (#68): one new word is no sign of a
+# skip.
 _REDO_MIN_WORDS = 2
 
 
-def _words_in(result: Any, origin: int, stretches: Sequence[Tuple[int, int]]) -> int:
-    """How many of `result`'s words, decoded from sample `origin`, start in `stretches`."""
+def _redo_window(window: Tuple[int, int], low: int, high: int) -> Optional[Tuple[int, int]]:
+    """What to decode again for the stretch (low, high) a piece decoding
+    `window` skipped: the stretch and _REDO_MARGIN_SEC either side, within
+    the window. A short window hears what a long one skipped: the opening
+    #77 lost in most clips of 70 s or more was heard in every clip of 68 s
+    or less tried. Where that is the whole window, which would come back the
+    same, the stretch alone; None if that is the whole window too."""
+    margin = int(_REDO_MARGIN_SEC * TARGET_SR)
+    for redo in ((max(window[0], low - margin), min(window[1], high + margin)), (low, high)):
+        if redo != tuple(window):
+            return redo
+    return None
+
+
+def _words_in(result: Any, origin: int, low: int, until: int) -> Tuple[int, List[Tuple[str, float]]]:
+    """How many of `result`'s words, decoded from sample `origin`, start from
+    sample `low` to before `until`; and their tokens with their times, each
+    word's with the lone markers before it (_word_spans)."""
     info = _extract(result)
-    starts = [origin + int(info["timestamps"][first] * TARGET_SR) for _word, first, _last in _word_spans(info["tokens"])]
-    return sum(low <= at < high for at in starts for low, high in stretches)
+    tokens, timestamps = info["tokens"], info["timestamps"]
+    count, words, previous = 0, [], -1
+    for _word, first, last in _word_spans(tokens):
+        if low <= origin + int(timestamps[first] * TARGET_SR) < until:
+            count += 1
+            words.extend((tokens[index], timestamps[index]) for index in range(previous + 1, last + 1))
+        previous = last
+    return count, words
+
+
+def _spliced(result: Any, origin: int, found: Sequence[Tuple[int, Sequence[Tuple[str, float]]]]) -> Any:
+    """`result`, decoded from sample `origin`, with each (low, tokens and
+    their times from `origin`) in `found` put in where its stretch starts, at
+    sample `low`, and its text rebuilt from the tokens."""
+    info = _extract(result)
+    tokens, timestamps = info["tokens"], info["timestamps"]
+    for low, words in found:
+        at = next((index for index, ts in enumerate(timestamps) if origin + int(ts * TARGET_SR) >= low), len(tokens))
+        tokens[at:at] = [token for token, _ts in words]
+        timestamps[at:at] = [ts for _token, ts in words]
+    return SimpleNamespace(text=_decoded(tokens), tokens=tokens, timestamps=timestamps)
 
 
 async def _redo_stalled(
     request: Request, files: Sequence[_PreparedAudio], results: Sequence[Any], model_key: str
 ) -> List[Any]:
-    """`results`, every file's pieces in order, with each piece that skipped
-    speech (_stalled) decoded again as just its range, without context, and
-    the redo kept if it hears words where the first decode heard none and
-    loses none overall (_REDO_MIN_WORDS). A kept piece's window and piece in
-    `files` change to match. Finding and judging them run on the audio pool:
-    for hours of audio, that is a scan of every token."""
+    """`results`, every file's pieces in order, with each stretch of speech a
+    piece skipped (_stalled) decoded again on its own (_redo_window), and the
+    words heard in it put into the piece's result where there are at least
+    _REDO_MIN_WORDS: the words the piece heard all stay. Finding the
+    stretches (and VAD, for a clip of one piece) and putting words in run on
+    the audio pool: for hours of audio, that is a scan of every token."""
     results = list(results)
-    if all(prepared.windows == prepared.ranges for prepared in files):
-        return results  # nothing decoded context: short audio, or PARAKEET_CHUNK_CONTEXT_SEC=0
+    if _family(model_key.partition(":")[0]) != "parakeet":
+        return results  # Whisper returns no token times to find a skip by
     loop, pool = asyncio.get_running_loop(), request.app.state.audio_pool
 
-    def find() -> List[Tuple[int, _PreparedAudio, int, List[Tuple[int, int]]]]:
-        """(in results, file, in file, what it skipped) for each piece to redo."""
+    def find() -> List[Tuple[int, int, int, Tuple[int, int], int, Any]]:
+        """(in results, its window's start, its range's end, the stretch, the
+        redo's start, its audio) for each stretch to decode again."""
         found = []
         cursor = 0
         for prepared in files:
             count = len(prepared.pieces)
-            stalled = _stalled(prepared, results[cursor : cursor + count])
-            found += [(cursor + index, prepared, index, skipped) for index, skipped in stalled.items()]
+            for index, stretches in _stalled(prepared, results[cursor : cursor + count]).items():
+                window, end = prepared.windows[index], prepared.ranges[index][1]
+                for low, high in stretches:
+                    redo = _redo_window(window, low, high)
+                    if redo is not None:
+                        audio = prepared.pieces[index][redo[0] - window[0] : redo[1] - window[0]]
+                        found.append((cursor + index, window[0], end, (low, high), redo[0], audio))
             cursor += count
         return found
 
     redo = await loop.run_in_executor(pool, find)
     if not redo:
         return results
-    pieces = []
-    for _at, prepared, index, _skipped in redo:
-        (start, end), (window_start, _window_end) = prepared.ranges[index], prepared.windows[index]
-        pieces.append(prepared.pieces[index][start - window_start : end - window_start])
-    again = await _infer(request, pieces, model_key)
+    again = await _infer(request, [audio for *_rest, audio in redo], model_key)
 
-    def heard() -> List[bool]:
-        """Whether each redo hears new words where its piece skipped, and as many in all."""
+    def splice() -> Tuple[List[Any], List[int]]:
+        """The results with each redo's words put in, and how many each heard in its stretch."""
         tail = int(_WORD_TAIL_SEC * TARGET_SR)
-        keep = []
-        for (at, prepared, index, skipped), result in zip(redo, again):
-            (start, end), window_start = prepared.ranges[index], prepared.windows[index][0]
-            # A stretch ends at the first decode's next word, which the redo,
-            # on another 80 ms frame grid, may time a frame earlier.
-            new = _words_in(result, start, [(low, high - tail) for low, high in skipped])
-            before = _words_in(results[at], window_start, [(start, end)])
-            keep.append(new >= _REDO_MIN_WORDS and _words_in(result, start, [(start, end)]) >= before)
-        return keep
+        found: Dict[int, Tuple[int, List[Tuple[int, List[Tuple[str, float]]]]]] = {}
+        heard = []
+        for (at, origin, end, (low, high), start, _audio), result in zip(redo, again):
+            # A stretch that ends at the first decode's next word: the redo,
+            # on another 80 ms frame grid, may time that word a frame earlier.
+            count, words = _words_in(result, start, low, high - tail if high < end else high)
+            heard.append(count)
+            if count >= _REDO_MIN_WORDS:
+                shift = (start - origin) / TARGET_SR
+                found.setdefault(at, (origin, []))[1].append((low, [(token, ts + shift) for token, ts in words]))
+        spliced = list(results)
+        for at, (origin, stretches) in found.items():
+            spliced[at] = _spliced(results[at], origin, stretches)
+        return spliced, heard
 
-    kept = 0
-    for (at, prepared, index, _skipped), piece, result, keep in zip(
-        redo, pieces, again, await loop.run_in_executor(pool, heard)
-    ):
-        if keep:
-            results[at] = result
-            prepared.pieces[index], prepared.windows[index] = piece, prepared.ranges[index]
-            kept += 1
+    results, heard = await loop.run_in_executor(pool, splice)
     logger.warning(
-        "%d of %d chunks skipped speech; decoded again without context, %d heard words there and were kept",
-        len(redo),
+        "%d of %d chunks skipped speech; decoded %d stretches of it again on their own, "
+        "%d heard words there and were put in (%s)",
+        len({at for at, *_rest in redo}),
         len(results),
-        kept,
+        len(redo),
+        sum(count >= _REDO_MIN_WORDS for count in heard),
+        ", ".join(
+            f"{low / TARGET_SR:.1f}-{high / TARGET_SR:.1f} s: {count} words"
+            for (_at, _origin, _end, (low, high), *_rest), count in zip(redo, heard)
+        ),
     )
     return results
 
