@@ -453,6 +453,52 @@ def test_a_split_first_or_last_range_keeps_a_quiet_word_in_its_margin(monkeypatc
     _assert_valid(plan.ranges, _at(45)[0], _at(20)[0])
 
 
+@pytest.mark.parametrize(
+    ("quiet", "margin"),
+    [
+        ((18.4, 18.55), (37.3, 45)),  # as above, the tail
+        ((21.7, 21.85), (0, 3.15)),  # the lead
+    ],
+)
+def test_a_split_first_or_last_range_keeps_a_quieter_talker_in_its_margin(monkeypatch, quiet, margin):
+    # A margin holding no room tone, only a talker 22 dB under the rest: its
+    # quietest tenth is that talker's own gaps, which its words don't clear
+    # by 10 dB. It is all sound, and the ranges keep as much of it as an
+    # even split's.
+    wav = _margin_word(quiet, None)
+    span = slice(*_at(*margin))
+    wav[span] = _words(45, word_db=-42.0, gap_db=-48.0, seed=7)[span]
+    plan = _forced(monkeypatch, wav, [(3.15, 37.3)], **V2)
+    monkeypatch.setattr(chunker, "_quiet_cuts", lambda _wav, even, *_edges: even)
+    even = _forced(monkeypatch, wav, [(3.15, 37.3)], **V2).ranges
+    assert len(plan.ranges) == len(even) == 2
+    if margin[0]:
+        assert even[-1][1] <= plan.ranges[-1][1]
+    else:
+        assert plan.ranges[0][0] <= even[0][0]
+
+
+@pytest.mark.parametrize("bed", ["hum", "offset"])
+@pytest.mark.parametrize(
+    ("quiet", "word"),
+    [
+        ((18.4, 18.55), (38.5, 39.0)),
+        ((21.7, 21.85), (1.5, 2.0)),
+    ],
+)
+def test_a_split_first_or_last_range_keeps_a_word_under_a_bed_in_its_margin(monkeypatch, quiet, word, bed):
+    # A 50 Hz hum at -40 dBFS, or a DC offset as loud, under the whole file:
+    # the margin's floor is the bed, and a -42 dBFS word VAD missed there
+    # is under it, not 10 dB over it. It is sound all the same.
+    wav = _margin_word(quiet, word)
+    t = np.arange(wav.size) / SR
+    wav += (np.sin(2 * np.pi * 50 * t) * np.sqrt(2) if bed == "hum" else np.ones_like(t)).astype(np.float32) * 0.01
+    plan = _forced(monkeypatch, wav, [(3.15, 37.3)], **V2)
+    low, high = _at(*word)
+    assert len(plan.ranges) == 2
+    assert plan.ranges[0][0] <= low and high <= plan.ranges[-1][1]
+
+
 def test_a_cut_in_speech_may_give_the_pause_after_it_to_the_next_range(monkeypatch):
     # The first phrase's range is cut at 40 s, early in the pause, to stay
     # two pieces; ending it at the pause's start instead gives the next range

@@ -363,14 +363,23 @@ def _quiet_cuts(wav: np.ndarray, even: List[int], maximum: int, latest_start: in
     return [int(at[index]) for at, index in zip(stages, chosen)]
 
 
+# Louder than this is sound in a margin, whatever its floor: a hum, an offset
+# or a noise bed sets a floor that a quiet word just over it doesn't clear by
+# 10 dB, and a margin holding no room tone, only a quieter talker, sets it at
+# that talker's own gaps between words.
+_SOUND_DB = -50.0
+
+
 def _sounds(wav: np.ndarray, start: int, end: int) -> np.ndarray:
     """The 20 ms frames of wav[start:end] with sound in them: louder than
-    -60 dBFS and than 10 dB over the stretch's quietest tenth, as a quiet
-    stretch is heard again in loud_frames. None in room tone or silence."""
+    -60 dBFS and either than 10 dB over the stretch's quietest tenth, as a
+    quiet stretch is heard again in loud_frames, or than _SOUND_DB. None in
+    room tone or silence."""
     rms = frame_rms(wav[start:end])
     if not rms.size:
         return rms.astype(bool)
-    return rms > max(1e-3, float(np.percentile(rms, 10)) * _OVER_FLOOR)
+    floor = float(np.percentile(rms, 10)) * _OVER_FLOOR
+    return rms > max(1e-3, min(floor, 10 ** (_SOUND_DB / 20)))
 
 
 def _split_all(wav: np.ndarray, packed: List[Range], speech: List[Range], maximum: int) -> List[Range]:
