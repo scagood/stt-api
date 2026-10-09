@@ -1,0 +1,15 @@
+FAILED tests/test_stitch.py::test_what_a_range_redo_skips_again_is_decoded_again_on_its_own_and_put_in
+FAILED tests/test_stitch.py::test_speech_the_piece_heard_as_another_word_is_not_put_in_again[19.92]
+FAILED tests/test_stitch.py::test_speech_the_piece_heard_as_another_word_is_not_put_in_again[20.0]
+FAILED tests/test_stitch.py::test_a_word_made_up_in_the_redo_s_margin_is_not_put_in[21.35]
+FAILED tests/test_stitch.py::test_a_word_made_up_in_the_redo_s_margin_is_not_put_in[21.92]
+FAILED tests/test_stitch.py::test_a_word_made_up_as_the_redo_meets_the_end_of_the_audio_is_not_put_in
+FAILED tests/test_stitch.py::test_a_word_the_redo_splits_in_two_is_not_put_in_again[9.24]
+FAILED tests/test_stitch.py::test_a_word_the_redo_splits_in_two_is_not_put_in_again[9.32]
+FAILED tests/test_stitch.py::test_a_word_split_across_a_cut_is_not_put_in_again
+FAILED tests/test_stitch.py::test_a_word_the_two_pieces_redos_hear_differently_at_their_cut_is_kept_once
+FAILED tests/test_stitch.py::test_a_word_said_twice_across_a_cut_is_kept_twice
+FAILED tests/test_stitch.py::test_a_redo_never_costs_the_piece_its_own_words
+FAILED tests/test_stitch.py::test_a_redo_whose_splice_fails_keeps_what_was_heard
+FAILED tests/test_stitch.py::test_a_batch_of_one_piece_clips_with_nothing_untimed_is_left_as_it_is
+14 failed, 1094 passed in 42.93s

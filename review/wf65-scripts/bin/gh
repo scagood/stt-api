@@ -1,0 +1,11 @@
+#!/bin/bash
+# Fake gh: `pr view N --repo R --json body --jq ...` prints $FAKE_BODY_FILE raw + "\n" (like gh --jq on a string).
+# `pr edit N --repo R --body-file F` copies F over $FAKE_BODY_FILE (GitHub stores what is sent) and logs.
+if [ "$1 $2" = "pr view" ]; then
+  cat "$FAKE_BODY_FILE"; printf '\n'
+elif [ "$1 $2" = "pr edit" ]; then
+  while [ $# -gt 0 ]; do if [ "$1" = --body-file ]; then f="$2"; fi; shift; done
+  cp "$f" "$FAKE_BODY_FILE"; echo "[fake gh] body edited" >&2
+else
+  echo "unexpected gh $*" >&2; exit 1
+fi

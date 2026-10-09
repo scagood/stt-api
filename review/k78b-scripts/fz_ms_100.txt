@@ -1,0 +1,6 @@
+min_silence 100 scenes 100 seed 5: plans differ in 72
+main speech decoded 9868.0s cuts-in-speech 0 window-edges-in-speech 5 decoded 14067.1s ranges 889 retime-pause-in-speech 103.11s
+pr speech decoded 9876.5s cuts-in-speech 0 window-edges-in-speech 5 decoded 14468.6s ranges 892 retime-pause-in-speech 85.46s
+scenes where PR is worse: 2
+ scene 10 ['speech lost 0.24s main_lost=[(35.75, 35.99, 0.23)] pr_lost=[(35.75, 35.99, 0.23), (169.14, 169.38, 0.24)]']
+ scene 90 ['speech lost 0.05s main_lost=[(180.88, 181.19, 0.32)] pr_lost=[(174.66, 175.03, 0.37)]']

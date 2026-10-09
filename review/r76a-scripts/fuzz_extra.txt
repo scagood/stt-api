@@ -1,0 +1,52 @@
+== v2 ctx3 min10 gen=a scale=1.0
+   main  {'layouts': 6769, 'n': 38277, 'isc': 10534, 'silent': 0, 'short': 554, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head  {'layouts': 6769, 'n': 38277, 'isc': 10397, 'silent': 0, 'short': 554, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head vs main {'changed': 134, 'isc_better': 134}
+== v2 ctx3 min10 gen=a scale=1.6
+   main  {'layouts': 7251, 'n': 56760, 'isc': 27046, 'silent': 0, 'short': 345, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head  {'layouts': 7251, 'n': 56760, 'isc': 26791, 'silent': 0, 'short': 345, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head vs main {'changed': 252, 'isc_better': 252}
+== v2 ctx3 min10 gen=b scale=1.0
+   main  {'layouts': 7859, 'n': 99274, 'isc': 22700, 'silent': 0, 'short': 1732, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head  {'layouts': 7859, 'n': 99274, 'isc': 22404, 'silent': 0, 'short': 1732, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head vs main {'changed': 290, 'isc_better': 290}
+== v2 ctx3 min10 gen=b scale=1.6
+   main  {'layouts': 7940, 'n': 155666, 'isc': 78558, 'silent': 0, 'short': 1292, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head  {'layouts': 7940, 'n': 155666, 'isc': 78348, 'silent': 0, 'short': 1292, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head vs main {'changed': 207, 'isc_better': 207}
+== v2 ctx5 min0 gen=a scale=1.0
+   main  {'layouts': 6708, 'n': 47007, 'isc': 16574, 'silent': 0, 'short': 682, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head  {'layouts': 6708, 'n': 47007, 'isc': 16574, 'silent': 0, 'short': 682, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head vs main {}
+== v2 ctx5 min0 gen=a scale=1.6
+   main  {'layouts': 7203, 'n': 64528, 'isc': 32094, 'silent': 0, 'short': 463, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head  {'layouts': 7203, 'n': 64528, 'isc': 32094, 'silent': 0, 'short': 463, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head vs main {}
+== v2 ctx5 min0 gen=b scale=1.0
+   main  {'layouts': 7855, 'n': 126885, 'isc': 44949, 'silent': 0, 'short': 2383, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head  {'layouts': 7855, 'n': 126885, 'isc': 44949, 'silent': 0, 'short': 2383, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head vs main {}
+== v2 ctx5 min0 gen=b scale=1.6
+   main  {'layouts': 7936, 'n': 177260, 'isc': 92688, 'silent': 0, 'short': 1419, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head  {'layouts': 7936, 'n': 177260, 'isc': 92688, 'silent': 0, 'short': 1419, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head vs main {}
+== v3 ctx0 gen=a scale=1.0
+   main  {'layouts': 4412, 'n': 15899, 'isc': 0, 'silent': 0, 'short': 257, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head  {'layouts': 4412, 'n': 15899, 'isc': 0, 'silent': 0, 'short': 257, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head vs main {}
+== v3 ctx0 gen=a scale=1.6
+   main  {'layouts': 5701, 'n': 23747, 'isc': 1053, 'silent': 0, 'short': 224, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head  {'layouts': 5701, 'n': 23747, 'isc': 1053, 'silent': 0, 'short': 224, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head vs main {}
+== v3 ctx0 gen=b scale=1.0
+   main  {'layouts': 7115, 'n': 51491, 'isc': 0, 'silent': 0, 'short': 1390, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head  {'layouts': 7115, 'n': 51491, 'isc': 0, 'silent': 0, 'short': 1390, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head vs main {}
+== v3 ctx0 gen=b scale=1.6
+   main  {'layouts': 7567, 'n': 71971, 'isc': 7484, 'silent': 0, 'short': 896, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head  {'layouts': 7567, 'n': 71971, 'isc': 7484, 'silent': 0, 'short': 896, 'lost': 0, 'lost_layouts': 0, 'bad_layouts': 0}
+   head vs main {}
+
+real	0m4.221s
+user	0m0.564s
+sys	0m0.032s

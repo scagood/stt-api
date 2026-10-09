@@ -1,0 +1,11 @@
+#!/bin/bash
+# stub: body stored in $STUB_BODY; edits counted in $STUB_EDITS
+case "$1 $2" in
+  "pr view")
+    if [[ " $* " == *" labels "* ]]; then printf '%s\n' "${STUB_LABELS:-}"; exit 0; fi
+    cat "$STUB_BODY"; printf '\n' ;;
+  "pr edit")
+    while [ $# -gt 0 ]; do if [ "$1" = --body-file ]; then cp "$2" "$STUB_BODY"; fi; shift; done
+    echo x >> "$STUB_EDITS" ;;
+  *) echo "unexpected $*" >&2; exit 1;;
+esac

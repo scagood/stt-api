@@ -1,0 +1,8 @@
+#!/bin/bash
+# stub: body stored in $STUB_BODY (raw, as GitHub stores it)
+case "$1 $2" in
+  "pr view")
+    if [ -s "$STUB_BODY" ]; then cat "$STUB_BODY"; fi; printf '\n' ;;
+  "pr edit")
+    while [ $# -gt 0 ]; do if [ "$1" = --body-file ]; then cp "$2" "$STUB_BODY"; echo EDIT >> "$STUB_BODY.edits"; fi; shift; done ;;
+esac

@@ -1,0 +1,20 @@
+real speech lead, quiet talker 14 dB under, noise None: files 150 (split 150), words 1058 (VAD heard 839), in a range main 1056 head 1056 fixA 1056; head fewer in 0 files (0 words); fixA fewer in 0 files (0 words)
+real speech lead, quiet talker 14 dB under, noise -50.0: files 150 (split 150), words 1112 (VAD heard 880), in a range main 1104 head 1104 fixA 1104; head fewer in 0 files (0 words); fixA fewer in 0 files (0 words)
+  EX 53: clip 0.75-4.17s VAD [(2.26, 2.6), (4.36, 17.46), (18.04, 41.54)]... main [(1.54, 21.54), (21.54, 41.54)] head [(2.26, 22.26), (22.26, 41.54)] lost [(2.22, 2.58)]
+real speech lead, quiet talker 18 dB under, noise None: files 150 (split 150), words 1139 (VAD heard 456), in a range main 1101 head 1100 fixA 1101; head fewer in 1 files (1 words); fixA fewer in 0 files (0 words)
+  EX 28: clip 0.78-2.62s VAD [(1.96, 2.22), (2.76, 40.38)]... main [(0.38, 20.38), (20.38, 40.38)] head [(0.82, 20.82), (20.82, 40.38)] lost [(0.81, 0.89)]
+  EX 54: clip 0.70-4.10s VAD [(2.8, 3.2), (3.8, 19.0), (19.76, 41.24)]... main [(1.24, 21.24), (21.24, 41.24)] head [(2.36, 22.36), (22.36, 41.24)] lost [(1.47, 1.73)]
+real speech lead, quiet talker 18 dB under, noise -50.0: files 150 (split 150), words 1093 (VAD heard 304), in a range main 990 head 971 fixA 976; head fewer in 15 files (19 words); fixA fewer in 12 files (14 words)
+real speech lead, quiet talker 22 dB under, noise None: files 150 (split 150), words 1103 (VAD heard 731), in a range main 1056 head 1056 fixA 1056; head fewer in 0 files (0 words); fixA fewer in 0 files (0 words)
+  EX 1: clip 0.94-2.84s VAD [(2.96, 9.42), (9.98, 39.96)]... main [(0.0, 20.0), (20.0, 40.0)] head [(1.44, 21.43), (21.43, 40.0)] lost [(0.97, 1.03), (1.09, 1.15), (1.19, 1.27), (1.39, 1.59)]
+  EX 3: clip 0.98-4.18s VAD [(4.3, 40.78)]... main [(1.3, 21.3), (21.3, 41.3)] head [(1.98, 21.98), (21.98, 41.3)] lost [(1.37, 1.77)]
+real speech lead, quiet talker 22 dB under, noise -50.0: files 150 (split 150), words 1136 (VAD heard 27), in a range main 911 head 844 fixA 845; head fewer in 28 files (67 words); fixA fewer in 28 files (66 words)
+real speech tail, quiet talker 14 dB under, noise None, rt60 0.0: files 150 (split 150), words 1100 (VAD heard 882), in a range main 1096 head 1096 fixA 1096; head fewer in 0 files (0 words); fixA fewer in 0 files (0 words)
+real speech tail, quiet talker 14 dB under, noise -50.0, rt60 0.0: files 150 (split 150), words 1083 (VAD heard 846), in a range main 1077 head 1077 fixA 1077; head fewer in 0 files (0 words); fixA fewer in 0 files (0 words)
+real speech tail, quiet talker 18 dB under, noise None, rt60 0.0: files 150 (split 150), words 1130 (VAD heard 648), in a range main 1110 head 1110 fixA 1110; head fewer in 0 files (0 words); fixA fewer in 0 files (0 words)
+  EX 64: clip 38.66-41.08s VAD [(0.64, 38.92)]... main [(0.0, 20.0), (20.0, 40.0)] head [(0.0, 19.71), (19.71, 39.71)] lost [(39.43, 39.75), (39.81, 39.89)]
+real speech tail, quiet talker 18 dB under, noise -50.0, rt60 0.0: files 150 (split 150), words 1093 (VAD heard 312), in a range main 1009 head 1007 fixA 1007; head fewer in 1 files (2 words); fixA fewer in 1 files (2 words)
+real speech tail, quiet talker 22 dB under, noise None, rt60 0.0: files 150 (split 150), words 1068 (VAD heard 874), in a range main 1031 head 1031 fixA 1031; head fewer in 0 files (0 words); fixA fewer in 0 files (0 words)
+  EX 8: clip 38.68-41.44s VAD [(0.64, 6.24), (6.42, 38.54)]... main [(0.0, 20.0), (20.0, 40.0)] head [(0.0, 19.04), (19.04, 39.03)] lost [(38.83, 39.25)]
+  EX 44: clip 38.76-40.88s VAD [(0.08, 38.8)]... main [(0.0, 20.0), (20.0, 40.0)] head [(0.0, 19.61), (19.61, 39.62)] lost [(39.69, 39.93)]
+real speech tail, quiet talker 22 dB under, noise -50.0, rt60 0.0: files 150 (split 150), words 1075 (VAD heard 42), in a range main 801 head 765 fixA 765; head fewer in 15 files (36 words); fixA fewer in 15 files (36 words)

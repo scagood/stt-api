@@ -1,0 +1,2 @@
+v2 ctx5 gaps 10.0 dB: layouts 1412; context edges main 15608 (in VAD speech 13404, in a word 8299) -> head 15608 (in VAD speech 13400, in a word 8281); layouts with more edges in words 407, fewer 417
+v3 ctx5 gaps 10.0 dB: layouts 1020; context edges main 3170 (in VAD speech 1915, in a word 1201) -> head 3170 (in VAD speech 1916, in a word 1179); layouts with more edges in words 45, fewer 56

@@ -1,0 +1,12 @@
+gaps 6 dB                        x1.0 v2 ctx5: pieces 3440->3440, forced 1954->1952, in a word 1204 (61.6%) -> 645 (33.0%), layouts worse 8, <2 s 8->8, speech lost 0->0, bounds broken 0->0, margin given up 35.7 s
+gaps 6 dB                        x1.0 v2 ctx0: pieces 2522->2522, forced 1172->1172, in a word 757 (64.6%) -> 379 (32.3%), layouts worse 13, <2 s 7->7, speech lost 0->0, bounds broken 0->0, margin given up 11.3 s
+gaps 6 dB                        x1.0 v3 ctx5: pieces 1482->1482, forced 336->336, in a word 223 (66.4%) -> 123 (36.6%), layouts worse 16, <2 s 7->7, speech lost 0->0, bounds broken 0->0, margin given up 6.8 s
+gaps 6 dB                        x1.6 v2 ctx5: pieces 3113->3113, forced 1844->1840, in a word 1150 (62.4%) -> 638 (34.7%), layouts worse 8, <2 s 1->1, speech lost 0->0, bounds broken 0->0, margin given up 35.0 s
+gaps 6 dB                        x1.6 v2 ctx0: pieces 2186->2186, forced 1160->1160, in a word 712 (61.4%) -> 380 (32.8%), layouts worse 18, <2 s 1->1, speech lost 0->0, bounds broken 0->0, margin given up 31.9 s
+gaps 6 dB                        x1.6 v3 ctx5: pieces 1264->1264, forced 416->416, in a word 253 (60.8%) -> 153 (36.8%), layouts worse 20, <2 s 1->1, speech lost 0->0, bounds broken 0->0, margin given up 1.0 s
+uneven words ±8 dB, gaps 10 dB   x1.0 v2 ctx5: pieces 3440->3440, forced 1954->1951, in a word 1204 (61.6%) -> 414 (21.2%), layouts worse 1, <2 s 8->8, speech lost 0->0, bounds broken 0->0, margin given up 34.9 s
+uneven words ±8 dB, gaps 10 dB   x1.0 v2 ctx0: pieces 2522->2522, forced 1172->1172, in a word 757 (64.6%) -> 239 (20.4%), layouts worse 7, <2 s 7->7, speech lost 0->0, bounds broken 0->0, margin given up 14.0 s
+uneven words ±8 dB, gaps 10 dB   x1.0 v3 ctx5: pieces 1482->1482, forced 336->336, in a word 223 (66.4%) -> 78 (23.2%), layouts worse 7, <2 s 7->7, speech lost 0->0, bounds broken 0->0, margin given up 7.3 s
+uneven words ±8 dB, gaps 10 dB   x1.6 v2 ctx5: pieces 3113->3113, forced 1844->1840, in a word 1150 (62.4%) -> 447 (24.3%), layouts worse 5, <2 s 1->1, speech lost 0->0, bounds broken 0->0, margin given up 38.5 s
+uneven words ±8 dB, gaps 10 dB   x1.6 v2 ctx0: pieces 2186->2186, forced 1160->1160, in a word 712 (61.4%) -> 263 (22.7%), layouts worse 6, <2 s 1->1, speech lost 0->0, bounds broken 0->0, margin given up 30.9 s
+uneven words ±8 dB, gaps 10 dB   x1.6 v3 ctx5: pieces 1264->1264, forced 416->416, in a word 253 (60.8%) -> 92 (22.1%), layouts worse 10, <2 s 1->1, speech lost 0->0, bounds broken 0->0, margin given up 2.8 s

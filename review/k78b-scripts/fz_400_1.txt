@@ -1,0 +1,4 @@
+min_silence 400 scenes 100 seed 1: plans differ in 2
+main speech decoded 9777.0s cuts-in-speech 1 window-edges-in-speech 10 decoded 14390.5s ranges 885 retime-pause-in-speech 80.54s
+pr speech decoded 9777.0s cuts-in-speech 1 window-edges-in-speech 10 decoded 14390.9s ranges 885 retime-pause-in-speech 78.75s
+scenes where PR is worse: 0

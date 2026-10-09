@@ -1,0 +1,6 @@
+gen b v2 ctx5 lead quiet talker -34 dBFS gaps 6 dB: files 60 (split 60), words 460 VAD heard 393, in a range main 458 head 458; head fewer in 0 files (0 words)
+gen b v2 ctx5 lead quiet talker -34 dBFS gaps 10 dB: files 60 (split 60), words 463 VAD heard 377, in a range main 460 head 460; head fewer in 0 files (0 words)
+gen b v2 ctx5 lead quiet talker -34 dBFS gaps 15 dB: files 60 (split 60), words 461 VAD heard 386, in a range main 459 head 459; head fewer in 0 files (0 words)
+gen b v2 ctx5 lead quiet talker -38 dBFS gaps 6 dB: files 60 (split 60), words 450 VAD heard 220, in a range main 448 head 448; head fewer in 0 files (0 words)
+gen b v2 ctx5 lead quiet talker -38 dBFS gaps 10 dB: files 60 (split 60), words 447 VAD heard 248, in a range main 439 head 439; head fewer in 0 files (0 words)
+gen b v2 ctx5 lead quiet talker -38 dBFS gaps 15 dB: files 60 (split 60), words 439 VAD heard 215, in a range main 430 head 430; head fewer in 0 files (0 words)

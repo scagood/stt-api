@@ -1,0 +1,6 @@
+mode adv seed 12 ms 400: 300 pauses
+  main  ctx0 kept 2179 cut 23 dropped 465 | ctx5 kept 2179 cut+dropped 488 | retime words with a pause in them 666
+  old   ctx0 kept 2188 cut 17 dropped 462 | ctx5 kept 2188 cut+dropped 479 | retime words with a pause in them 620
+  head  ctx0 kept 2188 cut 17 dropped 462 | ctx5 kept 2188 cut+dropped 479 | retime words with a pause in them 621
+  old better than main in 43 cases, worse in 0: []
+  head better than main in 43 cases, worse in 0: []

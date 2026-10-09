@@ -1,0 +1,4 @@
+mode adv seed 4 ms 400: 300 pauses
+  main  ctx0 kept 2022 cut 40 dropped 408 | ctx5 kept 2022 cut+dropped 448 | retime words with a pause in them 606
+  head  ctx0 kept 2033 cut 30 dropped 407 | ctx5 kept 2033 cut+dropped 437 | retime words with a pause in them 576
+  head better than main in 32 cases, worse in 0: []

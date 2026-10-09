@@ -1,0 +1,6 @@
+mode adv seed 11 ms 3000: 300 pauses
+  main  ctx0 kept 2325 cut 30 dropped 149 | ctx5 kept 2325 cut+dropped 179 | retime words with a pause in them 277
+  old   ctx0 kept 2132 cut 32 dropped 340 | ctx5 kept 2132 cut+dropped 372 | retime words with a pause in them 497
+  head  ctx0 kept 2325 cut 30 dropped 149 | ctx5 kept 2325 cut+dropped 179 | retime words with a pause in them 277
+  old better than main in 0 cases, worse in 119: [(1, (4, 1, 0, 4, 1, 1), (4, 1, 0, 4, 1, 2)), (3, (13, 0, 0, 13, 0, 1), (11, 0, 2, 11, 2, 2)), (4, (4, 0, 0, 4, 0, 0), (1, 0, 3, 1, 3, 4)), (5, (19, 0, 2, 19, 2, 7), (17, 0, 4, 17, 4, 9)), (6, (14, 1, 0, 14, 1, 5), (14, 1, 0, 14, 1, 6)), (7, (9, 0, 0, 9, 0, 1), (8, 0, 1, 8, 1, 2))]
+  head better than main in 0 cases, worse in 0: []

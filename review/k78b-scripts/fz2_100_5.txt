@@ -1,0 +1,22 @@
+min_silence 100 scenes 100 seed 5: plans differ in 72
+main speech decoded 9868.0s cuts-in-speech 0 window-edges-in-speech 5 decoded 14067.1s ranges 889 retime-pause-in-speech 103.11s speechless-ranges 18 (25.8s)
+pr speech decoded 9876.5s cuts-in-speech 0 window-edges-in-speech 5 decoded 14468.6s ranges 892 retime-pause-in-speech 85.46s speechless-ranges 30 (78.2s)
+scenes where PR keeps more speech: 21  scenes where PR is worse: 18
+ scene 10 ['speech lost 0.24s main_lost=[(35.75, 35.99, 0.23)] pr_lost=[(35.75, 35.99, 0.23), (169.14, 169.38, 0.24)]', 'speechless ranges main 0 pr 1']
+ scene 11 ['speechless ranges main 0 pr 1']
+ scene 13 ['speechless ranges main 0 pr 1']
+ scene 25 ['speechless ranges main 0 pr 1']
+ scene 28 ['speechless ranges main 0 pr 1']
+ scene 35 ['speechless ranges main 0 pr 1']
+ scene 37 ['speechless ranges main 1 pr 2']
+ scene 53 ['speechless ranges main 0 pr 1']
+ scene 57 ['speechless ranges main 0 pr 1']
+ scene 65 ['speechless ranges main 0 pr 1']
+ scene 70 ['speechless ranges main 0 pr 1']
+ scene 79 ['speechless ranges main 0 pr 1']
+ scene 80 ['speechless ranges main 0 pr 1']
+ scene 83 ['speechless ranges main 0 pr 1']
+ scene 87 ['speechless ranges main 0 pr 1']
+ scene 90 ['speech lost 0.05s main_lost=[(180.88, 181.19, 0.32)] pr_lost=[(174.66, 175.03, 0.37)]']
+ scene 92 ['speechless ranges main 0 pr 1']
+ scene 97 ['speechless ranges main 0 pr 1']

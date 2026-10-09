@@ -1,0 +1,19 @@
+min_silence 600 scenes 100 seed 5: plans differ in 19
+main speech decoded 10329.2s cuts-in-speech 3 window-edges-in-speech 46 decoded 14683.1s ranges 857 retime-pause-in-speech 190.23s speechless-ranges 12 (35.0s)
+pr speech decoded 10325.3s cuts-in-speech 3 window-edges-in-speech 44 decoded 14625.1s ranges 855 retime-pause-in-speech 194.03s speechless-ranges 11 (31.8s)
+scenes where PR keeps more speech: 0  scenes where PR is worse: 15
+ scene 0 ['speech lost 0.41s main_lost=[(113.61, 113.79, 0.18), (113.07, 113.2, 0.13)] pr_lost=[(113.61, 113.79, 0.18), (113.07, 113.2, 0.13), (136.43, 136.84, 0.41)]']
+ scene 3 ['speech lost 0.39s main_lost=[] pr_lost=[(82.94, 83.33, 0.39)]', 'retime pause inside speech main 0.34s pr 0.73s']
+ scene 9 ['retime pause inside speech main 0.24s pr 0.77s']
+ scene 11 ['retime pause inside speech main 5.50s pr 5.50s']
+ scene 25 ['speech lost 0.25s main_lost=[] pr_lost=[(120.86, 121.1, 0.25)]', 'retime pause inside speech main 0.42s pr 0.67s']
+ scene 30 ['speech lost 0.44s main_lost=[(80.06, 80.39, 0.33)] pr_lost=[(74.43, 74.88, 0.44), (80.06, 80.39, 0.33)]', 'retime pause inside speech main 0.52s pr 0.96s']
+ scene 34 ['speech lost 0.29s main_lost=[] pr_lost=[(18.67, 18.96, 0.29)]', 'retime pause inside speech main 0.35s pr 0.64s']
+ scene 38 ['retime pause inside speech main 0.36s pr 0.65s']
+ scene 59 ['speech lost 0.75s main_lost=[(44.08, 44.38, 0.3), (41.46, 41.74, 0.0)] pr_lost=[(18.94, 19.28, 0.34), (16.4, 16.81, 0.41), (44.08, 44.38, 0.3), (41.46, 41.74, 0.0)]', 'retime pause inside speech main 0.33s pr 1.07s']
+ scene 62 ['speech lost 0.36s main_lost=[] pr_lost=[(74.57, 74.92, 0.36)]', 'retime pause inside speech main 0.68s pr 0.78s']
+ scene 63 ['speech lost 0.44s main_lost=[(44.83, 45.05, 0.22), (69.12, 69.5, 0.38)] pr_lost=[(44.83, 45.05, 0.22), (69.12, 69.5, 0.38), (134.33, 134.76, 0.44)]', 'retime pause inside speech main 0.73s pr 1.17s']
+ scene 68 ['speech lost 0.39s main_lost=[] pr_lost=[(76.31, 76.7, 0.39)]']
+ scene 72 ['retime pause inside speech main 0.68s pr 0.81s']
+ scene 89 ['speech lost 0.20s main_lost=[(146.96, 147.09, 0.13)] pr_lost=[(142.14, 142.34, 0.2), (146.96, 147.09, 0.13)]', 'retime pause inside speech main 0.60s pr 1.07s']
+ scene 97 ['retime pause inside speech main 0.60s pr 1.75s']

@@ -1,0 +1,1 @@
+breath gaps 0.45-1.0 s, seed 1, ms 400: 200 pauses (4443 breaths, max 40 in one); decoded inside pause ctx0/ctx5, retime pause split: main [0, 0, 0] head [0, 0, 0]

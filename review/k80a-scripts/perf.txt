@@ -1,0 +1,7 @@
+synth 2.0 h: 10.1s, 755 phrases
+v2 ctx5  real volume VAD              main 0.38s (486 pieces, 0 forced) | #80 0.42s (486 pieces, 0 forced)
+v2 ctx5  one segment (VAD patched)    main 0.00s (360 pieces, 359 forced) | #80 0.58s (360 pieces, 359 forced)
+v3 ctx5  real volume VAD              main 0.25s (131 pieces, 0 forced) | #80 0.31s (131 pieces, 0 forced)
+v3 ctx5  one segment (VAD patched)    main 0.00s (111 pieces, 110 forced) | #80 0.36s (111 pieces, 110 forced)
+whisper  real volume VAD              main 0.26s (298 pieces, 0 forced) | #80 0.27s (298 pieces, 0 forced)
+whisper  one segment (VAD patched)    main 0.00s (240 pieces, 239 forced) | #80 0.49s (240 pieces, 239 forced)

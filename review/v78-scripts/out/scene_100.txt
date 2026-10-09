@@ -1,0 +1,13 @@
+min_silence 100 scenes 100 seed 5: plans differ in 71
+main speech decoded 10311.2s cuts-in-speech 5 window-edges-in-speech 18 decoded 14233.8s ranges 874 retime-pause-in-speech 214.47s speechless-ranges 12 (19.7s)
+head speech decoded 10325.3s cuts-in-speech 6 window-edges-in-speech 19 decoded 14625.5s ranges 876 retime-pause-in-speech 194.03s speechless-ranges 14 (36.0s)
+scenes where PR keeps more speech: 38  scenes where PR is worse: 9
+ scene 10 ['speechless ranges main 0 pr 1']
+ scene 44 ['cuts in speech main [] pr [92.04]']
+ scene 53 ['speechless ranges main 0 pr 1']
+ scene 60 ['window edges in speech main 0 pr 1']
+ scene 66 ['speechless ranges main 0 pr 1']
+ scene 71 ['window edges in speech main 0 pr 1']
+ scene 80 ['window edges in speech main 0 pr 1']
+ scene 88 ['window edges in speech main 0 pr 1']
+ scene 94 ['speechless ranges main 0 pr 1']

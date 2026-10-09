@@ -1,0 +1,9 @@
+v2 ctx5            scale 1.0: {'layouts': 338, 'shorter_min_part': 82, 'lost_outer_margin': 13}
+v2 ctx7.5          scale 1.0: {'layouts': 326, 'shorter_min_part': 80, 'lost_outer_margin': 29}
+v3 ctx5            scale 1.0: {'layouts': 193}
+whisper            scale 1.0: {'layouts': 336, 'shorter_min_part': 34, 'lost_outer_margin': 2}
+v2 ctx5 trim1      scale 1.0: {'layouts': 331, 'shorter_min_part': 64, 'lost_outer_margin': 8}
+v2 ctx5 trim0.5    scale 1.0: {'layouts': 333, 'shorter_min_part': 38, 'lost_outer_margin': 7}
+v2 ctx5 trim6      scale 1.0: {'layouts': 330, 'shorter_min_part': 115, 'lost_outer_margin': 23}
+short 8/10 ctx2.5  scale 1.0: {'layouts': 379, 'lost_outer_margin': 168, 'shorter_min_part': 237}
+whisper trim8      scale 1.0: {'layouts': 333, 'shorter_min_part': 64, 'lost_outer_margin': 6}

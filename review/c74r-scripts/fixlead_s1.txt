@@ -1,0 +1,24 @@
+== v2 ctx5: 2523 chunked layouts
+  totals main308      {'isc': 6872, 'silent': 39, 'n': 16859, 'lost_layouts': 0, 'bad': 0, 'min<2s': 638, 'min<5s': 1618}
+  totals c73d2b9      {'isc': 6835, 'silent': 0, 'n': 16763, 'lost_layouts': 0, 'bad': 0, 'min<2s': 208, 'min<5s': 809}
+  totals fixlead      {'isc': 6808, 'silent': 0, 'n': 16732, 'lost_layouts': 0, 'bad': 0, 'min<2s': 208, 'min<5s': 809}
+  fixlead vs main308      {'isc_better': 147, 'isc_worse': 83, 'minlen_longer': 1562, 'n_better': 127, 'silent_better': 39}
+  fixlead vs c73d2b9      {'isc_better': 26, 'minlen_longer': 18, 'n_better': 31}
+== v2 ctx0: 2529 chunked layouts
+  totals main308      {'isc': 2919, 'silent': 0, 'n': 12816, 'lost_layouts': 0, 'bad': 0, 'min<2s': 192, 'min<5s': 771}
+  totals c73d2b9      {'isc': 2786, 'silent': 0, 'n': 12685, 'lost_layouts': 0, 'bad': 0, 'min<2s': 192, 'min<5s': 771}
+  totals fixlead      {'isc': 2775, 'silent': 0, 'n': 12675, 'lost_layouts': 0, 'bad': 0, 'min<2s': 192, 'min<5s': 771}
+  fixlead vs main308      {'isc_better': 142, 'minlen_longer': 638, 'minlen_shorter': 2, 'n_better': 140}
+  fixlead vs c73d2b9      {'isc_better': 10, 'minlen_longer': 3, 'n_better': 10}
+== v3 ctx5: 1701 chunked layouts
+  totals main308      {'isc': 0, 'silent': 0, 'n': 6037, 'lost_layouts': 0, 'bad': 0, 'min<2s': 108, 'min<5s': 343}
+  totals c73d2b9      {'isc': 0, 'silent': 0, 'n': 6037, 'lost_layouts': 0, 'bad': 0, 'min<2s': 108, 'min<5s': 343}
+  totals fixlead      {'isc': 0, 'silent': 0, 'n': 6037, 'lost_layouts': 0, 'bad': 0, 'min<2s': 108, 'min<5s': 343}
+  fixlead vs main308      {}
+  fixlead vs c73d2b9      {}
+== whisper: 2511 chunked layouts
+  totals main308      {'isc': 2749, 'silent': 0, 'n': 12353, 'lost_layouts': 0, 'bad': 0, 'min<2s': 186, 'min<5s': 717}
+  totals c73d2b9      {'isc': 2610, 'silent': 0, 'n': 12220, 'lost_layouts': 0, 'bad': 0, 'min<2s': 186, 'min<5s': 717}
+  totals fixlead      {'isc': 2601, 'silent': 0, 'n': 12210, 'lost_layouts': 0, 'bad': 0, 'min<2s': 186, 'min<5s': 717}
+  fixlead vs main308      {'isc_better': 147, 'minlen_longer': 636, 'minlen_shorter': 2, 'n_better': 143}
+  fixlead vs c73d2b9      {'isc_better': 9, 'minlen_longer': 4, 'n_better': 10}

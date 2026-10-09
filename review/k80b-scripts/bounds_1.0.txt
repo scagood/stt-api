@@ -1,0 +1,11 @@
+<frozen site>:101: RuntimeWarning: Unexpected value in sys.prefix, expected /tmp/claude-0/-home-user-stt-api/349487e0-d09b-554f-9be8-0221f8cd653b/scratchpad/venv, got /tmp/claude-0/-home-user-stt-api/349487e0-d09b-554f-9be8-0221f8cd653b/scratchpad/k80b-scripts/../venv
+<frozen site>:101: RuntimeWarning: Unexpected value in sys.exec_prefix, expected /tmp/claude-0/-home-user-stt-api/349487e0-d09b-554f-9be8-0221f8cd653b/scratchpad/venv, got /tmp/claude-0/-home-user-stt-api/349487e0-d09b-554f-9be8-0221f8cd653b/scratchpad/k80b-scripts/../venv
+v2 ctx5            scale 1.0: {'layouts': 508, 'shorter_min_part': 149, 'lost_outer_margin': 18}
+v2 ctx7.5          scale 1.0: {'layouts': 497, 'shorter_min_part': 162, 'lost_outer_margin': 43}
+v3 ctx5            scale 1.0: {'layouts': 288}
+whisper            scale 1.0: {'layouts': 501, 'shorter_min_part': 71, 'lost_outer_margin': 1}
+v2 ctx5 trim1      scale 1.0: {'layouts': 507, 'shorter_min_part': 125}
+v2 ctx5 trim0.5    scale 1.0: {'layouts': 494, 'shorter_min_part': 76}
+v2 ctx5 trim6      scale 1.0: {'layouts': 494, 'shorter_min_part': 199, 'lost_outer_margin': 33}
+short 8/10 ctx2.5  scale 1.0: {'layouts': 567, 'lost_outer_margin': 240, 'shorter_min_part': 393}
+whisper trim8      scale 1.0: {'layouts': 500, 'shorter_min_part': 117, 'lost_outer_margin': 9}

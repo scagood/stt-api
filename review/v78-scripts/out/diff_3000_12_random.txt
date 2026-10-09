@@ -1,0 +1,6 @@
+mode random seed 12 ms 3000: 300 pauses
+  main  ctx0 kept 2466 cut 37 dropped 136 | ctx5 kept 2466 cut+dropped 173 | retime words with a pause in them 320
+  old   ctx0 kept 2251 cut 36 dropped 352 | ctx5 kept 2251 cut+dropped 388 | retime words with a pause in them 532
+  head  ctx0 kept 2466 cut 37 dropped 136 | ctx5 kept 2466 cut+dropped 173 | retime words with a pause in them 320
+  old better than main in 0 cases, worse in 120: [(0, (15, 0, 0, 15, 0, 2), (14, 0, 1, 14, 1, 3)), (2, (3, 0, 0, 3, 0, 0), (0, 0, 3, 0, 3, 3)), (4, (3, 0, 0, 3, 0, 0), (3, 0, 0, 3, 0, 1)), (5, (11, 0, 0, 11, 0, 0), (10, 0, 1, 10, 1, 1)), (7, (6, 1, 8, 6, 9, 12), (3, 1, 11, 3, 12, 13)), (8, (12, 0, 0, 12, 0, 0), (11, 0, 1, 11, 1, 1))]
+  head better than main in 0 cases, worse in 0: []

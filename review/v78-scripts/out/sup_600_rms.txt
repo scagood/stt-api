@@ -1,0 +1,1 @@
+rms ms 600 seed 7: 5000 arrays, 15000 checks, differ 242, head gains in 242, head loses frames in 0 (total 0 frames): []

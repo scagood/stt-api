@@ -1,0 +1,8 @@
+lead quiet talker -34 dBFS gaps 6 noise None: words 394 main 394 head 380 fixA 394; files fewer than main: head 14/100 fixA 0/100
+lead quiet talker -34 dBFS gaps 10 noise None: words 403 main 403 head 394 fixA 403; files fewer than main: head 9/100 fixA 0/100
+lead quiet talker -40 dBFS gaps 6 noise None: words 403 main 403 head 399 fixA 403; files fewer than main: head 4/100 fixA 0/100
+lead quiet talker -40 dBFS gaps 20 noise None: words 399 main 399 head 399 fixA 399; files fewer than main: head 0/100 fixA 0/100
+lead quiet talker -34 dBFS gaps 6 noise -50.0: words 394 main 394 head 380 fixA 393; files fewer than main: head 14/100 fixA 1/100
+lead quiet talker -34 dBFS gaps 10 noise -50.0: words 403 main 403 head 390 fixA 401; files fewer than main: head 13/100 fixA 2/100
+lead quiet talker -40 dBFS gaps 6 noise -50.0: words 403 main 399 head 384 fixA 389; files fewer than main: head 14/100 fixA 10/100
+lead quiet talker -40 dBFS gaps 20 noise -50.0: words 399 main 399 head 391 fixA 392; files fewer than main: head 8/100 fixA 7/100

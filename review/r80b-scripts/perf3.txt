@@ -1,0 +1,6 @@
+v2 ctx5  main  3.0h: 540 pieces, 0.03s, peak traced 0.1 MB
+v2 ctx5  pr    3.0h: 540 pieces, 3.82s, peak traced 66.2 MB
+v3 ctx5  main  3.0h: 167 pieces, 0.01s, peak traced 0.0 MB
+v3 ctx5  pr    3.0h: 167 pieces, 2.38s, peak traced 66.1 MB
+whisper  main  3.0h: 360 pieces, 0.00s, peak traced 0.0 MB
+whisper  pr    3.0h: 360 pieces, 4.34s, peak traced 66.2 MB

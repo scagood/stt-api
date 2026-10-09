@@ -1,0 +1,33 @@
+== v2 ctx5: 2559 chunked layouts
+  totals main308      {'isc': 6770, 'silent': 46, 'n': 16808, 'lost_layouts': 0, 'bad': 0, 'min<2s': 636, 'min<5s': 1640}
+  totals c73d2b9      {'isc': 6755, 'silent': 0, 'n': 16712, 'lost_layouts': 0, 'bad': 0, 'min<2s': 211, 'min<5s': 799}
+  totals mergeC       {'isc': 6755, 'silent': 0, 'n': 16712, 'lost_layouts': 0, 'bad': 0, 'min<2s': 211, 'min<5s': 799}
+  totals 4bfe7b6      {'isc': 6755, 'silent': 0, 'n': 16712, 'lost_layouts': 0, 'bad': 0, 'min<2s': 211, 'min<5s': 799}
+  c73d2b9 vs main308      {'isc_better': 100, 'isc_worse': 85, 'minlen_longer': 1586, 'n_better': 94, 'silent_better': 46}
+  c73d2b9 vs mergeC       {}
+  c73d2b9 vs 4bfe7b6      {}
+   ex ('isc', 'main308') ([(0.09, 35.227), (36.471, 79.409), (86.195, 108.342), (113.142, 132.017), (134.111, 157.829)], 157.829, [20.0, 16.47, 20.0, 20.0, 2.94, 20.0, 2.15, 20.0, 20.0, 4.69], [18.24, 18.24, 14.31, 14.31, 14.31, 11.07, 11.07, 14.9, 14.9, 14.9], 5, 6)
+== v2 ctx0: 2513 chunked layouts
+  totals main308      {'isc': 2773, 'silent': 0, 'n': 12470, 'lost_layouts': 0, 'bad': 0, 'min<2s': 187, 'min<5s': 711}
+  totals c73d2b9      {'isc': 2662, 'silent': 0, 'n': 12365, 'lost_layouts': 0, 'bad': 0, 'min<2s': 187, 'min<5s': 711}
+  totals mergeC       {'isc': 2662, 'silent': 0, 'n': 12365, 'lost_layouts': 0, 'bad': 0, 'min<2s': 187, 'min<5s': 711}
+  totals 4bfe7b6      {'isc': 2662, 'silent': 0, 'n': 12365, 'lost_layouts': 0, 'bad': 0, 'min<2s': 187, 'min<5s': 711}
+  c73d2b9 vs main308      {'isc_better': 111, 'minlen_longer': 587, 'minlen_shorter': 1, 'n_better': 105}
+  c73d2b9 vs mergeC       {}
+  c73d2b9 vs 4bfe7b6      {}
+== v3 ctx5: 1625 chunked layouts
+  totals main308      {'isc': 0, 'silent': 0, 'n': 5904, 'lost_layouts': 0, 'bad': 0, 'min<2s': 100, 'min<5s': 345}
+  totals c73d2b9      {'isc': 0, 'silent': 0, 'n': 5904, 'lost_layouts': 0, 'bad': 0, 'min<2s': 100, 'min<5s': 345}
+  totals mergeC       {'isc': 0, 'silent': 0, 'n': 5904, 'lost_layouts': 0, 'bad': 0, 'min<2s': 100, 'min<5s': 345}
+  totals 4bfe7b6      {'isc': 0, 'silent': 0, 'n': 5904, 'lost_layouts': 0, 'bad': 0, 'min<2s': 100, 'min<5s': 345}
+  c73d2b9 vs main308      {}
+  c73d2b9 vs mergeC       {}
+  c73d2b9 vs 4bfe7b6      {}
+== whisper: 2523 chunked layouts
+  totals main308      {'isc': 2829, 'silent': 0, 'n': 12462, 'lost_layouts': 0, 'bad': 0, 'min<2s': 171, 'min<5s': 698}
+  totals c73d2b9      {'isc': 2703, 'silent': 0, 'n': 12340, 'lost_layouts': 0, 'bad': 0, 'min<2s': 171, 'min<5s': 698}
+  totals mergeC       {'isc': 2703, 'silent': 0, 'n': 12340, 'lost_layouts': 0, 'bad': 0, 'min<2s': 171, 'min<5s': 698}
+  totals 4bfe7b6      {'isc': 2703, 'silent': 0, 'n': 12340, 'lost_layouts': 0, 'bad': 0, 'min<2s': 171, 'min<5s': 698}
+  c73d2b9 vs main308      {'isc_better': 122, 'minlen_longer': 661, 'minlen_shorter': 2, 'n_better': 118}
+  c73d2b9 vs mergeC       {}
+  c73d2b9 vs 4bfe7b6      {}

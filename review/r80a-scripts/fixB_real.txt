@@ -1,0 +1,6 @@
+  EX 1: clip 0.94-2.84s VAD [(2.96, 9.42), (9.98, 39.96)]... main [(0.0, 20.0), (20.0, 40.0)] head [(1.44, 21.43), (21.43, 40.0)] lost [(0.97, 1.03), (1.09, 1.15), (1.19, 1.27), (1.39, 1.59)]
+  EX 3: clip 0.98-4.18s VAD [(4.3, 40.78)]... main [(1.3, 21.3), (21.3, 41.3)] head [(1.98, 21.98), (21.98, 41.3)] lost [(1.37, 1.77)]
+real speech lead, quiet talker 22 dB under, noise -50.0, rt60 0.0: files 150 (split 150), words 1136 (VAD heard 27), in a range main 911 head 844 fixA 911; head fewer in 28 files (67 words); fixA fewer in 0 files (0 words)
+  EX 8: clip 38.68-41.44s VAD [(0.64, 6.24), (6.42, 38.54)]... main [(0.0, 20.0), (20.0, 40.0)] head [(0.0, 19.04), (19.04, 39.03)] lost [(38.83, 39.25)]
+  EX 44: clip 38.76-40.88s VAD [(0.08, 38.8)]... main [(0.0, 20.0), (20.0, 40.0)] head [(0.0, 19.61), (19.61, 39.62)] lost [(39.69, 39.93)]
+real speech tail, quiet talker 22 dB under, noise -50.0, rt60 0.0: files 150 (split 150), words 1075 (VAD heard 42), in a range main 801 head 765 fixA 801; head fewer in 15 files (36 words); fixA fewer in 0 files (0 words)

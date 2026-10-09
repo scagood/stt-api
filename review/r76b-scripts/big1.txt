@@ -1,0 +1,603 @@
+<frozen site>:101: RuntimeWarning: Unexpected value in sys.prefix, expected /tmp/claude-0/-home-user-stt-api/349487e0-d09b-554f-9be8-0221f8cd653b/scratchpad/venv, got /tmp/claude-0/-home-user-stt-api/349487e0-d09b-554f-9be8-0221f8cd653b/scratchpad/r76b-scripts/../venv
+<frozen site>:101: RuntimeWarning: Unexpected value in sys.exec_prefix, expected /tmp/claude-0/-home-user-stt-api/349487e0-d09b-554f-9be8-0221f8cd653b/scratchpad/venv, got /tmp/claude-0/-home-user-stt-api/349487e0-d09b-554f-9be8-0221f8cd653b/scratchpad/r76b-scripts/../venv
+('v2c0', 'degen', 0.5) layouts 9906 | main {'n': 19385, 'isc': 4872, 'silent': 4221, 'short': 276, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 19385, 'isc': 4849, 'silent': 4221, 'short': 276, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 25, 'isc_better': 23}
+('v2c0', 'degen', 0.75) layouts 9943 | main {'n': 24911, 'isc': 8794, 'silent': 3238, 'short': 277, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 24911, 'isc': 8683, 'silent': 3238, 'short': 277, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 112, 'isc_better': 111}
+('v2c0', 'degen', 1.0) layouts 9946 | main {'n': 29669, 'isc': 12494, 'silent': 2775, 'short': 274, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 29669, 'isc': 12309, 'silent': 2775, 'short': 274, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 184, 'isc_better': 182}
+('v2c0', 'degen', 1.3) layouts 9961 | main {'n': 34835, 'isc': 17166, 'silent': 2561, 'short': 261, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 34835, 'isc': 16952, 'silent': 2561, 'short': 261, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 210, 'isc_better': 210}
+('v2c0', 'degen', 1.6) layouts 9970 | main {'n': 40683, 'isc': 22626, 'silent': 2395, 'short': 224, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 40683, 'isc': 22386, 'silent': 2395, 'short': 224, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 234, 'isc_better': 233}
+('v2c0', 'degen', 2.0) layouts 9974 | main {'n': 47716, 'isc': 29413, 'silent': 2355, 'short': 233, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 47716, 'isc': 29108, 'silent': 2355, 'short': 233, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 300, 'isc_better': 300}
+('v2c0', 'degen', 2.5) layouts 9980 | main {'n': 56230, 'isc': 37554, 'silent': 2291, 'short': 181, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 56230, 'isc': 37136, 'silent': 2291, 'short': 181, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 410, 'isc_better': 410}
+('v2c0', 'gaphi', 0.5) layouts 10000 | main {'n': 35233, 'isc': 0, 'silent': 1441, 'short': 948, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 35233, 'isc': 0, 'silent': 1441, 'short': 948, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('v2c0', 'gaphi', 0.75) layouts 10000 | main {'n': 46156, 'isc': 5686, 'silent': 842, 'short': 722, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 46156, 'isc': 5686, 'silent': 842, 'short': 722, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1}
+('v2c0', 'gaphi', 1.0) layouts 10000 | main {'n': 56408, 'isc': 12166, 'silent': 506, 'short': 574, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 56408, 'isc': 11577, 'silent': 506, 'short': 574, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 641, 'isc_better': 584}
+('v2c0', 'gaphi', 1.3) layouts 10000 | main {'n': 67601, 'isc': 21019, 'silent': 317, 'short': 423, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 67601, 'isc': 20065, 'silent': 317, 'short': 423, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 940, 'isc_better': 914}
+('v2c0', 'gaphi', 1.6) layouts 10000 | main {'n': 79439, 'isc': 32524, 'silent': 289, 'short': 307, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 79439, 'isc': 31580, 'silent': 289, 'short': 307, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 944, 'isc_better': 918}
+('v2c0', 'gaphi', 2.0) layouts 10000 | main {'n': 93427, 'isc': 46006, 'silent': 196, 'short': 248, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 93427, 'isc': 44555, 'silent': 196, 'short': 248, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1388, 'isc_better': 1359}
+('v2c0', 'gaphi', 2.5) layouts 10000 | main {'n': 109135, 'isc': 60707, 'silent': 147, 'short': 149, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 109135, 'isc': 58623, 'silent': 147, 'short': 149, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1947, 'isc_better': 1918}
+('v2c0', 'gaplo', 0.5) layouts 10000 | main {'n': 36274, 'isc': 1589, 'silent': 1558, 'short': 929, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 36274, 'isc': 1555, 'silent': 1558, 'short': 929, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 35, 'isc_better': 34}
+('v2c0', 'gaplo', 0.75) layouts 10000 | main {'n': 49126, 'isc': 9499, 'silent': 816, 'short': 765, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 49126, 'isc': 9265, 'silent': 816, 'short': 765, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 234, 'isc_better': 234}
+('v2c0', 'gaplo', 1.0) layouts 10000 | main {'n': 60489, 'isc': 17375, 'silent': 557, 'short': 599, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 60489, 'isc': 16715, 'silent': 557, 'short': 599, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 653, 'isc_better': 643}
+('v2c0', 'gaplo', 1.3) layouts 10000 | main {'n': 73860, 'isc': 28260, 'silent': 318, 'short': 499, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 73860, 'isc': 27347, 'silent': 318, 'short': 499, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 884, 'isc_better': 880}
+('v2c0', 'gaplo', 1.6) layouts 10000 | main {'n': 88374, 'isc': 41950, 'silent': 247, 'short': 434, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 88374, 'isc': 41098, 'silent': 247, 'short': 434, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 836, 'isc_better': 830}
+('v2c0', 'gaplo', 2.0) layouts 10000 | main {'n': 104058, 'isc': 56943, 'silent': 187, 'short': 280, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 104058, 'isc': 55814, 'silent': 187, 'short': 280, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1085, 'isc_better': 1078}
+('v2c0', 'gaplo', 2.5) layouts 10000 | main {'n': 121970, 'isc': 74243, 'silent': 129, 'short': 203, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 121970, 'isc': 72676, 'silent': 129, 'short': 203, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1490, 'isc_better': 1485}
+('v2c0', 'grid', 0.5) layouts 10000 | main {'n': 85920, 'isc': 49273, 'silent': 330, 'short': 99, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 85920, 'isc': 48696, 'silent': 330, 'short': 99, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 560, 'isc_better': 557}
+('v2c0', 'grid', 0.75) layouts 10000 | main {'n': 85235, 'isc': 48717, 'silent': 328, 'short': 72, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 85235, 'isc': 48189, 'silent': 328, 'short': 72, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 518, 'isc_better': 516}
+('v2c0', 'grid', 1.0) layouts 10000 | main {'n': 86169, 'isc': 49400, 'silent': 287, 'short': 78, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 86169, 'isc': 48851, 'silent': 287, 'short': 78, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 536, 'isc_better': 533}
+('v2c0', 'grid', 1.3) layouts 10000 | main {'n': 85411, 'isc': 48966, 'silent': 329, 'short': 90, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 85411, 'isc': 48408, 'silent': 329, 'short': 90, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 547, 'isc_better': 545}
+('v2c0', 'grid', 1.6) layouts 10000 | main {'n': 84873, 'isc': 48417, 'silent': 339, 'short': 72, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 84873, 'isc': 47880, 'silent': 339, 'short': 72, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 521, 'isc_better': 520}
+('v2c0', 'grid', 2.0) layouts 10000 | main {'n': 87023, 'isc': 49888, 'silent': 292, 'short': 79, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 87023, 'isc': 49306, 'silent': 292, 'short': 79, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 571, 'isc_better': 570}
+('v2c0', 'grid', 2.5) layouts 10000 | main {'n': 85211, 'isc': 48665, 'silent': 343, 'short': 78, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 85211, 'isc': 48139, 'silent': 343, 'short': 78, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 517, 'isc_better': 513}
+('v2c0', 'lead', 0.5) layouts 10000 | main {'n': 56230, 'isc': 22994, 'silent': 1, 'short': 1452, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 56230, 'isc': 21858, 'silent': 1, 'short': 1452, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1138, 'isc_better': 1133}
+('v2c0', 'lead', 0.75) layouts 10000 | main {'n': 58805, 'isc': 24746, 'silent': 1, 'short': 965, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 58805, 'isc': 23486, 'silent': 1, 'short': 965, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1264, 'isc_better': 1251}
+('v2c0', 'lead', 1.0) layouts 10000 | main {'n': 61623, 'isc': 26888, 'silent': 0, 'short': 779, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 61623, 'isc': 25614, 'silent': 0, 'short': 779, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1277, 'isc_better': 1270}
+('v2c0', 'lead', 1.3) layouts 10000 | main {'n': 70348, 'isc': 35399, 'silent': 0, 'short': 589, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 70348, 'isc': 33747, 'silent': 0, 'short': 589, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1633, 'isc_better': 1625}
+('v2c0', 'lead', 1.6) layouts 10000 | main {'n': 79718, 'isc': 44426, 'silent': 0, 'short': 511, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 79718, 'isc': 42723, 'silent': 0, 'short': 511, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1662, 'isc_better': 1657}
+('v2c0', 'lead', 2.0) layouts 10000 | main {'n': 91462, 'isc': 56063, 'silent': 0, 'short': 391, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 91462, 'isc': 54299, 'silent': 0, 'short': 391, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1722, 'isc_better': 1720}
+('v2c0', 'lead', 2.5) layouts 10000 | main {'n': 104926, 'isc': 69153, 'silent': 0, 'short': 297, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 104926, 'isc': 67276, 'silent': 0, 'short': 297, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1801, 'isc_better': 1800}
+('v2c0', 'longend', 0.5) layouts 10000 | main {'n': 46290, 'isc': 19919, 'silent': 0, 'short': 598, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 46290, 'isc': 18822, 'silent': 0, 'short': 598, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1105, 'isc_better': 1097}
+('v2c0', 'longend', 0.75) layouts 10000 | main {'n': 52962, 'isc': 23509, 'silent': 0, 'short': 453, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 52962, 'isc': 22461, 'silent': 0, 'short': 453, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1059, 'isc_better': 1046}
+('v2c0', 'longend', 1.0) layouts 10000 | main {'n': 58466, 'isc': 26598, 'silent': 0, 'short': 355, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 58466, 'isc': 25585, 'silent': 0, 'short': 355, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1028, 'isc_better': 1004}
+('v2c0', 'longend', 1.3) layouts 10000 | main {'n': 65086, 'isc': 31557, 'silent': 0, 'short': 266, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 65086, 'isc': 30569, 'silent': 0, 'short': 266, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 986, 'isc_better': 969}
+('v2c0', 'longend', 1.6) layouts 10000 | main {'n': 72529, 'isc': 38442, 'silent': 0, 'short': 211, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 72529, 'isc': 37471, 'silent': 0, 'short': 211, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 965, 'isc_better': 957}
+('v2c0', 'longend', 2.0) layouts 10000 | main {'n': 80857, 'isc': 46276, 'silent': 0, 'short': 156, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 80857, 'isc': 45182, 'silent': 0, 'short': 156, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1079, 'isc_better': 1065}
+('v2c0', 'longend', 2.5) layouts 10000 | main {'n': 90292, 'isc': 54957, 'silent': 0, 'short': 101, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 90292, 'isc': 53493, 'silent': 0, 'short': 101, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1426, 'isc_better': 1417}
+('v2c0', 'many', 0.5) layouts 10000 | main {'n': 73802, 'isc': 0, 'silent': 297, 'short': 12214, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 73802, 'isc': 0, 'silent': 297, 'short': 12214, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('v2c0', 'many', 0.75) layouts 10000 | main {'n': 78086, 'isc': 0, 'silent': 102, 'short': 7872, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 78086, 'isc': 0, 'silent': 102, 'short': 7872, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('v2c0', 'many', 1.0) layouts 10000 | main {'n': 82633, 'isc': 0, 'silent': 22, 'short': 5774, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 82633, 'isc': 0, 'silent': 22, 'short': 5774, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('v2c0', 'many', 1.3) layouts 10000 | main {'n': 88376, 'isc': 6, 'silent': 3, 'short': 4436, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 88376, 'isc': 6, 'silent': 3, 'short': 4436, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('v2c0', 'many', 1.6) layouts 10000 | main {'n': 94927, 'isc': 39, 'silent': 3, 'short': 3585, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 94927, 'isc': 37, 'silent': 3, 'short': 3585, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 2, 'isc_better': 2}
+('v2c0', 'many', 2.0) layouts 10000 | main {'n': 104849, 'isc': 150, 'silent': 0, 'short': 2767, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 104849, 'isc': 147, 'silent': 0, 'short': 2767, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 3, 'isc_better': 3}
+('v2c0', 'many', 2.5) layouts 10000 | main {'n': 117650, 'isc': 640, 'silent': 0, 'short': 2162, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 117650, 'isc': 627, 'silent': 0, 'short': 2162, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 13, 'isc_better': 13}
+('v2c0', 'mix', 0.5) layouts 10000 | main {'n': 27753, 'isc': 0, 'silent': 2958, 'short': 1132, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 27753, 'isc': 0, 'silent': 2958, 'short': 1132, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('v2c0', 'mix', 0.75) layouts 10000 | main {'n': 36517, 'isc': 4323, 'silent': 1981, 'short': 866, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 36517, 'isc': 4323, 'silent': 1981, 'short': 866, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('v2c0', 'mix', 1.0) layouts 10000 | main {'n': 42717, 'isc': 8764, 'silent': 1545, 'short': 710, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 42717, 'isc': 8460, 'silent': 1545, 'short': 710, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 314, 'isc_better': 300}
+('v2c0', 'mix', 1.3) layouts 10000 | main {'n': 51238, 'isc': 15384, 'silent': 1224, 'short': 552, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 51238, 'isc': 14886, 'silent': 1224, 'short': 552, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 491, 'isc_better': 487}
+('v2c0', 'mix', 1.6) layouts 10000 | main {'n': 60953, 'isc': 24281, 'silent': 984, 'short': 469, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 60953, 'isc': 23816, 'silent': 984, 'short': 469, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 456, 'isc_better': 453}
+('v2c0', 'mix', 2.0) layouts 10000 | main {'n': 71628, 'isc': 34706, 'silent': 798, 'short': 308, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 71628, 'isc': 33979, 'silent': 798, 'short': 308, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 726, 'isc_better': 712}
+('v2c0', 'mix', 2.5) layouts 10000 | main {'n': 81548, 'isc': 44393, 'silent': 691, 'short': 217, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 81548, 'isc': 43230, 'silent': 691, 'short': 217, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1124, 'isc_better': 1121}
+('v2c0', 'over', 0.5) layouts 10000 | main {'n': 63590, 'isc': 27049, 'silent': 437, 'short': 657, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 63590, 'isc': 27002, 'silent': 437, 'short': 657, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 48, 'isc_better': 47}
+('v2c0', 'over', 0.75) layouts 10000 | main {'n': 67149, 'isc': 28725, 'silent': 347, 'short': 539, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 67149, 'isc': 28520, 'silent': 347, 'short': 539, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 207, 'isc_better': 205}
+('v2c0', 'over', 1.0) layouts 10000 | main {'n': 73499, 'isc': 34951, 'silent': 288, 'short': 480, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 73499, 'isc': 34922, 'silent': 288, 'short': 480, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 29, 'isc_better': 29}
+('v2c0', 'over', 1.3) layouts 10000 | main {'n': 75637, 'isc': 36969, 'silent': 261, 'short': 478, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 75637, 'isc': 36593, 'silent': 261, 'short': 478, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 375, 'isc_better': 371}
+('v2c0', 'over', 1.6) layouts 10000 | main {'n': 80553, 'isc': 41755, 'silent': 248, 'short': 452, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 80553, 'isc': 41345, 'silent': 248, 'short': 452, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 409, 'isc_better': 407}
+('v2c0', 'over', 2.0) layouts 10000 | main {'n': 88292, 'isc': 49154, 'silent': 255, 'short': 439, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 88292, 'isc': 48931, 'silent': 255, 'short': 439, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 222, 'isc_better': 220}
+('v2c0', 'over', 2.5) layouts 10000 | main {'n': 93954, 'isc': 54458, 'silent': 217, 'short': 441, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 93954, 'isc': 53945, 'silent': 217, 'short': 441, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 510, 'isc_better': 508}
+('v2c5', 'degen', 0.5) layouts 9883 | main {'n': 23178, 'isc': 8209, 'silent': 4387, 'short': 326, 'lost': 0, 'bad': 1820, 'wedge': 19248} | pr {'n': 23178, 'isc': 7934, 'silent': 4387, 'short': 326, 'lost': 0, 'bad': 1820, 'wedge': 19447}
+    cmp {'differ': 286, 'isc_better': 271, 'wedge_better': 17, 'wedge_worse': 187}
+    EX wedge (2, [(0.637, 19.818), (20.725, 42.682)], 45.098, [(0.0, 15.033), (15.033, 30.065), (30.065, 45.098)], [(0.0, 20.0), (20.0, 32.549), (32.549, 45.098)], 2, 3)
+('v2c5', 'degen', 0.75) layouts 9934 | main {'n': 30841, 'isc': 14576, 'silent': 3387, 'short': 262, 'lost': 0, 'bad': 1294, 'wedge': 34005} | pr {'n': 30841, 'isc': 13825, 'silent': 3387, 'short': 262, 'lost': 0, 'bad': 1294, 'wedge': 34627}
+    cmp {'differ': 762, 'isc_better': 726, 'wedge_better': 35, 'wedge_worse': 575}
+    EX wedge (2, [(0.974, 16.9), (16.91, 41.223)], 43.115, [(0.0, 14.372), (14.372, 28.743), (28.743, 43.115)], [(0.0, 16.91), (16.91, 30.012), (30.012, 43.115)], 2, 4)
+('v2c5', 'degen', 1.0) layouts 9932 | main {'n': 37882, 'isc': 21035, 'silent': 2982, 'short': 294, 'lost': 0, 'bad': 1143, 'wedge': 48079} | pr {'n': 37882, 'isc': 20444, 'silent': 2982, 'short': 294, 'lost': 0, 'bad': 1143, 'wedge': 48549}
+    cmp {'differ': 625, 'isc_better': 572, 'wedge_better': 27, 'wedge_worse': 434}
+    EX wedge (2, [(1.762, 9.95), (10.572, 43.773)], 42.255, [(0.0, 14.085), (14.085, 28.17), (28.17, 42.255)], [(0.0, 10.572), (10.572, 26.413), (26.413, 42.255)], 3, 4)
+('v2c5', 'degen', 1.3) layouts 9946 | main {'n': 46813, 'isc': 29256, 'silent': 2588, 'short': 253, 'lost': 0, 'bad': 926, 'wedge': 66229} | pr {'n': 46813, 'isc': 28653, 'silent': 2588, 'short': 253, 'lost': 0, 'bad': 926, 'wedge': 66730}
+    cmp {'differ': 625, 'isc_better': 589, 'wedge_better': 24, 'wedge_worse': 462}
+    EX wedge (2, [(0.885, 14.13), (14.14, 66.939)], 68.08, [(0.0, 17.02), (17.02, 34.04), (34.04, 51.06), (51.06, 68.08)], [(0.0, 14.14), (14.14, 32.12), (32.12, 50.1), (50.1, 68.08)], 5, 6)
+('v2c5', 'degen', 1.6) layouts 9963 | main {'n': 53581, 'isc': 35687, 'silent': 2588, 'short': 233, 'lost': 0, 'bad': 942, 'wedge': 80641} | pr {'n': 53581, 'isc': 34987, 'silent': 2588, 'short': 233, 'lost': 0, 'bad': 942, 'wedge': 81200}
+    cmp {'differ': 705, 'isc_better': 674, 'wedge_better': 22, 'wedge_worse': 506}
+    EX wedge (2, [(1.206, 15.763), (16.771, 93.288)], 86.785, [(0.0, 17.357), (17.357, 34.714), (34.714, 52.071), (52.071, 69.428), (69.428, 86.785)], [(0.0, 16.771), (16.771, 34.275), (34.275, 51.778), (51.778, 69.281), (69.281, 86.785)], 7, 8)
+('v2c5', 'degen', 2.0) layouts 9967 | main {'n': 65325, 'isc': 46872, 'silent': 2468, 'short': 200, 'lost': 0, 'bad': 886, 'wedge': 104667} | pr {'n': 65325, 'isc': 46202, 'silent': 2468, 'short': 200, 'lost': 0, 'bad': 886, 'wedge': 105144}
+    cmp {'differ': 688, 'isc_better': 657, 'wedge_better': 30, 'wedge_worse': 473}
+    EX wedge (2, [(1.566, 9.137), (10.086, 72.519)], 64.251, [(0.0, 16.063), (16.063, 32.126), (32.126, 48.188), (48.188, 64.251)], [(0.0, 10.086), (10.086, 28.141), (28.141, 46.196), (46.196, 64.251)], 5, 6)
+('v2c5', 'degen', 2.5) layouts 9982 | main {'n': 77600, 'isc': 58894, 'silent': 2398, 'short': 199, 'lost': 0, 'bad': 798, 'wedge': 129454} | pr {'n': 77600, 'isc': 58161, 'silent': 2398, 'short': 199, 'lost': 0, 'bad': 798, 'wedge': 129984}
+    cmp {'differ': 735, 'isc_better': 695, 'wedge_better': 30, 'wedge_worse': 508}
+    EX wedge (2, [(2.495, 13.33), (14.138, 69.461)], 65.77, [(0.0, 16.442), (16.442, 32.885), (32.885, 49.328), (49.328, 65.77)], [(0.0, 14.138), (14.138, 31.349), (31.349, 48.559), (48.559, 65.77)], 5, 6)
+('v2c5', 'gaphi', 0.5) layouts 10000 | main {'n': 46273, 'isc': 6426, 'silent': 1463, 'short': 1055, 'lost': 0, 'bad': 847, 'wedge': 24749} | pr {'n': 46273, 'isc': 5847, 'silent': 1463, 'short': 1055, 'lost': 0, 'bad': 847, 'wedge': 25110}
+    cmp {'differ': 676, 'isc_better': 569, 'wedge_better': 73, 'wedge_worse': 359}
+    EX wedge (2, [(0.117, 19.644), (22.412, 45.905)], 46.063, [(0.0, 15.354), (15.354, 30.709), (30.709, 46.063)], [(0.0, 20.0), (20.0, 33.032), (33.032, 46.063)], 2, 3)
+('v2c5', 'gaphi', 0.75) layouts 10000 | main {'n': 59809, 'isc': 16033, 'silent': 792, 'short': 735, 'lost': 0, 'bad': 492, 'wedge': 51693} | pr {'n': 59809, 'isc': 13518, 'silent': 792, 'short': 735, 'lost': 0, 'bad': 492, 'wedge': 53616}
+    cmp {'differ': 3020, 'isc_better': 2318, 'wedge_better': 176, 'wedge_worse': 1767}
+    EX wedge (2, [(0.973, 18.747), (18.812, 41.664)], 41.664, [(0.0, 13.888), (13.888, 27.776), (27.776, 41.664)], [(0.0, 18.812), (18.812, 30.238), (30.238, 41.664)], 2, 3)
+('v2c5', 'gaphi', 1.0) layouts 10000 | main {'n': 76092, 'isc': 31254, 'silent': 571, 'short': 587, 'lost': 0, 'bad': 325, 'wedge': 83981} | pr {'n': 76092, 'isc': 28784, 'silent': 571, 'short': 587, 'lost': 0, 'bad': 325, 'wedge': 85967}
+    cmp {'differ': 2781, 'isc_better': 2253, 'wedge_better': 115, 'wedge_worse': 1763}
+    EX wedge (2, [(3.773, 19.776), (21.674, 54.731)], 54.731, [(0.773, 18.759), (18.759, 36.745), (36.745, 54.731)], [(0.773, 20.773), (20.773, 37.752), (37.752, 54.731)], 3, 4)
+('v2c5', 'gaphi', 1.3) layouts 10000 | main {'n': 92659, 'isc': 46311, 'silent': 356, 'short': 446, 'lost': 0, 'bad': 180, 'wedge': 119242} | pr {'n': 92659, 'isc': 43653, 'silent': 356, 'short': 446, 'lost': 0, 'bad': 180, 'wedge': 121384}
+    cmp {'differ': 3011, 'isc_better': 2417, 'wedge_better': 114, 'wedge_worse': 1886}
+    EX wedge (2, [(0.652, 17.464), (18.162, 61.363)], 62.754, [(0.0, 15.688), (15.688, 31.377), (31.377, 47.066), (47.066, 62.754)], [(0.0, 18.162), (18.162, 33.026), (33.026, 47.89), (47.89, 62.754)], 5, 6)
+('v2c5', 'gaphi', 1.6) layouts 10000 | main {'n': 105701, 'isc': 58617, 'silent': 275, 'short': 293, 'lost': 0, 'bad': 152, 'wedge': 150458} | pr {'n': 105701, 'isc': 55405, 'silent': 275, 'short': 293, 'lost': 0, 'bad': 152, 'wedge': 152861}
+    cmp {'differ': 3402, 'isc_better': 2851, 'wedge_better': 128, 'wedge_worse': 2145}
+    EX wedge (2, [(1.984, 10.205), (12.152, 48.624)], 48.624, [(0.0, 16.208), (16.208, 32.416), (32.416, 48.624)], [(0.0, 12.152), (12.152, 30.388), (30.388, 48.624)], 3, 4)
+('v2c5', 'gaphi', 2.0) layouts 10000 | main {'n': 127685, 'isc': 79171, 'silent': 204, 'short': 222, 'lost': 0, 'bad': 120, 'wedge': 196709} | pr {'n': 127685, 'isc': 75949, 'silent': 204, 'short': 222, 'lost': 0, 'bad': 120, 'wedge': 199286}
+    cmp {'differ': 3379, 'isc_better': 2868, 'wedge_better': 93, 'wedge_worse': 2311}
+    EX wedge (2, [(0.392, 19.103), (21.669, 104.246)], 104.799, [(0.0, 17.466), (17.466, 34.933), (34.933, 52.4), (52.4, 69.866), (69.866, 87.332), (87.332, 104.799)], [(0.0, 20.0), (20.0, 36.96), (36.96, 53.92), (53.92, 70.879), (70.879, 87.839), (87.839, 104.799)], 9, 10)
+('v2c5', 'gaphi', 2.5) layouts 10000 | main {'n': 153780, 'isc': 103661, 'silent': 151, 'short': 147, 'lost': 0, 'bad': 99, 'wedge': 250564} | pr {'n': 153780, 'isc': 100704, 'silent': 151, 'short': 147, 'lost': 0, 'bad': 99, 'wedge': 252796}
+    cmp {'differ': 3274, 'isc_better': 2628, 'wedge_better': 80, 'wedge_worse': 2020}
+    EX wedge (2, [(0.52, 12.258), (15.105, 67.323)], 67.323, [(0.0, 16.831), (16.831, 33.661), (33.661, 50.492), (50.492, 67.323)], [(0.0, 15.105), (15.105, 32.511), (32.511, 49.917), (49.917, 67.323)], 5, 6)
+('v2c5', 'gaplo', 0.5) layouts 10000 | main {'n': 47851, 'isc': 10041, 'silent': 1505, 'short': 1122, 'lost': 0, 'bad': 830, 'wedge': 29105} | pr {'n': 47851, 'isc': 9141, 'silent': 1505, 'short': 1122, 'lost': 0, 'bad': 830, 'wedge': 29768}
+    cmp {'differ': 954, 'isc_better': 879, 'wedge_better': 79, 'wedge_worse': 581}
+    EX wedge (2, [(1.035, 18.607), (20.957, 45.931)], 45.931, [(0.0, 15.31), (15.31, 30.621), (30.621, 45.931)], [(0.0, 20.0), (20.0, 32.965), (32.965, 45.931)], 2, 4)
+('v2c5', 'gaplo', 0.75) layouts 10000 | main {'n': 63830, 'isc': 22816, 'silent': 832, 'short': 829, 'lost': 0, 'bad': 467, 'wedge': 61710} | pr {'n': 63830, 'isc': 20044, 'silent': 832, 'short': 829, 'lost': 0, 'bad': 467, 'wedge': 63946}
+    cmp {'differ': 2748, 'isc_better': 2505, 'wedge_better': 137, 'wedge_worse': 1928}
+    EX wedge (2, [(2.721, 15.628), (16.187, 49.671)], 49.671, [(0.0, 16.557), (16.557, 33.114), (33.114, 49.671)], [(0.0, 16.187), (16.187, 32.929), (32.929, 49.671)], 3, 4)
+('v2c5', 'gaplo', 1.0) layouts 10000 | main {'n': 82127, 'isc': 39125, 'silent': 519, 'short': 671, 'lost': 0, 'bad': 282, 'wedge': 97835} | pr {'n': 82127, 'isc': 36694, 'silent': 519, 'short': 671, 'lost': 0, 'bad': 282, 'wedge': 99679}
+    cmp {'differ': 2392, 'isc_better': 2231, 'wedge_better': 119, 'wedge_worse': 1640}
+    EX wedge (2, [(1.399, 18.55), (19.91, 64.963)], 64.963, [(0.0, 16.241), (16.241, 32.481), (32.481, 48.722), (48.722, 64.963)], [(0.0, 19.91), (19.91, 34.928), (34.928, 49.945), (49.945, 64.963)], 5, 6)
+('v2c5', 'gaplo', 1.3) layouts 10000 | main {'n': 101351, 'isc': 56685, 'silent': 326, 'short': 532, 'lost': 0, 'bad': 160, 'wedge': 139348} | pr {'n': 101351, 'isc': 54248, 'silent': 326, 'short': 532, 'lost': 0, 'bad': 160, 'wedge': 141237}
+    cmp {'differ': 2365, 'isc_better': 2219, 'wedge_better': 105, 'wedge_worse': 1684}
+    EX wedge (2, [(2.581, 9.59), (10.28, 46.121)], 46.121, [(0.0, 15.374), (15.374, 30.747), (30.747, 46.121)], [(0.0, 10.28), (10.28, 28.201), (28.201, 46.121)], 3, 4)
+('v2c5', 'gaplo', 1.6) layouts 10000 | main {'n': 118964, 'isc': 72629, 'silent': 243, 'short': 435, 'lost': 0, 'bad': 117, 'wedge': 178105} | pr {'n': 118964, 'isc': 69868, 'silent': 243, 'short': 435, 'lost': 0, 'bad': 117, 'wedge': 180166}
+    cmp {'differ': 2693, 'isc_better': 2506, 'wedge_better': 120, 'wedge_worse': 1845}
+    EX wedge (2, [(0.351, 8.925), (9.198, 44.856)], 45.757, [(0.0, 15.252), (15.252, 30.505), (30.505, 45.757)], [(0.0, 9.198), (9.198, 27.477), (27.477, 45.757)], 3, 4)
+('v2c5', 'gaplo', 2.0) layouts 10000 | main {'n': 142353, 'isc': 95382, 'silent': 177, 'short': 303, 'lost': 0, 'bad': 96, 'wedge': 228389} | pr {'n': 142353, 'isc': 92656, 'silent': 177, 'short': 303, 'lost': 0, 'bad': 96, 'wedge': 230459}
+    cmp {'differ': 2616, 'isc_better': 2454, 'wedge_better': 98, 'wedge_worse': 1893}
+    EX wedge (2, [(3.88, 14.724), (14.869, 106.602)], 106.602, [(0.88, 18.5), (18.5, 36.121), (36.121, 53.741), (53.741, 71.361), (71.361, 88.982), (88.982, 106.602)], [(0.88, 14.869), (14.869, 33.216), (33.216, 51.562), (51.562, 69.909), (69.909, 88.255), (88.255, 106.602)], 9, 10)
+('v2c5', 'gaplo', 2.5) layouts 10000 | main {'n': 172576, 'isc': 124001, 'silent': 138, 'short': 250, 'lost': 0, 'bad': 85, 'wedge': 289554} | pr {'n': 172576, 'isc': 121271, 'silent': 138, 'short': 250, 'lost': 0, 'bad': 85, 'wedge': 291635}
+    cmp {'differ': 2582, 'isc_better': 2443, 'wedge_better': 68, 'wedge_worse': 1895}
+    EX wedge (2, [(0.346, 12.757), (12.789, 87.001)], 87.001, [(0.0, 17.4), (17.4, 34.8), (34.8, 52.201), (52.201, 69.601), (69.601, 87.001)], [(0.0, 12.789), (12.789, 31.342), (31.342, 49.895), (49.895, 68.448), (68.448, 87.001)], 7, 8)
+('v2c5', 'grid', 0.5) layouts 10000 | main {'n': 85406, 'isc': 49548, 'silent': 550, 'short': 111, 'lost': 0, 'bad': 251, 'wedge': 112325} | pr {'n': 85406, 'isc': 48511, 'silent': 550, 'short': 111, 'lost': 0, 'bad': 251, 'wedge': 113196}
+    cmp {'differ': 1179, 'isc_better': 972, 'wedge_better': 31, 'wedge_worse': 806}
+    EX wedge (2, [(0.25, 13.25), (15.5, 64.5)], 65.0, [(0.0, 16.25), (16.25, 32.5), (32.5, 48.75), (48.75, 65.0)], [(0.0, 15.5), (15.5, 32.0), (32.0, 48.5), (48.5, 65.0)], 5, 6)
+('v2c5', 'grid', 0.75) layouts 10000 | main {'n': 85965, 'isc': 50021, 'silent': 507, 'short': 113, 'lost': 0, 'bad': 225, 'wedge': 113205} | pr {'n': 85965, 'isc': 48918, 'silent': 507, 'short': 113, 'lost': 0, 'bad': 225, 'wedge': 114122}
+    cmp {'differ': 1214, 'isc_better': 1024, 'wedge_better': 37, 'wedge_worse': 842}
+    EX wedge (2, [(5.0, 20.0), (21.0, 76.0)], 83.0, [(2.0, 21.25), (21.25, 40.5), (40.5, 59.75), (59.75, 79.0)], [(2.0, 21.0), (21.0, 40.333), (40.333, 59.667), (59.667, 79.0)], 5, 6)
+('v2c5', 'grid', 1.0) layouts 10000 | main {'n': 86723, 'isc': 50579, 'silent': 481, 'short': 134, 'lost': 0, 'bad': 203, 'wedge': 114470} | pr {'n': 86723, 'isc': 49538, 'silent': 481, 'short': 134, 'lost': 0, 'bad': 203, 'wedge': 115355}
+    cmp {'differ': 1197, 'isc_better': 990, 'wedge_better': 39, 'wedge_worse': 823}
+    EX wedge (2, [(1.25, 18.25), (19.75, 67.5)], 69.5, [(0.0, 17.375), (17.375, 34.75), (34.75, 52.125), (52.125, 69.5)], [(0.0, 19.75), (19.75, 36.333), (36.333, 52.917), (52.917, 69.5)], 5, 6)
+('v2c5', 'grid', 1.3) layouts 10000 | main {'n': 85464, 'isc': 49450, 'silent': 507, 'short': 111, 'lost': 0, 'bad': 209, 'wedge': 112090} | pr {'n': 85464, 'isc': 48412, 'silent': 507, 'short': 111, 'lost': 0, 'bad': 209, 'wedge': 112968}
+    cmp {'differ': 1170, 'isc_better': 980, 'wedge_better': 33, 'wedge_worse': 808}
+    EX wedge (2, [(0.0, 11.0), (13.25, 46.0)], 48.0, [(0.0, 16.0), (16.0, 32.0), (32.0, 48.0)], [(0.0, 13.25), (13.25, 30.625), (30.625, 48.0)], 3, 4)
+('v2c5', 'grid', 1.6) layouts 10000 | main {'n': 86189, 'isc': 50005, 'silent': 488, 'short': 107, 'lost': 0, 'bad': 216, 'wedge': 113724} | pr {'n': 86189, 'isc': 48977, 'silent': 488, 'short': 107, 'lost': 0, 'bad': 216, 'wedge': 114612}
+    cmp {'differ': 1216, 'isc_better': 982, 'wedge_better': 27, 'wedge_worse': 832}
+    EX wedge (2, [(5.0, 11.0), (12.0, 48.0)], 56.0, [(2.0, 18.333), (18.333, 34.667), (34.667, 51.0)], [(2.0, 12.0), (12.0, 31.5), (31.5, 51.0)], 3, 4)
+('v2c5', 'grid', 2.0) layouts 10000 | main {'n': 85478, 'isc': 49729, 'silent': 496, 'short': 135, 'lost': 0, 'bad': 216, 'wedge': 112608} | pr {'n': 85478, 'isc': 48691, 'silent': 496, 'short': 135, 'lost': 0, 'bad': 216, 'wedge': 113487}
+    cmp {'differ': 1180, 'isc_better': 992, 'wedge_better': 31, 'wedge_worse': 833}
+    EX wedge (2, [(1.0, 19.0), (20.5, 67.0)], 70.0, [(0.0, 17.5), (17.5, 35.0), (35.0, 52.5), (52.5, 70.0)], [(0.0, 20.0), (20.0, 36.667), (36.667, 53.333), (53.333, 70.0)], 5, 6)
+('v2c5', 'grid', 2.5) layouts 10000 | main {'n': 86183, 'isc': 50060, 'silent': 499, 'short': 111, 'lost': 0, 'bad': 219, 'wedge': 113511} | pr {'n': 86183, 'isc': 48999, 'silent': 499, 'short': 111, 'lost': 0, 'bad': 219, 'wedge': 114411}
+    cmp {'differ': 1180, 'isc_better': 1003, 'wedge_better': 40, 'wedge_worse': 841}
+    EX wedge (2, [(1.5, 16.75), (19.0, 48.25)], 49.75, [(0.0, 16.583), (16.583, 33.167), (33.167, 49.75)], [(0.0, 19.0), (19.0, 34.375), (34.375, 49.75)], 3, 4)
+('v2c5', 'lead', 0.5) layouts 10000 | main {'n': 57615, 'isc': 26253, 'silent': 69, 'short': 1494, 'lost': 0, 'bad': 68, 'wedge': 62555} | pr {'n': 57615, 'isc': 23661, 'silent': 69, 'short': 1494, 'lost': 0, 'bad': 68, 'wedge': 64875}
+    cmp {'differ': 3013, 'isc_better': 2551, 'wedge_better': 66, 'wedge_worse': 2223}
+    EX wedge (2, [(2.461, 19.681), (20.66, 63.692)], 64.629, [(0.0, 16.157), (16.157, 32.315), (32.315, 48.472), (48.472, 64.629)], [(0.0, 20.0), (20.0, 34.876), (34.876, 49.753), (49.753, 64.629)], 5, 6)
+('v2c5', 'lead', 0.75) layouts 10000 | main {'n': 60583, 'isc': 28055, 'silent': 67, 'short': 1054, 'lost': 0, 'bad': 67, 'wedge': 68219} | pr {'n': 60583, 'isc': 25136, 'silent': 67, 'short': 1054, 'lost': 0, 'bad': 67, 'wedge': 70746}
+    cmp {'differ': 3248, 'isc_better': 2769, 'wedge_better': 68, 'wedge_worse': 2360}
+    EX wedge (2, [(1.259, 19.953), (21.84, 72.314)], 72.314, [(0.0, 18.078), (18.078, 36.157), (36.157, 54.236), (54.236, 72.314)], [(0.0, 20.0), (20.0, 37.438), (37.438, 54.876), (54.876, 72.314)], 5, 6)
+('v2c5', 'lead', 1.0) layouts 10000 | main {'n': 64041, 'isc': 31446, 'silent': 89, 'short': 768, 'lost': 0, 'bad': 89, 'wedge': 75424} | pr {'n': 64041, 'isc': 28608, 'silent': 89, 'short': 768, 'lost': 0, 'bad': 89, 'wedge': 77930}
+    cmp {'differ': 3218, 'isc_better': 2726, 'wedge_better': 71, 'wedge_worse': 2350}
+    EX wedge (2, [(1.751, 17.845), (19.253, 74.988)], 80.457, [(0.0, 19.497), (19.497, 38.994), (38.994, 58.491), (58.491, 77.988)], [(0.0, 19.253), (19.253, 38.831), (38.831, 58.41), (58.41, 77.988)], 5, 6)
+('v2c5', 'lead', 1.3) layouts 10000 | main {'n': 74403, 'isc': 41528, 'silent': 17, 'short': 620, 'lost': 0, 'bad': 17, 'wedge': 97318} | pr {'n': 74403, 'isc': 38246, 'silent': 17, 'short': 620, 'lost': 0, 'bad': 17, 'wedge': 100132}
+    cmp {'differ': 3659, 'isc_better': 3111, 'wedge_better': 72, 'wedge_worse': 2597}
+    EX wedge (2, [(1.944, 10.417), (12.863, 66.223)], 66.223, [(0.0, 16.556), (16.556, 33.111), (33.111, 49.667), (49.667, 66.223)], [(0.0, 12.863), (12.863, 30.65), (30.65, 48.436), (48.436, 66.223)], 5, 6)
+('v2c5', 'lead', 1.6) layouts 10000 | main {'n': 83833, 'isc': 50715, 'silent': 0, 'short': 472, 'lost': 0, 'bad': 0, 'wedge': 118087} | pr {'n': 83833, 'isc': 47301, 'silent': 0, 'short': 472, 'lost': 0, 'bad': 0, 'wedge': 120834}
+    cmp {'differ': 3821, 'isc_better': 3212, 'wedge_better': 95, 'wedge_worse': 2585}
+    EX wedge (2, [(1.963, 12.387), (12.602, 64.882)], 65.535, [(0.0, 16.384), (16.384, 32.767), (32.767, 49.151), (49.151, 65.535)], [(0.0, 12.602), (12.602, 30.246), (30.246, 47.891), (47.891, 65.535)], 5, 6)
+('v2c5', 'lead', 2.0) layouts 10000 | main {'n': 96741, 'isc': 63049, 'silent': 0, 'short': 335, 'lost': 0, 'bad': 0, 'wedge': 145002} | pr {'n': 96741, 'isc': 59625, 'silent': 0, 'short': 335, 'lost': 0, 'bad': 0, 'wedge': 147736}
+    cmp {'differ': 3829, 'isc_better': 3232, 'wedge_better': 81, 'wedge_worse': 2585}
+    EX wedge (2, [(1.887, 15.545), (15.754, 107.322)], 110.063, [(0.0, 18.344), (18.344, 36.688), (36.688, 55.032), (55.032, 73.375), (73.375, 91.719), (91.719, 110.063)], [(0.0, 15.754), (15.754, 34.616), (34.616, 53.478), (53.478, 72.339), (72.339, 91.201), (91.201, 110.063)], 9, 10)
+('v2c5', 'lead', 2.5) layouts 10000 | main {'n': 112293, 'isc': 77967, 'silent': 0, 'short': 315, 'lost': 0, 'bad': 0, 'wedge': 176321} | pr {'n': 112293, 'isc': 74306, 'silent': 0, 'short': 315, 'lost': 0, 'bad': 0, 'wedge': 179051}
+    cmp {'differ': 4010, 'isc_better': 3399, 'wedge_better': 78, 'wedge_worse': 2606}
+    EX wedge (2, [(2.01, 15.339), (16.313, 85.49)], 89.464, [(0.0, 17.698), (17.698, 35.396), (35.396, 53.094), (53.094, 70.792), (70.792, 88.49)], [(0.0, 16.313), (16.313, 34.357), (34.357, 52.401), (52.401, 70.446), (70.446, 88.49)], 7, 8)
+('v2c5', 'longend', 0.5) layouts 10000 | main {'n': 52870, 'isc': 24840, 'silent': 36, 'short': 655, 'lost': 0, 'bad': 36, 'wedge': 51762} | pr {'n': 52870, 'isc': 22622, 'silent': 36, 'short': 655, 'lost': 0, 'bad': 36, 'wedge': 53405}
+    cmp {'differ': 2630, 'isc_better': 2198, 'wedge_better': 153, 'wedge_worse': 1623}
+    EX wedge (2, [(3.853, 12.443), (13.034, 68.046)], 68.523, [(0.853, 17.77), (17.77, 34.688), (34.688, 51.605), (51.605, 68.523)], [(0.853, 13.034), (13.034, 31.53), (31.53, 50.027), (50.027, 68.523)], 5, 6)
+('v2c5', 'longend', 0.75) layouts 10000 | main {'n': 60368, 'isc': 29987, 'silent': 35, 'short': 425, 'lost': 0, 'bad': 35, 'wedge': 67589} | pr {'n': 60368, 'isc': 27191, 'silent': 35, 'short': 425, 'lost': 0, 'bad': 35, 'wedge': 69813}
+    cmp {'differ': 3232, 'isc_better': 2660, 'wedge_better': 158, 'wedge_worse': 2095}
+    EX wedge (2, [(2.942, 18.954), (21.62, 88.034)], 88.487, [(0.0, 17.697), (17.697, 35.395), (35.395, 53.092), (53.092, 70.79), (70.79, 88.487)], [(0.0, 20.0), (20.0, 37.122), (37.122, 54.243), (54.243, 71.365), (71.365, 88.487)], 7, 8)
+('v2c5', 'longend', 1.0) layouts 10000 | main {'n': 69501, 'isc': 37644, 'silent': 17, 'short': 386, 'lost': 0, 'bad': 17, 'wedge': 85927} | pr {'n': 69501, 'isc': 35436, 'silent': 17, 'short': 386, 'lost': 0, 'bad': 17, 'wedge': 87621}
+    cmp {'differ': 2515, 'isc_better': 2112, 'wedge_better': 130, 'wedge_worse': 1610}
+    EX wedge (2, [(1.352, 15.349), (16.245, 66.651)], 69.905, [(0.0, 17.413), (17.413, 34.825), (34.825, 52.238), (52.238, 69.651)], [(0.0, 16.245), (16.245, 34.047), (34.047, 51.849), (51.849, 69.651)], 5, 6)
+('v2c5', 'longend', 1.3) layouts 10000 | main {'n': 79325, 'isc': 46159, 'silent': 11, 'short': 306, 'lost': 0, 'bad': 11, 'wedge': 107003} | pr {'n': 79325, 'isc': 44146, 'silent': 11, 'short': 306, 'lost': 0, 'bad': 11, 'wedge': 108569}
+    cmp {'differ': 2223, 'isc_better': 1923, 'wedge_better': 85, 'wedge_worse': 1460}
+    EX wedge (2, [(2.3, 9.509), (12.175, 47.836)], 52.012, [(0.0, 16.945), (16.945, 33.891), (33.891, 50.836)], [(0.0, 12.175), (12.175, 31.506), (31.506, 50.836)], 3, 4)
+('v2c5', 'longend', 1.6) layouts 10000 | main {'n': 87331, 'isc': 53361, 'silent': 12, 'short': 183, 'lost': 0, 'bad': 12, 'wedge': 125541} | pr {'n': 87331, 'isc': 51243, 'silent': 12, 'short': 183, 'lost': 0, 'bad': 12, 'wedge': 127234}
+    cmp {'differ': 2281, 'isc_better': 2007, 'wedge_better': 72, 'wedge_worse': 1561}
+    EX wedge (2, [(0.518, 9.454), (9.909, 41.983)], 44.609, [(0.0, 14.87), (14.87, 29.739), (29.739, 44.609)], [(0.0, 9.909), (9.909, 27.259), (27.259, 44.609)], 3, 4)
+('v2c5', 'longend', 2.0) layouts 10000 | main {'n': 99608, 'isc': 64771, 'silent': 9, 'short': 147, 'lost': 0, 'bad': 9, 'wedge': 151657} | pr {'n': 99608, 'isc': 62651, 'silent': 9, 'short': 147, 'lost': 0, 'bad': 9, 'wedge': 153362}
+    cmp {'differ': 2297, 'isc_better': 2009, 'wedge_better': 59, 'wedge_worse': 1578}
+    EX wedge (2, [(0.471, 11.902), (12.174, 42.694)], 47.803, [(0.0, 15.231), (15.231, 30.463), (30.463, 45.694)], [(0.0, 12.174), (12.174, 28.934), (28.934, 45.694)], 3, 4)
+('v2c5', 'longend', 2.5) layouts 10000 | main {'n': 115860, 'isc': 79870, 'silent': 7, 'short': 116, 'lost': 0, 'bad': 7, 'wedge': 184634} | pr {'n': 115860, 'isc': 77705, 'silent': 7, 'short': 116, 'lost': 0, 'bad': 7, 'wedge': 186418}
+    cmp {'differ': 2365, 'isc_better': 2051, 'wedge_better': 57, 'wedge_worse': 1672}
+    EX wedge (2, [(2.833, 15.552), (16.479, 65.995)], 67.154, [(0.0, 16.788), (16.788, 33.577), (33.577, 50.365), (50.365, 67.154)], [(0.0, 16.479), (16.479, 33.371), (33.371, 50.262), (50.262, 67.154)], 5, 6)
+('v2c5', 'many', 0.5) layouts 10000 | main {'n': 78009, 'isc': 0, 'silent': 317, 'short': 12638, 'lost': 0, 'bad': 285, 'wedge': 29} | pr {'n': 78009, 'isc': 0, 'silent': 317, 'short': 12638, 'lost': 0, 'bad': 285, 'wedge': 29}
+    cmp {}
+('v2c5', 'many', 0.75) layouts 10000 | main {'n': 84414, 'isc': 2, 'silent': 105, 'short': 8072, 'lost': 0, 'bad': 103, 'wedge': 672} | pr {'n': 84414, 'isc': 2, 'silent': 105, 'short': 8072, 'lost': 0, 'bad': 103, 'wedge': 672}
+    cmp {'differ': 1}
+('v2c5', 'many', 1.0) layouts 10000 | main {'n': 92059, 'isc': 15, 'silent': 21, 'short': 5793, 'lost': 0, 'bad': 20, 'wedge': 3109} | pr {'n': 92059, 'isc': 15, 'silent': 21, 'short': 5793, 'lost': 0, 'bad': 20, 'wedge': 3109}
+    cmp {}
+('v2c5', 'many', 1.3) layouts 10000 | main {'n': 103555, 'isc': 193, 'silent': 2, 'short': 4375, 'lost': 0, 'bad': 2, 'wedge': 10007} | pr {'n': 103555, 'isc': 176, 'silent': 2, 'short': 4375, 'lost': 0, 'bad': 2, 'wedge': 10020}
+    cmp {'differ': 19, 'isc_better': 17, 'wedge_worse': 9}
+    EX wedge (10, [(3.038, 3.787), (3.817, 6.175), (8.356, 12.786), (18.695, 25.279), (28.133, 32.269), (34.343, 41.95), (41.95, 47.026), (47.026, 52.974), (52.974, 59.815), (62.908, 69.514)], 70.007, [(0.038, 12.786), (18.695, 32.402), (32.402, 46.108), (46.108, 59.815), (62.908, 70.007)], [(0.038, 12.786), (18.695, 34.343), (34.343, 47.079), (47.079, 59.815), (62.908, 70.007)], 2, 3)
+('v2c5', 'many', 1.6) layouts 10000 | main {'n': 116145, 'isc': 682, 'silent': 0, 'short': 3457, 'lost': 0, 'bad': 0, 'wedge': 20913} | pr {'n': 116145, 'isc': 603, 'silent': 0, 'short': 3457, 'lost': 0, 'bad': 0, 'wedge': 21013}
+    cmp {'differ': 96, 'isc_better': 79, 'wedge_better': 4, 'wedge_worse': 75}
+    EX wedge (10, [(2.698, 5.253), (9.556, 12.82), (13.067, 18.647), (18.773, 22.829), (23.251, 25.179), (25.379, 32.871), (32.871, 38.907), (38.907, 47.853), (47.853, 50.526), (50.661, 52.072)], 57.32, [(0.0, 5.253), (9.556, 23.235), (23.235, 36.914), (36.914, 50.593), (50.593, 55.072)], [(0.0, 5.253), (9.556, 25.379), (25.379, 37.986), (37.986, 50.593), (50.593, 55.072)], 3, 4)
+('v2c5', 'many', 2.0) layouts 10000 | main {'n': 134458, 'isc': 2023, 'silent': 0, 'short': 2664, 'lost': 0, 'bad': 0, 'wedge': 42436} | pr {'n': 134458, 'isc': 1772, 'silent': 0, 'short': 2664, 'lost': 0, 'bad': 0, 'wedge': 42655}
+    cmp {'differ': 268, 'isc_better': 243, 'wedge_better': 14, 'wedge_worse': 178}
+    EX wedge (9, [(1.294, 4.773), (5.214, 14.41), (14.855, 25.26), (25.26, 34.663), (34.663, 45.96), (48.514, 54.903), (55.278, 66.736), (67.916, 73.355), (73.52, 81.011)], 86.026, [(0.0, 15.746), (15.746, 31.491), (31.491, 47.237), (47.237, 67.237), (67.237, 84.011)], [(0.0, 14.855), (14.855, 31.046), (31.046, 47.237), (47.237, 67.237), (67.237, 84.011)], 5, 6)
+('v2c5', 'many', 2.5) layouts 10000 | main {'n': 159405, 'isc': 5172, 'silent': 0, 'short': 2083, 'lost': 0, 'bad': 0, 'wedge': 80527} | pr {'n': 159405, 'isc': 4404, 'silent': 0, 'short': 2083, 'lost': 0, 'bad': 0, 'wedge': 81253}
+    cmp {'differ': 773, 'isc_better': 697, 'wedge_better': 46, 'wedge_worse': 560}
+    EX wedge (8, [(0.701, 4.344), (4.69, 7.719), (9.235, 21.376), (21.376, 22.453), (26.237, 36.242), (36.694, 47.545), (47.545, 59.746), (59.746, 67.306)], 67.862, [(0.0, 8.477), (8.477, 22.453), (26.237, 40.112), (40.112, 53.987), (53.987, 67.862)], [(0.0, 8.477), (8.477, 22.453), (26.237, 36.694), (36.694, 52.278), (52.278, 67.862)], 3, 4)
+('v2c5', 'mix', 0.5) layouts 10000 | main {'n': 35156, 'isc': 4472, 'silent': 2846, 'short': 1303, 'lost': 0, 'bad': 1079, 'wedge': 12191} | pr {'n': 35156, 'isc': 4221, 'silent': 2846, 'short': 1303, 'lost': 0, 'bad': 1079, 'wedge': 12338}
+    cmp {'differ': 266, 'isc_better': 249, 'wedge_better': 28, 'wedge_worse': 145}
+    EX wedge (2, [(2.397, 19.0), (20.969, 44.866)], 50.478, [(0.0, 15.955), (15.955, 31.911), (31.911, 47.866)], [(0.0, 20.0), (20.0, 33.933), (33.933, 47.866)], 2, 4)
+('v2c5', 'mix', 0.75) layouts 10000 | main {'n': 44642, 'isc': 11538, 'silent': 2071, 'short': 950, 'lost': 0, 'bad': 773, 'wedge': 31175} | pr {'n': 44642, 'isc': 9979, 'silent': 2071, 'short': 950, 'lost': 0, 'bad': 773, 'wedge': 32472}
+    cmp {'differ': 1728, 'isc_better': 1482, 'wedge_better': 96, 'wedge_worse': 1158}
+    EX wedge (2, [(1.331, 13.336), (14.169, 46.939)], 46.939, [(0.0, 15.646), (15.646, 31.293), (31.293, 46.939)], [(0.0, 14.169), (14.169, 30.554), (30.554, 46.939)], 3, 4)
+('v2c5', 'mix', 1.0) layouts 10000 | main {'n': 56718, 'isc': 22330, 'silent': 1651, 'short': 758, 'lost': 0, 'bad': 660, 'wedge': 53436} | pr {'n': 56718, 'isc': 20941, 'silent': 1651, 'short': 758, 'lost': 0, 'bad': 660, 'wedge': 54473}
+    cmp {'differ': 1474, 'isc_better': 1307, 'wedge_better': 87, 'wedge_worse': 981}
+    EX wedge (2, [(0.833, 19.021), (20.012, 51.691)], 56.547, [(0.0, 18.23), (18.23, 36.461), (36.461, 54.691)], [(0.0, 20.0), (20.0, 37.346), (37.346, 54.691)], 3, 4)
+('v2c5', 'mix', 1.3) layouts 10000 | main {'n': 69515, 'isc': 33939, 'silent': 1204, 'short': 577, 'lost': 0, 'bad': 427, 'wedge': 80360} | pr {'n': 69515, 'isc': 32518, 'silent': 1204, 'short': 577, 'lost': 0, 'bad': 427, 'wedge': 81500}
+    cmp {'differ': 1523, 'isc_better': 1365, 'wedge_better': 57, 'wedge_worse': 1028}
+    EX wedge (2, [(3.228, 10.942), (11.721, 43.537)], 45.599, [(0.228, 15.352), (15.352, 30.475), (30.475, 45.599)], [(0.228, 11.721), (11.721, 28.66), (28.66, 45.599)], 3, 4)
+('v2c5', 'mix', 1.6) layouts 10000 | main {'n': 78779, 'isc': 42541, 'silent': 1006, 'short': 462, 'lost': 0, 'bad': 329, 'wedge': 102019} | pr {'n': 78779, 'isc': 40698, 'silent': 1006, 'short': 462, 'lost': 0, 'bad': 329, 'wedge': 103435}
+    cmp {'differ': 1893, 'isc_better': 1712, 'wedge_better': 78, 'wedge_worse': 1284}
+    EX wedge (2, [(1.747, 11.058), (11.782, 43.896)], 43.896, [(0.0, 14.632), (14.632, 29.264), (29.264, 43.896)], [(0.0, 11.782), (11.782, 27.839), (27.839, 43.896)], 3, 4)
+('v2c5', 'mix', 2.0) layouts 10000 | main {'n': 95554, 'isc': 58306, 'silent': 815, 'short': 351, 'lost': 0, 'bad': 242, 'wedge': 138044} | pr {'n': 95554, 'isc': 56496, 'silent': 815, 'short': 351, 'lost': 0, 'bad': 242, 'wedge': 139446}
+    cmp {'differ': 1870, 'isc_better': 1703, 'wedge_better': 58, 'wedge_worse': 1323}
+    EX wedge (2, [(3.315, 8.113), (10.781, 43.93)], 43.93, [(0.315, 14.853), (14.853, 29.392), (29.392, 43.93)], [(0.315, 10.781), (10.781, 27.355), (27.355, 43.93)], 3, 4)
+('v2c5', 'mix', 2.5) layouts 10000 | main {'n': 114941, 'isc': 76850, 'silent': 688, 'short': 220, 'lost': 0, 'bad': 189, 'wedge': 177838} | pr {'n': 114941, 'isc': 75052, 'silent': 688, 'short': 220, 'lost': 0, 'bad': 189, 'wedge': 179263}
+    cmp {'differ': 1856, 'isc_better': 1677, 'wedge_better': 50, 'wedge_worse': 1337}
+    EX wedge (2, [(0.195, 14.793), (15.727, 50.228)], 50.344, [(0.0, 16.781), (16.781, 33.563), (33.563, 50.344)], [(0.0, 15.727), (15.727, 33.035), (33.035, 50.344)], 3, 4)
+('v2c5', 'over', 0.5) layouts 10000 | main {'n': 63926, 'isc': 28237, 'silent': 680, 'short': 671, 'lost': 0, 'bad': 393, 'wedge': 66877} | pr {'n': 63926, 'isc': 27380, 'silent': 680, 'short': 671, 'lost': 0, 'bad': 393, 'wedge': 67604}
+    cmp {'differ': 960, 'isc_better': 840, 'wedge_better': 42, 'wedge_worse': 638}
+    EX wedge (2, [(1.081, 19.441), (20.43, 43.886)], 43.886, [(0.0, 14.629), (14.629, 29.257), (29.257, 43.886)], [(0.0, 20.0), (20.0, 31.943), (31.943, 43.886)], 2, 3)
+('v2c5', 'over', 0.75) layouts 10000 | main {'n': 66937, 'isc': 29997, 'silent': 576, 'short': 554, 'lost': 0, 'bad': 344, 'wedge': 74626} | pr {'n': 66937, 'isc': 28500, 'silent': 576, 'short': 554, 'lost': 0, 'bad': 344, 'wedge': 75909}
+    cmp {'differ': 1661, 'isc_better': 1441, 'wedge_better': 52, 'wedge_worse': 1157}
+    EX wedge (2, [(1.982, 10.585), (10.679, 42.359)], 42.359, [(0.0, 14.12), (14.12, 28.239), (28.239, 42.359)], [(0.0, 10.679), (10.679, 26.519), (26.519, 42.359)], 3, 4)
+('v2c5', 'over', 1.0) layouts 10000 | main {'n': 72989, 'isc': 35691, 'silent': 451, 'short': 490, 'lost': 0, 'bad': 259, 'wedge': 84953} | pr {'n': 72989, 'isc': 34731, 'silent': 451, 'short': 490, 'lost': 0, 'bad': 259, 'wedge': 85781}
+    cmp {'differ': 1071, 'isc_better': 942, 'wedge_better': 43, 'wedge_worse': 726}
+    EX wedge (2, [(2.562, 19.057), (19.927, 65.626)], 70.058, [(0.0, 17.157), (17.157, 34.313), (34.313, 51.469), (51.469, 68.626)], [(0.0, 19.927), (19.927, 36.16), (36.16, 52.393), (52.393, 68.626)], 5, 6)
+('v2c5', 'over', 1.3) layouts 10000 | main {'n': 76825, 'isc': 39029, 'silent': 397, 'short': 463, 'lost': 0, 'bad': 230, 'wedge': 94676} | pr {'n': 76825, 'isc': 37636, 'silent': 397, 'short': 463, 'lost': 0, 'bad': 230, 'wedge': 95813}
+    cmp {'differ': 1570, 'isc_better': 1344, 'wedge_better': 69, 'wedge_worse': 1033}
+    EX wedge (2, [(2.903, 18.124), (19.646, 65.52)], 70.179, [(0.0, 17.13), (17.13, 34.26), (34.26, 51.39), (51.39, 68.52)], [(0.0, 19.646), (19.646, 35.937), (35.937, 52.229), (52.229, 68.52)], 5, 6)
+('v2c5', 'over', 1.6) layouts 10000 | main {'n': 82303, 'isc': 44126, 'silent': 333, 'short': 433, 'lost': 0, 'bad': 203, 'wedge': 106376} | pr {'n': 82303, 'isc': 42850, 'silent': 333, 'short': 433, 'lost': 0, 'bad': 203, 'wedge': 107413}
+    cmp {'differ': 1405, 'isc_better': 1226, 'wedge_better': 53, 'wedge_worse': 954}
+    EX wedge (2, [(3.207, 13.138), (13.811, 45.377)], 51.1, [(0.207, 16.264), (16.264, 32.32), (32.32, 48.377)], [(0.207, 13.811), (13.811, 31.094), (31.094, 48.377)], 3, 4)
+('v2c5', 'over', 2.0) layouts 10000 | main {'n': 86948, 'isc': 49073, 'silent': 379, 'short': 384, 'lost': 0, 'bad': 237, 'wedge': 116659} | pr {'n': 86948, 'isc': 47861, 'silent': 379, 'short': 384, 'lost': 0, 'bad': 237, 'wedge': 117628}
+    cmp {'differ': 1376, 'isc_better': 1170, 'wedge_better': 44, 'wedge_worse': 897}
+    EX wedge (2, [(3.067, 19.689), (21.639, 46.493)], 46.968, [(0.067, 15.701), (15.701, 31.334), (31.334, 46.968)], [(0.067, 20.067), (20.067, 33.517), (33.517, 46.968)], 2, 3)
+('v2c5', 'over', 2.5) layouts 10000 | main {'n': 95323, 'isc': 56675, 'silent': 361, 'short': 401, 'lost': 0, 'bad': 223, 'wedge': 133112} | pr {'n': 95323, 'isc': 55359, 'silent': 361, 'short': 401, 'lost': 0, 'bad': 223, 'wedge': 134092}
+    cmp {'differ': 1488, 'isc_better': 1262, 'wedge_better': 60, 'wedge_worse': 921}
+    EX wedge (2, [(2.702, 17.161), (20.055, 44.121)], 44.121, [(0.0, 14.707), (14.707, 29.414), (29.414, 44.121)], [(0.0, 20.0), (20.0, 32.06), (32.06, 44.121)], 2, 3)
+('v3c5', 'degen', 0.5) layouts 9887 | main {'n': 13232, 'isc': 2725, 'silent': 8043, 'short': 92, 'lost': 0, 'bad': 861, 'wedge': 5697} | pr {'n': 13232, 'isc': 2725, 'silent': 8043, 'short': 92, 'lost': 0, 'bad': 861, 'wedge': 5697}
+    cmp {}
+('v3c5', 'degen', 0.75) layouts 9938 | main {'n': 15796, 'isc': 3486, 'silent': 6433, 'short': 114, 'lost': 0, 'bad': 904, 'wedge': 8705} | pr {'n': 15796, 'isc': 3484, 'silent': 6433, 'short': 114, 'lost': 0, 'bad': 904, 'wedge': 8704}
+    cmp {'differ': 2, 'isc_better': 2, 'wedge_better': 1}
+('v3c5', 'degen', 1.0) layouts 9950 | main {'n': 18402, 'isc': 4423, 'silent': 5328, 'short': 106, 'lost': 0, 'bad': 851, 'wedge': 12750} | pr {'n': 18402, 'isc': 4422, 'silent': 5328, 'short': 106, 'lost': 0, 'bad': 851, 'wedge': 12750}
+    cmp {'differ': 1, 'isc_better': 1}
+('v3c5', 'degen', 1.3) layouts 9965 | main {'n': 21476, 'isc': 5853, 'silent': 4411, 'short': 106, 'lost': 0, 'bad': 733, 'wedge': 18156} | pr {'n': 21476, 'isc': 5847, 'silent': 4411, 'short': 106, 'lost': 0, 'bad': 733, 'wedge': 18156}
+    cmp {'differ': 6, 'isc_better': 6}
+('v3c5', 'degen', 1.6) layouts 9969 | main {'n': 24705, 'isc': 8306, 'silent': 3916, 'short': 113, 'lost': 0, 'bad': 622, 'wedge': 23988} | pr {'n': 24705, 'isc': 8296, 'silent': 3916, 'short': 113, 'lost': 0, 'bad': 622, 'wedge': 23989}
+    cmp {'differ': 10, 'isc_better': 10, 'wedge_better': 1, 'wedge_worse': 2}
+    EX wedge (7, [(0.946, 16.339), (16.349, 56.113), (56.113, 128.246), (128.246, 133.295), (133.296, 157.094), (157.095, 159.117), (159.127, 170.837)], 171.773, [(0.0, 44.432), (44.432, 88.864), (88.864, 133.296), (133.296, 171.773)], [(0.0, 16.349), (16.349, 74.822), (74.822, 133.296), (133.296, 171.773)], 5, 6)
+('v3c5', 'degen', 2.0) layouts 9968 | main {'n': 28454, 'isc': 11230, 'silent': 3441, 'short': 81, 'lost': 0, 'bad': 547, 'wedge': 31656} | pr {'n': 28454, 'isc': 11208, 'silent': 3441, 'short': 81, 'lost': 0, 'bad': 547, 'wedge': 31656}
+    cmp {'differ': 22, 'isc_better': 22, 'wedge_better': 2, 'wedge_worse': 2}
+    EX wedge (5, [(0.104, 6.433), (6.434, 99.46), (99.46, 196.005), (196.015, 205.911), (205.912, 215.209)], 216.704, [(0.0, 49.002), (49.002, 98.005), (98.005, 147.007), (147.007, 196.01), (196.01, 216.704)], [(0.0, 6.434), (6.434, 69.626), (69.626, 132.818), (132.818, 196.01), (196.01, 216.704)], 7, 8)
+('v3c5', 'degen', 2.5) layouts 9981 | main {'n': 32008, 'isc': 14023, 'silent': 3091, 'short': 114, 'lost': 0, 'bad': 473, 'wedge': 38744} | pr {'n': 32008, 'isc': 13956, 'silent': 3091, 'short': 114, 'lost': 0, 'bad': 473, 'wedge': 38745}
+    cmp {'differ': 67, 'isc_better': 67, 'wedge_better': 5, 'wedge_worse': 6}
+    EX wedge (4, [(2.026, 13.65), (15.136, 133.995), (133.358, 135.337), (137.125, 144.28)], 147.139, [(0.0, 45.41), (45.41, 90.821), (90.821, 136.231), (136.231, 147.139)], [(0.0, 15.136), (15.136, 75.683), (75.683, 136.231), (136.231, 147.139)], 5, 6)
+('v3c5', 'gaphi', 0.5) layouts 10000 | main {'n': 20162, 'isc': 0, 'silent': 5738, 'short': 516, 'lost': 0, 'bad': 985, 'wedge': 402} | pr {'n': 20162, 'isc': 0, 'silent': 5738, 'short': 516, 'lost': 0, 'bad': 985, 'wedge': 402}
+    cmp {}
+('v3c5', 'gaphi', 0.75) layouts 10000 | main {'n': 25663, 'isc': 0, 'silent': 3883, 'short': 440, 'lost': 0, 'bad': 762, 'wedge': 3160} | pr {'n': 25663, 'isc': 0, 'silent': 3883, 'short': 440, 'lost': 0, 'bad': 762, 'wedge': 3160}
+    cmp {}
+('v3c5', 'gaphi', 1.0) layouts 10000 | main {'n': 30953, 'isc': 0, 'silent': 2775, 'short': 350, 'lost': 0, 'bad': 564, 'wedge': 8888} | pr {'n': 30953, 'isc': 0, 'silent': 2775, 'short': 350, 'lost': 0, 'bad': 564, 'wedge': 8888}
+    cmp {}
+('v3c5', 'gaphi', 1.3) layouts 10000 | main {'n': 36899, 'isc': 14, 'silent': 1893, 'short': 308, 'lost': 0, 'bad': 413, 'wedge': 18679} | pr {'n': 36899, 'isc': 14, 'silent': 1893, 'short': 308, 'lost': 0, 'bad': 413, 'wedge': 18679}
+    cmp {}
+('v3c5', 'gaphi', 1.6) layouts 10000 | main {'n': 45353, 'isc': 5377, 'silent': 1424, 'short': 237, 'lost': 0, 'bad': 323, 'wedge': 32490} | pr {'n': 45353, 'isc': 5377, 'silent': 1424, 'short': 237, 'lost': 0, 'bad': 323, 'wedge': 32490}
+    cmp {}
+('v3c5', 'gaphi', 2.0) layouts 10000 | main {'n': 52599, 'isc': 9948, 'silent': 1044, 'short': 168, 'lost': 0, 'bad': 234, 'wedge': 48525} | pr {'n': 52599, 'isc': 9948, 'silent': 1044, 'short': 168, 'lost': 0, 'bad': 234, 'wedge': 48525}
+    cmp {}
+('v3c5', 'gaphi', 2.5) layouts 10000 | main {'n': 60561, 'isc': 14117, 'silent': 691, 'short': 156, 'lost': 0, 'bad': 175, 'wedge': 64741} | pr {'n': 60561, 'isc': 13813, 'silent': 691, 'short': 156, 'lost': 0, 'bad': 175, 'wedge': 64758}
+    cmp {'differ': 298, 'isc_better': 298, 'wedge_better': 20, 'wedge_worse': 37}
+    EX wedge (3, [(2.806, 12.599), (15.407, 134.388), (136.216, 145.51)], 146.792, [(0.0, 45.101), (45.101, 90.201), (90.201, 135.302), (135.302, 146.792)], [(0.0, 15.407), (15.407, 75.355), (75.355, 135.302), (135.302, 146.792)], 5, 6)
+('v3c5', 'gaplo', 0.5) layouts 10000 | main {'n': 20058, 'isc': 10, 'silent': 5726, 'short': 414, 'lost': 0, 'bad': 910, 'wedge': 809} | pr {'n': 20058, 'isc': 10, 'silent': 5726, 'short': 414, 'lost': 0, 'bad': 910, 'wedge': 809}
+    cmp {}
+('v3c5', 'gaplo', 0.75) layouts 10000 | main {'n': 26743, 'isc': 248, 'silent': 3649, 'short': 345, 'lost': 0, 'bad': 646, 'wedge': 5224} | pr {'n': 26743, 'isc': 248, 'silent': 3649, 'short': 345, 'lost': 0, 'bad': 646, 'wedge': 5224}
+    cmp {}
+('v3c5', 'gaplo', 1.0) layouts 10000 | main {'n': 33323, 'isc': 1186, 'silent': 2558, 'short': 316, 'lost': 0, 'bad': 522, 'wedge': 13879} | pr {'n': 33323, 'isc': 1185, 'silent': 2558, 'short': 316, 'lost': 0, 'bad': 522, 'wedge': 13879}
+    cmp {'differ': 1, 'isc_better': 1}
+('v3c5', 'gaplo', 1.3) layouts 10000 | main {'n': 40569, 'isc': 2839, 'silent': 1753, 'short': 277, 'lost': 0, 'bad': 370, 'wedge': 26517} | pr {'n': 40569, 'isc': 2825, 'silent': 1753, 'short': 277, 'lost': 0, 'bad': 370, 'wedge': 26515}
+    cmp {'differ': 14, 'isc_better': 14, 'wedge_better': 4, 'wedge_worse': 2}
+    EX wedge (8, [(1.236, 8.245), (8.245, 13.714), (13.995, 69.299), (69.299, 120.451), (120.451, 134.682), (134.911, 150.421), (154.847, 195.224), (198.927, 257.73)], 257.73, [(0.0, 44.932), (44.932, 89.864), (89.864, 134.797), (134.797, 150.421), (154.847, 195.224), (198.927, 257.73)], [(0.0, 13.995), (13.995, 74.396), (74.396, 134.797), (134.797, 150.421), (154.847, 195.224), (198.927, 257.73)], 5, 6)
+('v3c5', 'gaplo', 1.6) layouts 10000 | main {'n': 49326, 'isc': 8620, 'silent': 1302, 'short': 243, 'lost': 0, 'bad': 251, 'wedge': 41685} | pr {'n': 49326, 'isc': 8597, 'silent': 1302, 'short': 243, 'lost': 0, 'bad': 251, 'wedge': 41683}
+    cmp {'differ': 23, 'isc_better': 23, 'wedge_better': 2}
+('v3c5', 'gaplo', 2.0) layouts 10000 | main {'n': 58181, 'isc': 14636, 'silent': 863, 'short': 217, 'lost': 0, 'bad': 180, 'wedge': 60609} | pr {'n': 58181, 'isc': 14581, 'silent': 863, 'short': 217, 'lost': 0, 'bad': 180, 'wedge': 60614}
+    cmp {'differ': 55, 'isc_better': 55, 'wedge_better': 7, 'wedge_worse': 12}
+    EX wedge (6, [(0.373, 8.871), (10.044, 108.18), (108.18, 196.128), (196.292, 206.299), (206.839, 288.539), (288.539, 296.373)], 300.675, [(0.0, 49.053), (49.053, 98.105), (98.105, 147.157), (147.157, 196.21), (196.21, 247.792), (247.792, 299.373)], [(0.0, 10.044), (10.044, 72.099), (72.099, 134.155), (134.155, 196.21), (196.21, 247.792), (247.792, 299.373)], 9, 10)
+('v3c5', 'gaplo', 2.5) layouts 10000 | main {'n': 66254, 'isc': 20379, 'silent': 617, 'short': 184, 'lost': 0, 'bad': 139, 'wedge': 78254} | pr {'n': 66254, 'isc': 20158, 'silent': 617, 'short': 184, 'lost': 0, 'bad': 139, 'wedge': 78258}
+    cmp {'differ': 221, 'isc_better': 221, 'wedge_better': 18, 'wedge_worse': 22}
+    EX wedge (3, [(0.998, 14.158), (14.597, 137.67), (138.155, 150.559)], 150.559, [(0.0, 45.971), (45.971, 91.942), (91.942, 137.912), (137.912, 150.559)], [(0.0, 14.597), (14.597, 76.255), (76.255, 137.912), (137.912, 150.559)], 5, 6)
+('v3c5', 'grid', 0.5) layouts 10000 | main {'n': 86065, 'isc': 48240, 'silent': 444, 'short': 36, 'lost': 0, 'bad': 72, 'wedge': 120146} | pr {'n': 86065, 'isc': 48153, 'silent': 444, 'short': 36, 'lost': 0, 'bad': 72, 'wedge': 120144}
+    cmp {'differ': 85, 'isc_better': 85, 'wedge_better': 4, 'wedge_worse': 2}
+    EX wedge (5, [(2.5, 107.0), (110.0, 116.5), (119.0, 240.5), (241.5, 250.0), (250.5, 375.5)], 377.5, [(0.0, 53.5), (53.5, 107.0), (110.0, 153.667), (153.667, 197.333), (197.333, 241.0), (241.0, 286.5), (286.5, 332.0), (332.0, 377.5)], [(0.0, 53.5), (53.5, 107.0), (110.0, 119.0), (119.0, 180.0), (180.0, 241.0), (241.0, 250.5), (250.5, 314.0), (314.0, 377.5)], 11, 12)
+('v3c5', 'grid', 0.75) layouts 10000 | main {'n': 86081, 'isc': 48523, 'silent': 429, 'short': 36, 'lost': 0, 'bad': 70, 'wedge': 120041} | pr {'n': 86081, 'isc': 48434, 'silent': 429, 'short': 36, 'lost': 0, 'bad': 70, 'wedge': 120042}
+    cmp {'differ': 89, 'isc_better': 89, 'wedge_better': 3, 'wedge_worse': 4}
+    EX wedge (3, [(1.0, 16.5), (18.0, 202.5), (203.5, 212.5)], 213.5, [(0.0, 50.75), (50.75, 101.5), (101.5, 152.25), (152.25, 203.0), (203.0, 213.5)], [(0.0, 18.0), (18.0, 79.667), (79.667, 141.333), (141.333, 203.0), (203.0, 213.5)], 7, 8)
+('v3c5', 'grid', 1.0) layouts 10000 | main {'n': 85937, 'isc': 48330, 'silent': 408, 'short': 35, 'lost': 0, 'bad': 65, 'wedge': 119860} | pr {'n': 85937, 'isc': 48220, 'silent': 408, 'short': 35, 'lost': 0, 'bad': 65, 'wedge': 119863}
+    cmp {'differ': 110, 'isc_better': 110, 'wedge_better': 3, 'wedge_worse': 6}
+    EX wedge (5, [(0.25, 7.75), (8.5, 131.25), (131.75, 153.25), (154.25, 225.5), (226.0, 383.25)], 385.0, [(0.0, 43.833), (43.833, 87.667), (87.667, 131.5), (131.5, 154.25), (154.25, 190.125), (190.125, 226.0), (226.0, 279.0), (279.0, 332.0), (332.0, 385.0)], [(0.0, 8.5), (8.5, 70.0), (70.0, 131.5), (131.5, 154.25), (154.25, 190.125), (190.125, 226.0), (226.0, 279.0), (279.0, 332.0), (332.0, 385.0)], 15, 16)
+('v3c5', 'grid', 1.3) layouts 10000 | main {'n': 86423, 'isc': 48595, 'silent': 376, 'short': 31, 'lost': 0, 'bad': 78, 'wedge': 120681} | pr {'n': 86423, 'isc': 48479, 'silent': 376, 'short': 31, 'lost': 0, 'bad': 78, 'wedge': 120682}
+    cmp {'differ': 114, 'isc_better': 114, 'wedge_better': 5, 'wedge_worse': 6}
+    EX wedge (3, [(0.25, 19.25), (20.25, 143.5), (144.5, 153.0)], 154.5, [(0.0, 48.0), (48.0, 96.0), (96.0, 144.0), (144.0, 154.5)], [(0.0, 20.25), (20.25, 82.125), (82.125, 144.0), (144.0, 154.5)], 5, 6)
+('v3c5', 'grid', 1.6) layouts 10000 | main {'n': 85117, 'isc': 47931, 'silent': 428, 'short': 32, 'lost': 0, 'bad': 87, 'wedge': 118704} | pr {'n': 85117, 'isc': 47821, 'silent': 428, 'short': 32, 'lost': 0, 'bad': 87, 'wedge': 118701}
+    cmp {'differ': 109, 'isc_better': 109, 'wedge_better': 6, 'wedge_worse': 3}
+    EX wedge (4, [(0.0, 66.75), (67.75, 83.0), (85.5, 274.25), (276.75, 283.0)], 283.0, [(0.0, 33.625), (33.625, 67.25), (67.25, 119.312), (119.312, 171.375), (171.375, 223.438), (223.438, 275.5), (275.5, 283.0)], [(0.0, 33.625), (33.625, 67.25), (67.25, 85.5), (85.5, 148.833), (148.833, 212.167), (212.167, 275.5), (275.5, 283.0)], 9, 10)
+('v3c5', 'grid', 2.0) layouts 10000 | main {'n': 85929, 'isc': 48338, 'silent': 424, 'short': 40, 'lost': 0, 'bad': 68, 'wedge': 119750} | pr {'n': 85929, 'isc': 48248, 'silent': 424, 'short': 40, 'lost': 0, 'bad': 68, 'wedge': 119751}
+    cmp {'differ': 90, 'isc_better': 90, 'wedge_better': 1, 'wedge_worse': 2}
+    EX wedge (5, [(1.25, 18.5), (18.75, 131.75), (132.75, 150.5), (153.25, 218.25), (220.75, 321.25)], 322.25, [(0.0, 44.083), (44.083, 88.167), (88.167, 132.25), (132.25, 153.25), (153.25, 218.25), (218.25, 270.25), (270.25, 322.25)], [(0.0, 18.75), (18.75, 75.5), (75.5, 132.25), (132.25, 153.25), (153.25, 218.25), (218.25, 270.25), (270.25, 322.25)], 11, 12)
+('v3c5', 'grid', 2.5) layouts 10000 | main {'n': 86120, 'isc': 48312, 'silent': 423, 'short': 38, 'lost': 0, 'bad': 71, 'wedge': 119981} | pr {'n': 86120, 'isc': 48205, 'silent': 423, 'short': 38, 'lost': 0, 'bad': 71, 'wedge': 119981}
+    cmp {'differ': 106, 'isc_better': 106, 'wedge_better': 3, 'wedge_worse': 3}
+    EX wedge (3, [(0.75, 16.0), (17.0, 139.5), (139.75, 149.0)], 149.0, [(0.0, 46.542), (46.542, 93.083), (93.083, 139.625), (139.625, 149.0)], [(0.0, 17.0), (17.0, 78.312), (78.312, 139.625), (139.625, 149.0)], 5, 6)
+('v3c5', 'lead', 0.5) layouts 10000 | main {'n': 56821, 'isc': 22052, 'silent': 28, 'short': 1441, 'lost': 0, 'bad': 22, 'wedge': 67585} | pr {'n': 56821, 'isc': 21809, 'silent': 28, 'short': 1441, 'lost': 0, 'bad': 22, 'wedge': 67616}
+    cmp {'differ': 243, 'isc_better': 243, 'wedge_worse': 31}
+    EX wedge (3, [(1.15, 3.624), (6.489, 196.337), (198.941, 212.304)], 212.304, [(0.0, 49.41), (49.41, 98.82), (98.82, 148.229), (148.229, 197.639), (197.639, 212.304)], [(0.0, 6.489), (6.489, 70.206), (70.206, 133.922), (133.922, 197.639), (197.639, 212.304)], 7, 8)
+('v3c5', 'lead', 0.75) layouts 10000 | main {'n': 57490, 'isc': 22243, 'silent': 36, 'short': 964, 'lost': 0, 'bad': 30, 'wedge': 69726} | pr {'n': 57490, 'isc': 21994, 'silent': 36, 'short': 964, 'lost': 0, 'bad': 30, 'wedge': 69751}
+    cmp {'differ': 249, 'isc_better': 249, 'wedge_better': 3, 'wedge_worse': 28}
+    EX wedge (3, [(1.465, 15.753), (18.124, 133.374), (135.461, 159.289)], 159.289, [(0.0, 44.806), (44.806, 89.612), (89.612, 134.417), (134.417, 159.289)], [(0.0, 18.124), (18.124, 76.271), (76.271, 134.417), (134.417, 159.289)], 5, 6)
+('v3c5', 'lead', 1.0) layouts 10000 | main {'n': 59150, 'isc': 23302, 'silent': 34, 'short': 714, 'lost': 0, 'bad': 29, 'wedge': 72412} | pr {'n': 59150, 'isc': 23065, 'silent': 34, 'short': 714, 'lost': 0, 'bad': 29, 'wedge': 72423}
+    cmp {'differ': 237, 'isc_better': 237, 'wedge_better': 3, 'wedge_worse': 14}
+    EX wedge (3, [(1.595, 16.365), (19.314, 132.534), (135.52, 157.909)], 158.505, [(0.0, 44.676), (44.676, 89.351), (89.351, 134.027), (134.027, 158.505)], [(0.0, 19.314), (19.314, 76.671), (76.671, 134.027), (134.027, 158.505)], 5, 6)
+('v3c5', 'lead', 1.3) layouts 10000 | main {'n': 65986, 'isc': 29747, 'silent': 1, 'short': 539, 'lost': 0, 'bad': 1, 'wedge': 87221} | pr {'n': 65986, 'isc': 29466, 'silent': 1, 'short': 539, 'lost': 0, 'bad': 1, 'wedge': 87244}
+    cmp {'differ': 281, 'isc_better': 281, 'wedge_better': 6, 'wedge_worse': 29}
+    EX wedge (3, [(1.588, 9.144), (12.12, 201.955), (203.729, 211.425)], 211.425, [(0.0, 50.711), (50.711, 101.421), (101.421, 152.131), (152.131, 202.842), (202.842, 211.425)], [(0.0, 12.12), (12.12, 75.694), (75.694, 139.268), (139.268, 202.842), (202.842, 211.425)], 7, 8)
+('v3c5', 'lead', 1.6) layouts 10000 | main {'n': 74456, 'isc': 37640, 'silent': 0, 'short': 429, 'lost': 0, 'bad': 0, 'wedge': 103826} | pr {'n': 74456, 'isc': 37300, 'silent': 0, 'short': 429, 'lost': 0, 'bad': 0, 'wedge': 103864}
+    cmp {'differ': 340, 'isc_better': 340, 'wedge_better': 5, 'wedge_worse': 43}
+    EX wedge (3, [(3.09, 19.534), (19.775, 207.256), (207.321, 216.0)], 219.971, [(0.09, 51.89), (51.89, 103.689), (103.689, 155.489), (155.489, 207.288), (207.288, 219.0)], [(0.09, 19.775), (19.775, 82.279), (82.279, 144.784), (144.784, 207.288), (207.288, 219.0)], 7, 8)
+('v3c5', 'lead', 2.0) layouts 10000 | main {'n': 85422, 'isc': 48241, 'silent': 0, 'short': 349, 'lost': 0, 'bad': 0, 'wedge': 126517} | pr {'n': 85422, 'isc': 47895, 'silent': 0, 'short': 349, 'lost': 0, 'bad': 0, 'wedge': 126558}
+    cmp {'differ': 345, 'isc_better': 345, 'wedge_better': 12, 'wedge_worse': 53}
+    EX wedge (3, [(1.583, 16.749), (17.367, 399.787), (400.001, 409.518)], 410.623, [(0.0, 57.128), (57.128, 114.255), (114.255, 171.383), (171.383, 228.511), (228.511, 285.639), (285.639, 342.766), (342.766, 399.894), (399.894, 410.623)], [(0.0, 17.367), (17.367, 81.121), (81.121, 144.876), (144.876, 208.631), (208.631, 272.385), (272.385, 336.139), (336.139, 399.894), (399.894, 410.623)], 13, 14)
+('v3c5', 'lead', 2.5) layouts 10000 | main {'n': 97354, 'isc': 59640, 'silent': 0, 'short': 250, 'lost': 0, 'bad': 0, 'wedge': 151075} | pr {'n': 97354, 'isc': 59223, 'silent': 0, 'short': 250, 'lost': 0, 'bad': 0, 'wedge': 151125}
+    cmp {'differ': 411, 'isc_better': 411, 'wedge_better': 12, 'wedge_worse': 62}
+    EX wedge (3, [(0.399, 18.312), (21.206, 524.742), (524.959, 532.047)], 532.047, [(0.0, 58.317), (58.317, 116.633), (116.633, 174.95), (174.95, 233.267), (233.267, 291.584), (291.584, 349.9), (349.9, 408.217), (408.217, 466.534), (466.534, 524.851), (524.851, 532.047)], [(0.0, 21.206), (21.206, 84.162), (84.162, 147.117), (147.117, 210.073), (210.073, 273.028), (273.028, 335.984), (335.984, 398.939), (398.939, 461.895), (461.895, 524.851), (524.851, 532.047)], 17, 18)
+('v3c5', 'longend', 0.5) layouts 10000 | main {'n': 41258, 'isc': 18517, 'silent': 14, 'short': 545, 'lost': 0, 'bad': 14, 'wedge': 41674} | pr {'n': 41258, 'isc': 18162, 'silent': 14, 'short': 545, 'lost': 0, 'bad': 14, 'wedge': 41583}
+    cmp {'differ': 355, 'isc_better': 355, 'wedge_better': 90}
+('v3c5', 'longend', 0.75) layouts 10000 | main {'n': 43829, 'isc': 18593, 'silent': 8, 'short': 364, 'lost': 0, 'bad': 8, 'wedge': 44883} | pr {'n': 43829, 'isc': 18284, 'silent': 8, 'short': 364, 'lost': 0, 'bad': 8, 'wedge': 44797}
+    cmp {'differ': 309, 'isc_better': 309, 'wedge_better': 85}
+('v3c5', 'longend', 1.0) layouts 10000 | main {'n': 46418, 'isc': 18569, 'silent': 7, 'short': 226, 'lost': 0, 'bad': 7, 'wedge': 48877} | pr {'n': 46418, 'isc': 18339, 'silent': 7, 'short': 226, 'lost': 0, 'bad': 7, 'wedge': 48824}
+    cmp {'differ': 230, 'isc_better': 230, 'wedge_better': 52}
+('v3c5', 'longend', 1.3) layouts 10000 | main {'n': 49367, 'isc': 18903, 'silent': 4, 'short': 193, 'lost': 0, 'bad': 4, 'wedge': 54359} | pr {'n': 49367, 'isc': 18694, 'silent': 4, 'short': 193, 'lost': 0, 'bad': 4, 'wedge': 54318}
+    cmp {'differ': 209, 'isc_better': 209, 'wedge_better': 40}
+('v3c5', 'longend', 1.6) layouts 10000 | main {'n': 53847, 'isc': 21862, 'silent': 9, 'short': 148, 'lost': 0, 'bad': 9, 'wedge': 61550} | pr {'n': 53847, 'isc': 21674, 'silent': 9, 'short': 148, 'lost': 0, 'bad': 9, 'wedge': 61532}
+    cmp {'differ': 188, 'isc_better': 188, 'wedge_better': 19, 'wedge_worse': 1}
+    EX wedge (7, [(2.686, 38.085), (41.259, 93.661), (94.116, 113.36), (113.694, 161.891), (161.891, 240.431), (241.675, 255.841), (256.058, 449.575)], 449.951, [(0.0, 38.085), (41.259, 93.888), (93.888, 142.943), (142.943, 191.998), (191.998, 241.053), (241.053, 293.277), (293.277, 345.502), (345.502, 397.726), (397.726, 449.951)], [(0.0, 38.085), (41.259, 93.888), (93.888, 113.694), (113.694, 177.374), (177.374, 241.053), (241.053, 293.277), (293.277, 345.502), (345.502, 397.726), (397.726, 449.951)], 12, 13)
+('v3c5', 'longend', 2.0) layouts 10000 | main {'n': 58014, 'isc': 24688, 'silent': 3, 'short': 124, 'lost': 0, 'bad': 3, 'wedge': 71082} | pr {'n': 58014, 'isc': 24502, 'silent': 3, 'short': 124, 'lost': 0, 'bad': 3, 'wedge': 71065}
+    cmp {'differ': 186, 'isc_better': 186, 'wedge_better': 17}
+('v3c5', 'longend', 2.5) layouts 10000 | main {'n': 61962, 'isc': 27273, 'silent': 2, 'short': 79, 'lost': 0, 'bad': 2, 'wedge': 79785} | pr {'n': 61962, 'isc': 26939, 'silent': 2, 'short': 79, 'lost': 0, 'bad': 2, 'wedge': 79779}
+    cmp {'differ': 332, 'isc_better': 332, 'wedge_better': 19, 'wedge_worse': 13}
+    EX wedge (4, [(3.442, 19.328), (20.214, 134.263), (134.896, 159.631), (164.438, 303.931)], 306.866, [(0.442, 45.154), (45.154, 89.867), (89.867, 134.579), (134.579, 159.631), (164.438, 211.914), (211.914, 259.39), (259.39, 306.866)], [(0.442, 20.214), (20.214, 77.397), (77.397, 134.579), (134.579, 159.631), (164.438, 211.914), (211.914, 259.39), (259.39, 306.866)], 9, 10)
+('v3c5', 'many', 0.5) layouts 10000 | main {'n': 58647, 'isc': 0, 'silent': 3809, 'short': 10149, 'lost': 0, 'bad': 809, 'wedge': 0} | pr {'n': 58647, 'isc': 0, 'silent': 3809, 'short': 10149, 'lost': 0, 'bad': 809, 'wedge': 0}
+    cmp {}
+('v3c5', 'many', 0.75) layouts 10000 | main {'n': 64281, 'isc': 0, 'silent': 2627, 'short': 6960, 'lost': 0, 'bad': 634, 'wedge': 0} | pr {'n': 64281, 'isc': 0, 'silent': 2627, 'short': 6960, 'lost': 0, 'bad': 634, 'wedge': 0}
+    cmp {}
+('v3c5', 'many', 1.0) layouts 10000 | main {'n': 66511, 'isc': 0, 'silent': 1951, 'short': 5218, 'lost': 0, 'bad': 577, 'wedge': 3} | pr {'n': 66511, 'isc': 0, 'silent': 1951, 'short': 5218, 'lost': 0, 'bad': 577, 'wedge': 3}
+    cmp {}
+('v3c5', 'many', 1.3) layouts 10000 | main {'n': 69338, 'isc': 0, 'silent': 1342, 'short': 4056, 'lost': 0, 'bad': 493, 'wedge': 30} | pr {'n': 69338, 'isc': 0, 'silent': 1342, 'short': 4056, 'lost': 0, 'bad': 493, 'wedge': 30}
+    cmp {}
+('v3c5', 'many', 1.6) layouts 10000 | main {'n': 71960, 'isc': 0, 'silent': 846, 'short': 3145, 'lost': 0, 'bad': 372, 'wedge': 118} | pr {'n': 71960, 'isc': 0, 'silent': 846, 'short': 3145, 'lost': 0, 'bad': 372, 'wedge': 118}
+    cmp {}
+('v3c5', 'many', 2.0) layouts 10000 | main {'n': 75458, 'isc': 0, 'silent': 463, 'short': 2398, 'lost': 0, 'bad': 280, 'wedge': 498} | pr {'n': 75458, 'isc': 0, 'silent': 463, 'short': 2398, 'lost': 0, 'bad': 280, 'wedge': 498}
+    cmp {}
+('v3c5', 'many', 2.5) layouts 10000 | main {'n': 80287, 'isc': 1, 'silent': 157, 'short': 1868, 'lost': 0, 'bad': 106, 'wedge': 1740} | pr {'n': 80287, 'isc': 1, 'silent': 157, 'short': 1868, 'lost': 0, 'bad': 106, 'wedge': 1740}
+    cmp {}
+('v3c5', 'mix', 0.5) layouts 10000 | main {'n': 15498, 'isc': 0, 'silent': 7747, 'short': 379, 'lost': 0, 'bad': 973, 'wedge': 93} | pr {'n': 15498, 'isc': 0, 'silent': 7747, 'short': 379, 'lost': 0, 'bad': 973, 'wedge': 93}
+    cmp {}
+('v3c5', 'mix', 0.75) layouts 10000 | main {'n': 20197, 'isc': 0, 'silent': 5823, 'short': 378, 'lost': 0, 'bad': 771, 'wedge': 1118} | pr {'n': 20197, 'isc': 0, 'silent': 5823, 'short': 378, 'lost': 0, 'bad': 771, 'wedge': 1118}
+    cmp {}
+('v3c5', 'mix', 1.0) layouts 10000 | main {'n': 24332, 'isc': 0, 'silent': 4474, 'short': 400, 'lost': 0, 'bad': 655, 'wedge': 4127} | pr {'n': 24332, 'isc': 0, 'silent': 4474, 'short': 400, 'lost': 0, 'bad': 655, 'wedge': 4127}
+    cmp {}
+('v3c5', 'mix', 1.3) layouts 10000 | main {'n': 28495, 'isc': 1, 'silent': 3537, 'short': 330, 'lost': 0, 'bad': 503, 'wedge': 9807} | pr {'n': 28495, 'isc': 1, 'silent': 3537, 'short': 330, 'lost': 0, 'bad': 503, 'wedge': 9807}
+    cmp {}
+('v3c5', 'mix', 1.6) layouts 10000 | main {'n': 35734, 'isc': 4050, 'silent': 2749, 'short': 285, 'lost': 0, 'bad': 444, 'wedge': 19851} | pr {'n': 35734, 'isc': 4050, 'silent': 2749, 'short': 285, 'lost': 0, 'bad': 444, 'wedge': 19851}
+    cmp {}
+('v3c5', 'mix', 2.0) layouts 10000 | main {'n': 40947, 'isc': 7472, 'silent': 2294, 'short': 243, 'lost': 0, 'bad': 319, 'wedge': 30799} | pr {'n': 40947, 'isc': 7472, 'silent': 2294, 'short': 243, 'lost': 0, 'bad': 319, 'wedge': 30799}
+    cmp {}
+('v3c5', 'mix', 2.5) layouts 10000 | main {'n': 45609, 'isc': 10292, 'silent': 1834, 'short': 180, 'lost': 0, 'bad': 246, 'wedge': 41284} | pr {'n': 45609, 'isc': 10147, 'silent': 1834, 'short': 180, 'lost': 0, 'bad': 246, 'wedge': 41290}
+    cmp {'differ': 145, 'isc_better': 145, 'wedge_better': 9, 'wedge_worse': 15}
+    EX wedge (3, [(1.157, 8.691), (10.19, 132.832), (133.723, 148.178)], 150.76, [(0.0, 44.426), (44.426, 88.852), (88.852, 133.278), (133.278, 150.76)], [(0.0, 10.19), (10.19, 71.734), (71.734, 133.278), (133.278, 150.76)], 5, 6)
+('v3c5', 'over', 0.5) layouts 10000 | main {'n': 64743, 'isc': 26981, 'silent': 794, 'short': 634, 'lost': 0, 'bad': 197, 'wedge': 72033} | pr {'n': 64743, 'isc': 26974, 'silent': 794, 'short': 634, 'lost': 0, 'bad': 197, 'wedge': 72033}
+    cmp {'differ': 7, 'isc_better': 7}
+('v3c5', 'over', 0.75) layouts 10000 | main {'n': 66241, 'isc': 28007, 'silent': 600, 'short': 538, 'lost': 0, 'bad': 146, 'wedge': 78197} | pr {'n': 66241, 'isc': 28002, 'silent': 600, 'short': 538, 'lost': 0, 'bad': 146, 'wedge': 78196}
+    cmp {'differ': 5, 'isc_better': 5, 'wedge_better': 1}
+('v3c5', 'over', 1.0) layouts 10000 | main {'n': 73279, 'isc': 34403, 'silent': 497, 'short': 539, 'lost': 0, 'bad': 114, 'wedge': 88692} | pr {'n': 73279, 'isc': 34396, 'silent': 497, 'short': 539, 'lost': 0, 'bad': 114, 'wedge': 88689}
+    cmp {'differ': 7, 'isc_better': 7, 'wedge_better': 3}
+('v3c5', 'over', 1.3) layouts 10000 | main {'n': 75502, 'isc': 36566, 'silent': 493, 'short': 438, 'lost': 0, 'bad': 112, 'wedge': 96412} | pr {'n': 75502, 'isc': 36559, 'silent': 493, 'short': 438, 'lost': 0, 'bad': 112, 'wedge': 96412}
+    cmp {'differ': 7, 'isc_better': 7, 'wedge_better': 1, 'wedge_worse': 1}
+    EX wedge (7, [(2.77, 12.06), (12.46, 26.751), (26.751, 202.591), (202.805, 209.35), (212.738, 379.104), (379.484, 386.743), (386.988, 452.423)], 458.319, [(0.0, 50.675), (50.675, 101.349), (101.349, 152.024), (152.024, 202.698), (202.698, 209.35), (212.738, 268.257), (268.257, 323.775), (323.775, 379.294), (379.294, 417.358), (417.358, 455.423)], [(0.0, 12.46), (12.46, 75.873), (75.873, 139.285), (139.285, 202.698), (202.698, 209.35), (212.738, 268.257), (268.257, 323.775), (323.775, 379.294), (379.294, 417.358), (417.358, 455.423)], 13, 14)
+('v3c5', 'over', 1.6) layouts 10000 | main {'n': 80208, 'isc': 41001, 'silent': 422, 'short': 425, 'lost': 0, 'bad': 101, 'wedge': 105694} | pr {'n': 80208, 'isc': 40985, 'silent': 422, 'short': 425, 'lost': 0, 'bad': 101, 'wedge': 105692}
+    cmp {'differ': 16, 'isc_better': 16, 'wedge_better': 3, 'wedge_worse': 1}
+    EX wedge (6, [(0.139, 69.982), (70.495, 87.527), (89.12, 200.563), (201.041, 214.543), (215.387, 345.247), (346.099, 450.351)], 452.002, [(0.0, 35.119), (35.119, 70.239), (70.239, 113.76), (113.76, 157.281), (157.281, 200.802), (200.802, 249.234), (249.234, 297.667), (297.667, 346.099), (346.099, 399.05), (399.05, 452.002)], [(0.0, 35.119), (35.119, 70.239), (70.239, 89.12), (89.12, 144.961), (144.961, 200.802), (200.802, 249.234), (249.234, 297.667), (297.667, 346.099), (346.099, 399.05), (399.05, 452.002)], 15, 16)
+('v3c5', 'over', 2.0) layouts 10000 | main {'n': 87260, 'isc': 47855, 'silent': 448, 'short': 405, 'lost': 0, 'bad': 105, 'wedge': 119835} | pr {'n': 87260, 'isc': 47772, 'silent': 448, 'short': 405, 'lost': 0, 'bad': 105, 'wedge': 119821}
+    cmp {'differ': 83, 'isc_better': 83, 'wedge_better': 16, 'wedge_worse': 2}
+    EX wedge (5, [(1.086, 12.003), (14.286, 132.096), (132.401, 134.998), (134.998, 142.101), (142.101, 144.391)], 145.615, [(0.0, 44.083), (44.083, 88.166), (88.166, 132.249), (132.249, 145.615)], [(0.0, 14.286), (14.286, 73.267), (73.267, 132.249), (132.249, 145.615)], 5, 6)
+('v3c5', 'over', 2.5) layouts 10000 | main {'n': 92541, 'isc': 52880, 'silent': 390, 'short': 370, 'lost': 0, 'bad': 72, 'wedge': 130611} | pr {'n': 92541, 'isc': 52783, 'silent': 390, 'short': 370, 'lost': 0, 'bad': 72, 'wedge': 130598}
+    cmp {'differ': 97, 'isc_better': 97, 'wedge_better': 16, 'wedge_worse': 3}
+    EX wedge (4, [(1.782, 4.593), (7.46, 328.55), (331.301, 336.741), (339.73, 405.383)], 405.383, [(0.0, 54.988), (54.988, 109.975), (109.975, 164.963), (164.963, 219.95), (219.95, 274.938), (274.938, 329.925), (329.925, 367.654), (367.654, 405.383)], [(0.0, 7.46), (7.46, 71.953), (71.953, 136.446), (136.446, 200.939), (200.939, 265.432), (265.432, 329.925), (329.925, 367.654), (367.654, 405.383)], 12, 13)
+('whis', 'degen', 0.5) layouts 9900 | main {'n': 19575, 'isc': 4897, 'silent': 4146, 'short': 286, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 19575, 'isc': 4868, 'silent': 4146, 'short': 286, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 29, 'isc_better': 29}
+('whis', 'degen', 0.75) layouts 9931 | main {'n': 24698, 'isc': 8462, 'silent': 3252, 'short': 270, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 24698, 'isc': 8376, 'silent': 3252, 'short': 270, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 86, 'isc_better': 86}
+('whis', 'degen', 1.0) layouts 9943 | main {'n': 29504, 'isc': 12627, 'silent': 2830, 'short': 243, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 29504, 'isc': 12438, 'silent': 2830, 'short': 243, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 190, 'isc_better': 187}
+('whis', 'degen', 1.3) layouts 9966 | main {'n': 35531, 'isc': 17431, 'silent': 2478, 'short': 232, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 35531, 'isc': 17200, 'silent': 2478, 'short': 232, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 231, 'isc_better': 230}
+('whis', 'degen', 1.6) layouts 9968 | main {'n': 40818, 'isc': 22659, 'silent': 2435, 'short': 224, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 40818, 'isc': 22447, 'silent': 2435, 'short': 224, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 209, 'isc_better': 209}
+('whis', 'degen', 2.0) layouts 9976 | main {'n': 47651, 'isc': 29336, 'silent': 2357, 'short': 196, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 47651, 'isc': 29054, 'silent': 2357, 'short': 196, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 278, 'isc_better': 278}
+('whis', 'degen', 2.5) layouts 9984 | main {'n': 56048, 'isc': 37417, 'silent': 2243, 'short': 158, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 56048, 'isc': 36999, 'silent': 2243, 'short': 158, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 405, 'isc_better': 405}
+('whis', 'gaphi', 0.5) layouts 10000 | main {'n': 35549, 'isc': 0, 'silent': 1407, 'short': 1009, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 35549, 'isc': 0, 'silent': 1407, 'short': 1009, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('whis', 'gaphi', 0.75) layouts 10000 | main {'n': 46630, 'isc': 5701, 'silent': 812, 'short': 758, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 46630, 'isc': 5701, 'silent': 812, 'short': 758, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('whis', 'gaphi', 1.0) layouts 10000 | main {'n': 56136, 'isc': 12079, 'silent': 571, 'short': 532, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 56136, 'isc': 11532, 'silent': 571, 'short': 532, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 602, 'isc_better': 536}
+('whis', 'gaphi', 1.3) layouts 10000 | main {'n': 67392, 'isc': 20982, 'silent': 364, 'short': 433, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 67392, 'isc': 20032, 'silent': 364, 'short': 433, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 944, 'isc_better': 921}
+('whis', 'gaphi', 1.6) layouts 10000 | main {'n': 79569, 'isc': 32512, 'silent': 249, 'short': 287, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 79569, 'isc': 31515, 'silent': 249, 'short': 287, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 980, 'isc_better': 958}
+('whis', 'gaphi', 2.0) layouts 10000 | main {'n': 94044, 'isc': 46438, 'silent': 180, 'short': 197, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 94044, 'isc': 45012, 'silent': 180, 'short': 197, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1392, 'isc_better': 1363}
+('whis', 'gaphi', 2.5) layouts 10000 | main {'n': 109127, 'isc': 60647, 'silent': 152, 'short': 153, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 109127, 'isc': 58413, 'silent': 152, 'short': 153, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 2057, 'isc_better': 2046}
+('whis', 'gaplo', 0.5) layouts 10000 | main {'n': 36194, 'isc': 1550, 'silent': 1562, 'short': 967, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 36194, 'isc': 1517, 'silent': 1562, 'short': 967, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 33, 'isc_better': 33}
+('whis', 'gaplo', 0.75) layouts 10000 | main {'n': 49546, 'isc': 9486, 'silent': 834, 'short': 784, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 49546, 'isc': 9244, 'silent': 834, 'short': 784, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 247, 'isc_better': 242}
+('whis', 'gaplo', 1.0) layouts 10000 | main {'n': 60416, 'isc': 17261, 'silent': 528, 'short': 637, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 60416, 'isc': 16589, 'silent': 528, 'short': 637, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 671, 'isc_better': 656}
+('whis', 'gaplo', 1.3) layouts 10000 | main {'n': 73403, 'isc': 27907, 'silent': 342, 'short': 511, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 73403, 'isc': 27049, 'silent': 342, 'short': 511, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 848, 'isc_better': 842}
+('whis', 'gaplo', 1.6) layouts 10000 | main {'n': 87101, 'isc': 41146, 'silent': 253, 'short': 439, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 87101, 'isc': 40233, 'silent': 253, 'short': 439, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 889, 'isc_better': 887}
+('whis', 'gaplo', 2.0) layouts 10000 | main {'n': 103609, 'isc': 56859, 'silent': 211, 'short': 268, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 103609, 'isc': 55665, 'silent': 211, 'short': 268, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1142, 'isc_better': 1137}
+('whis', 'gaplo', 2.5) layouts 10000 | main {'n': 122583, 'isc': 74650, 'silent': 123, 'short': 188, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 122583, 'isc': 72995, 'silent': 123, 'short': 188, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1569, 'isc_better': 1567}
+('whis', 'grid', 0.5) layouts 10000 | main {'n': 86008, 'isc': 49126, 'silent': 329, 'short': 75, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 86008, 'isc': 48611, 'silent': 329, 'short': 75, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 507, 'isc_better': 504}
+('whis', 'grid', 0.75) layouts 10000 | main {'n': 85249, 'isc': 48712, 'silent': 319, 'short': 95, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 85249, 'isc': 48204, 'silent': 319, 'short': 95, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 494, 'isc_better': 490}
+('whis', 'grid', 1.0) layouts 10000 | main {'n': 85911, 'isc': 49173, 'silent': 288, 'short': 86, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 85911, 'isc': 48666, 'silent': 288, 'short': 86, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 497, 'isc_better': 493}
+('whis', 'grid', 1.3) layouts 10000 | main {'n': 86221, 'isc': 49350, 'silent': 335, 'short': 92, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 86221, 'isc': 48808, 'silent': 335, 'short': 92, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 527, 'isc_better': 525}
+('whis', 'grid', 1.6) layouts 10000 | main {'n': 85699, 'isc': 48979, 'silent': 334, 'short': 92, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 85699, 'isc': 48452, 'silent': 334, 'short': 92, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 517, 'isc_better': 516}
+('whis', 'grid', 2.0) layouts 10000 | main {'n': 85509, 'isc': 48910, 'silent': 319, 'short': 88, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 85509, 'isc': 48394, 'silent': 319, 'short': 88, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 506, 'isc_better': 503}
+('whis', 'grid', 2.5) layouts 10000 | main {'n': 85761, 'isc': 49132, 'silent': 327, 'short': 78, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 85761, 'isc': 48589, 'silent': 327, 'short': 78, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 534, 'isc_better': 531}
+('whis', 'lead', 0.5) layouts 10000 | main {'n': 55853, 'isc': 22981, 'silent': 0, 'short': 1439, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 55853, 'isc': 21823, 'silent': 0, 'short': 1439, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1168, 'isc_better': 1156}
+('whis', 'lead', 0.75) layouts 10000 | main {'n': 58778, 'isc': 24698, 'silent': 0, 'short': 974, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 58778, 'isc': 23398, 'silent': 0, 'short': 974, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1301, 'isc_better': 1294}
+('whis', 'lead', 1.0) layouts 10000 | main {'n': 61534, 'isc': 26975, 'silent': 0, 'short': 747, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 61534, 'isc': 25723, 'silent': 0, 'short': 747, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1258, 'isc_better': 1248}
+('whis', 'lead', 1.3) layouts 10000 | main {'n': 70538, 'isc': 35610, 'silent': 0, 'short': 565, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 70538, 'isc': 33899, 'silent': 0, 'short': 565, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1677, 'isc_better': 1668}
+('whis', 'lead', 1.6) layouts 10000 | main {'n': 79510, 'isc': 44435, 'silent': 0, 'short': 484, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 79510, 'isc': 42652, 'silent': 0, 'short': 484, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1749, 'isc_better': 1744}
+('whis', 'lead', 2.0) layouts 10000 | main {'n': 90892, 'isc': 55590, 'silent': 0, 'short': 403, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 90892, 'isc': 53899, 'silent': 0, 'short': 403, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1653, 'isc_better': 1650}
+('whis', 'lead', 2.5) layouts 10000 | main {'n': 105199, 'isc': 69331, 'silent': 0, 'short': 321, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 105199, 'isc': 67393, 'silent': 0, 'short': 321, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1869, 'isc_better': 1865}
+('whis', 'longend', 0.5) layouts 10000 | main {'n': 46106, 'isc': 20023, 'silent': 0, 'short': 558, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 46106, 'isc': 18905, 'silent': 0, 'short': 558, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1129, 'isc_better': 1118}
+('whis', 'longend', 0.75) layouts 10000 | main {'n': 52804, 'isc': 23297, 'silent': 0, 'short': 419, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 52804, 'isc': 22217, 'silent': 0, 'short': 419, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1086, 'isc_better': 1080}
+('whis', 'longend', 1.0) layouts 10000 | main {'n': 58323, 'isc': 26712, 'silent': 0, 'short': 308, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 58323, 'isc': 25622, 'silent': 0, 'short': 308, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1100, 'isc_better': 1078}
+('whis', 'longend', 1.3) layouts 10000 | main {'n': 65417, 'isc': 31852, 'silent': 0, 'short': 242, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 65417, 'isc': 30861, 'silent': 0, 'short': 242, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 975, 'isc_better': 965}
+('whis', 'longend', 1.6) layouts 10000 | main {'n': 71975, 'isc': 38170, 'silent': 0, 'short': 219, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 71975, 'isc': 37278, 'silent': 0, 'short': 219, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 888, 'isc_better': 880}
+('whis', 'longend', 2.0) layouts 10000 | main {'n': 80457, 'isc': 45903, 'silent': 0, 'short': 131, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 80457, 'isc': 44777, 'silent': 0, 'short': 131, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1108, 'isc_better': 1101}
+('whis', 'longend', 2.5) layouts 10000 | main {'n': 90088, 'isc': 54789, 'silent': 0, 'short': 109, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 90088, 'isc': 53453, 'silent': 0, 'short': 109, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1292, 'isc_better': 1287}
+('whis', 'many', 0.5) layouts 10000 | main {'n': 74140, 'isc': 0, 'silent': 329, 'short': 12627, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 74140, 'isc': 0, 'silent': 329, 'short': 12627, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('whis', 'many', 0.75) layouts 10000 | main {'n': 77663, 'isc': 0, 'silent': 100, 'short': 8042, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 77663, 'isc': 0, 'silent': 100, 'short': 8042, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('whis', 'many', 1.0) layouts 10000 | main {'n': 82858, 'isc': 0, 'silent': 20, 'short': 5929, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 82858, 'isc': 0, 'silent': 20, 'short': 5929, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('whis', 'many', 1.3) layouts 10000 | main {'n': 88795, 'isc': 2, 'silent': 3, 'short': 4511, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 88795, 'isc': 2, 'silent': 3, 'short': 4511, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('whis', 'many', 1.6) layouts 10000 | main {'n': 95483, 'isc': 23, 'silent': 0, 'short': 3607, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 95483, 'isc': 23, 'silent': 0, 'short': 3607, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('whis', 'many', 2.0) layouts 10000 | main {'n': 104088, 'isc': 153, 'silent': 0, 'short': 2812, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 104088, 'isc': 152, 'silent': 0, 'short': 2812, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1, 'isc_better': 1}
+('whis', 'many', 2.5) layouts 10000 | main {'n': 117845, 'isc': 660, 'silent': 0, 'short': 2195, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 117845, 'isc': 641, 'silent': 0, 'short': 2195, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 19, 'isc_better': 19}
+('whis', 'mix', 0.5) layouts 10000 | main {'n': 27734, 'isc': 0, 'silent': 2898, 'short': 1176, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 27734, 'isc': 0, 'silent': 2898, 'short': 1176, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('whis', 'mix', 0.75) layouts 10000 | main {'n': 35960, 'isc': 4318, 'silent': 2048, 'short': 893, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 35960, 'isc': 4318, 'silent': 2048, 'short': 893, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {}
+('whis', 'mix', 1.0) layouts 10000 | main {'n': 42796, 'isc': 8858, 'silent': 1623, 'short': 702, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 42796, 'isc': 8549, 'silent': 1623, 'short': 702, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 317, 'isc_better': 306}
+('whis', 'mix', 1.3) layouts 10000 | main {'n': 51202, 'isc': 15422, 'silent': 1194, 'short': 588, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 51202, 'isc': 14927, 'silent': 1194, 'short': 588, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 496, 'isc_better': 486}
+('whis', 'mix', 1.6) layouts 10000 | main {'n': 60663, 'isc': 24293, 'silent': 968, 'short': 384, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 60663, 'isc': 23750, 'silent': 968, 'short': 384, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 530, 'isc_better': 527}
+('whis', 'mix', 2.0) layouts 10000 | main {'n': 70914, 'isc': 34016, 'silent': 828, 'short': 313, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 70914, 'isc': 33261, 'silent': 828, 'short': 313, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 736, 'isc_better': 729}
+('whis', 'mix', 2.5) layouts 10000 | main {'n': 83000, 'isc': 45249, 'silent': 695, 'short': 216, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 83000, 'isc': 44121, 'silent': 695, 'short': 216, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 1092, 'isc_better': 1088}
+('whis', 'over', 0.5) layouts 10000 | main {'n': 63983, 'isc': 27329, 'silent': 435, 'short': 642, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 63983, 'isc': 27294, 'silent': 435, 'short': 642, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 35, 'isc_better': 35}
+('whis', 'over', 0.75) layouts 10000 | main {'n': 67033, 'isc': 28620, 'silent': 303, 'short': 570, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 67033, 'isc': 28426, 'silent': 303, 'short': 570, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 196, 'isc_better': 193}
+('whis', 'over', 1.0) layouts 10000 | main {'n': 72837, 'isc': 34486, 'silent': 281, 'short': 495, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 72837, 'isc': 34455, 'silent': 281, 'short': 495, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 31, 'isc_better': 31}
+('whis', 'over', 1.3) layouts 10000 | main {'n': 75737, 'isc': 37144, 'silent': 241, 'short': 493, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 75737, 'isc': 36745, 'silent': 241, 'short': 493, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 405, 'isc_better': 397}
+('whis', 'over', 1.6) layouts 10000 | main {'n': 80187, 'isc': 41512, 'silent': 244, 'short': 430, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 80187, 'isc': 41062, 'silent': 244, 'short': 430, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 440, 'isc_better': 439}
+('whis', 'over', 2.0) layouts 10000 | main {'n': 87575, 'isc': 48620, 'silent': 254, 'short': 405, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 87575, 'isc': 48415, 'silent': 254, 'short': 405, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 208, 'isc_better': 205}
+('whis', 'over', 2.5) layouts 10000 | main {'n': 93414, 'isc': 54152, 'silent': 201, 'short': 405, 'lost': 0, 'bad': 0, 'wedge': 0} | pr {'n': 93414, 'isc': 53679, 'silent': 201, 'short': 405, 'lost': 0, 'bad': 0, 'wedge': 0}
+    cmp {'differ': 469, 'isc_better': 468}
+TOTAL v2c5 layouts 629607 main {'n': 5250652, 'isc': 2522609, 'silent': 46150, 'short': 64591, 'lost': 0, 'bad': 19966, 'wedge': 6122772} pr {'n': 5250652, 'isc': 2419105, 'silent': 46150, 'short': 64591, 'lost': 0, 'bad': 19966, 'wedge': 6205386}
+       {'differ': 112294, 'isc_better': 96984, 'wedge_better': 4054, 'wedge_worse': 75956}
+TOTAL v2c0 layouts 629680 main {'n': 4419766, 'isc': 1810886, 'silent': 42297, 'short': 63048, 'lost': 0, 'bad': 0, 'wedge': 0} pr {'n': 4419766, 'isc': 1770803, 'silent': 42297, 'short': 63048, 'lost': 0, 'bad': 0, 'wedge': 0}
+       {'differ': 39397, 'isc_better': 38989}
+TOTAL v3c5 layouts 629658 main {'n': 3410831, 'isc': 1146468, 'silent': 114954, 'short': 50848, 'lost': 0, 'bad': 20134, 'wedge': 3264235} pr {'n': 3410831, 'isc': 1140742, 'silent': 114954, 'short': 50848, 'lost': 0, 'bad': 20134, 'wedge': 3264139}
+       {'differ': 5705, 'isc_better': 5705, 'wedge_better': 497, 'wedge_worse': 405}
+TOTAL whis layouts 629668 main {'n': 4416863, 'isc': 1808652, 'silent': 42245, 'short': 63732, 'lost': 0, 'bad': 0, 'wedge': 0} pr {'n': 4416863, 'isc': 1768323, 'silent': 42245, 'short': 63732, 'lost': 0, 'bad': 0, 'wedge': 0}
+       {'differ': 39612, 'isc_better': 39232}
+time 131.0

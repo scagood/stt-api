@@ -1,0 +1,4 @@
+mode random seed 1 ms 400: 300 pauses
+  main  ctx0 kept 2330 cut 22 dropped 417 | ctx5 kept 2330 cut+dropped 439 | retime words with a pause in them 582
+  head  ctx0 kept 2336 cut 17 dropped 416 | ctx5 kept 2336 cut+dropped 433 | retime words with a pause in them 560
+  head better than main in 22 cases, worse in 0: []

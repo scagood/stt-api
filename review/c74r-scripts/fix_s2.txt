@@ -1,0 +1,24 @@
+== v2 ctx5: 2534 chunked layouts
+  totals main308      {'isc': 6791, 'silent': 51, 'n': 16794, 'lost_layouts': 0, 'bad': 0, 'min<2s': 611, 'min<5s': 1603}
+  totals c73d2b9      {'isc': 6785, 'silent': 0, 'n': 16697, 'lost_layouts': 0, 'bad': 0, 'min<2s': 192, 'min<5s': 818}
+  totals fixgrid      {'isc': 6222, 'silent': 0, 'n': 16698, 'lost_layouts': 0, 'bad': 0, 'min<2s': 193, 'min<5s': 838}
+  fixgrid vs main308      {'isc_better': 539, 'minlen_longer': 1549, 'minlen_shorter': 5, 'n_better': 95, 'silent_better': 51}
+  fixgrid vs c73d2b9      {'isc_better': 537, 'minlen_longer': 2, 'minlen_shorter': 182, 'n_worse': 1}
+== v2 ctx0: 2549 chunked layouts
+  totals main308      {'isc': 2698, 'silent': 0, 'n': 12372, 'lost_layouts': 0, 'bad': 0, 'min<2s': 164, 'min<5s': 705}
+  totals c73d2b9      {'isc': 2591, 'silent': 0, 'n': 12268, 'lost_layouts': 0, 'bad': 0, 'min<2s': 164, 'min<5s': 705}
+  totals fixgrid      {'isc': 2490, 'silent': 0, 'n': 12268, 'lost_layouts': 0, 'bad': 0, 'min<2s': 164, 'min<5s': 705}
+  fixgrid vs main308      {'isc_better': 203, 'minlen_longer': 623, 'minlen_shorter': 6, 'n_better': 103}
+  fixgrid vs c73d2b9      {'isc_better': 100, 'minlen_shorter': 25}
+== v3 ctx5: 1661 chunked layouts
+  totals main308      {'isc': 0, 'silent': 0, 'n': 6009, 'lost_layouts': 0, 'bad': 0, 'min<2s': 114, 'min<5s': 363}
+  totals c73d2b9      {'isc': 0, 'silent': 0, 'n': 6009, 'lost_layouts': 0, 'bad': 0, 'min<2s': 114, 'min<5s': 363}
+  totals fixgrid      {'isc': 0, 'silent': 0, 'n': 6009, 'lost_layouts': 0, 'bad': 0, 'min<2s': 114, 'min<5s': 363}
+  fixgrid vs main308      {}
+  fixgrid vs c73d2b9      {}
+== whisper: 2553 chunked layouts
+  totals main308      {'isc': 2911, 'silent': 0, 'n': 12778, 'lost_layouts': 0, 'bad': 0, 'min<2s': 183, 'min<5s': 696}
+  totals c73d2b9      {'isc': 2771, 'silent': 0, 'n': 12642, 'lost_layouts': 0, 'bad': 0, 'min<2s': 183, 'min<5s': 696}
+  totals fixgrid      {'isc': 2668, 'silent': 0, 'n': 12642, 'lost_layouts': 0, 'bad': 0, 'min<2s': 183, 'min<5s': 696}
+  fixgrid vs main308      {'isc_better': 234, 'minlen_longer': 672, 'minlen_shorter': 7, 'n_better': 134}
+  fixgrid vs c73d2b9      {'isc_better': 100, 'minlen_shorter': 30}

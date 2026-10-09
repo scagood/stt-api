@@ -1,0 +1,24 @@
+min_silence 3000 scenes 100 seed 5: plans differ in 56
+main speech decoded 10338.2s cuts-in-speech 235 window-edges-in-speech 337 decoded 14895.6s ranges 751 retime-pause-in-speech 172.04s speechless-ranges 9 (38.0s)
+pr speech decoded 10325.3s cuts-in-speech 224 window-edges-in-speech 315 decoded 14624.8s ranges 757 retime-pause-in-speech 194.03s speechless-ranges 9 (32.3s)
+scenes where PR keeps more speech: 0  scenes where PR is worse: 55
+ scene 0 ['speech lost 0.41s main_lost=[(113.61, 113.79, 0.18), (113.07, 113.2, 0.13)] pr_lost=[(113.61, 113.79, 0.18), (113.07, 113.2, 0.13), (136.43, 136.84, 0.41)]']
+ scene 3 ['speech lost 0.39s main_lost=[] pr_lost=[(82.94, 83.33, 0.39)]', 'retime pause inside speech main 0.34s pr 0.73s']
+ scene 4 ['speech lost 0.40s main_lost=[(95.52, 99.6, 4.09), (96.07, 96.35, 0.28), (140.65, 140.89, 0.24)] pr_lost=[(95.52, 99.6, 4.09), (96.07, 96.35, 0.28), (136.9, 137.3, 0.4), (140.65, 140.89, 0.24)]', 'retime pause inside speech main 4.88s pr 5.28s']
+ scene 5 ['speech lost 0.13s main_lost=[(64.5, 68.02, 3.44), (142.78, 142.94, 0.15)] pr_lost=[(64.5, 68.02, 3.44), (84.61, 84.74, 0.13), (142.78, 142.94, 0.15)]', 'window edges in speech main 1 pr 2', 'retime pause inside speech main 3.81s pr 3.93s']
+ scene 7 ['retime pause inside speech main 4.93s pr 5.31s']
+ scene 8 ['cuts in speech main [17.79, 90.76] pr [17.79, 90.76, 141.93]', 'retime pause inside speech main 0.31s pr 0.32s']
+ scene 9 ['retime pause inside speech main 0.24s pr 0.77s']
+ scene 10 ['retime pause inside speech main 3.78s pr 4.23s']
+ scene 11 ['retime pause inside speech main 5.10s pr 5.50s']
+ scene 12 ['speech lost 0.41s main_lost=[(73.08, 73.45, 0.36)] pr_lost=[(73.08, 73.45, 0.36), (154.12, 154.54, 0.41)]', 'window edges in speech main 4 pr 5', 'retime pause inside speech main 3.71s pr 4.12s']
+ scene 13 ['speech lost 0.64s main_lost=[(135.73, 136.04, 0.32), (181.17, 181.42, 0.06)] pr_lost=[(91.72, 92.15, 0.43), (90.23, 90.43, 0.21), (135.73, 136.04, 0.32), (181.17, 181.42, 0.06)]', 'retime pause inside speech main 0.59s pr 1.42s']
+ scene 15 ['speech lost 0.18s main_lost=[] pr_lost=[(130.52, 130.7, 0.18)]', 'retime pause inside speech main 0.21s pr 0.39s']
+ scene 17 ['speech lost 0.30s main_lost=[(37.73, 37.98, 0.25), (100.96, 101.32, 0.36)] pr_lost=[(47.62, 47.92, 0.3), (37.73, 37.98, 0.25), (100.96, 101.32, 0.36)]', 'retime pause inside speech main 0.71s pr 1.01s']
+ scene 18 ['retime pause inside speech main 0.28s pr 0.28s']
+ scene 23 ['speech lost 0.23s main_lost=[(26.41, 26.61, 0.2), (24.55, 24.7, 0.15)] pr_lost=[(26.41, 26.61, 0.2), (24.55, 24.7, 0.15), (121.67, 121.91, 0.23)]', 'retime pause inside speech main 0.64s pr 0.87s']
+ scene 25 ['speech lost 0.25s main_lost=[] pr_lost=[(120.86, 121.1, 0.25)]', 'cuts in speech main [22.36] pr [22.36, 142.08]', 'retime pause inside speech main 0.42s pr 0.67s']
+ scene 26 ['speech lost 0.68s main_lost=[] pr_lost=[(57.97, 58.14, 0.17), (61.9, 62.18, 0.29), (99.94, 100.17, 0.23)]', 'cuts in speech main [18.06, 136.92, 163.48] pr [18.06, 80.66, 136.92, 163.48]', 'retime pause inside speech main 0.28s pr 0.94s']
+ scene 30 ['speech lost 0.44s main_lost=[(80.06, 80.39, 0.33)] pr_lost=[(74.43, 74.88, 0.44), (80.06, 80.39, 0.33)]', 'retime pause inside speech main 0.52s pr 0.96s']
+ scene 31 ['window edges in speech main 5 pr 6', 'retime pause inside speech main 0.43s pr 0.43s']
+ scene 32 ['window edges in speech main 8 pr 9']

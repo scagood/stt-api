@@ -1,0 +1,1 @@
+wav ms 1000 seed 7: 800 arrays, 2400 checks, differ 152, head gains in 152, head loses frames in 0 (total 0 frames): []
