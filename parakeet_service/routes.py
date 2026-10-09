@@ -491,11 +491,12 @@ _DECODE_SPACE = re.compile(r"\A\s|\s\B|(\s)\b")
 # Two neighbouring pieces both decode the audio around their cut, and each
 # times a word there on its own 80 ms grid, from its own window's start: one
 # starting at the cut can be before it in one piece and after it in the other,
-# and so kept by both or by neither. A word both heard, this near the cut and
-# at most _SEAM_MATCH_SEC apart, says where one piece's words end and the
-# next one's start.
+# and so kept by both or by neither. The words both heard, this near the cut
+# and at most _SEAM_MATCH_SEC apart, are each kept by one piece, decided once
+# for both; the rest still go by each piece's own time.
 _SEAM_SEC = 1.0
 _SEAM_MATCH_SEC = 0.4
+_UNSEAMED = (0, math.inf)  # an edge with no seam: every word by its time
 
 
 def _seam_key(word: str) -> str:
@@ -505,18 +506,22 @@ def _seam_key(word: str) -> str:
 
 def _seam(
     left: Sequence[Tuple[str, float]], right: Sequence[Tuple[str, float]], cut: float, reach: float
-) -> Optional[Tuple[int, int]]:
+) -> Optional[Tuple[Tuple[float, float], Tuple[float, float]]]:
     """Where two neighbouring pieces' words, each (word, start in the audio),
-    meet at `cut`: (stop, start), the left piece keeping its words before
-    `stop` and the right one its words from `start`. None if no word within
-    `reach` of the cut is in both.
+    meet at `cut`, for each piece the (first, stop) of its words that still go
+    by their own time: the left piece keeps its words before `first` and none
+    from `stop`; the right one none before its `first` and all from its `stop`.
+    None if no word within `reach` of the cut is in both.
 
     The words within `reach` are put in step as the most that are the same
     word in both, in order and at most _SEAM_MATCH_SEC apart (of those, the
     closest in time), so a word said twice in a row is not matched with its
-    neighbour. The matched word nearest the cut decides, once for both pieces.
-    It goes to the left piece only if both start it before the cut: one the
-    left piece starts after it would be clamped to the cut, with no length."""
+    neighbour. Each matched word goes to one piece: the left one while both
+    start it before the cut, as one the left piece starts after it would be
+    clamped to the cut, with no length; then the right one. The words between
+    the last that goes left and the first that goes right are ones only one
+    piece heard, or the two heard differently: each piece keeps those that
+    start in its range, as without a seam."""
     lows = [(i, at, _seam_key(word)) for i, (word, at) in enumerate(left) if abs(at - cut) <= reach]
     highs = [(j, at, _seam_key(word)) for j, (word, at) in enumerate(right) if abs(at - cut) <= reach]
     # steps[a][b]: (matched, -seconds between them, the matches) for lows[a:] and highs[b:]
@@ -532,8 +537,10 @@ def _seam(
     pairs = steps[0][0][2]
     if not pairs:
         return None
-    i, j, at, there = min(pairs, key=lambda pair: abs((pair[2] + pair[3]) / 2 - cut))
-    return (i + 1, j + 1) if max(at, there) < cut else (i, j)
+    lefts = sum(1 for _i, _j, at, there in pairs if max(at, there) < cut)  # in order, so the first ones
+    first = (pairs[lefts - 1][0] + 1, pairs[lefts - 1][1] + 1) if lefts else (0, 0)
+    stop = pairs[lefts][:2] if lefts < len(pairs) else (math.inf, math.inf)
+    return (first[0], stop[0]), (first[1], stop[1])
 
 
 def _trimmed(prepared: _PreparedAudio, results: Sequence[Any]) -> List[Any]:
@@ -542,7 +549,7 @@ def _trimmed(prepared: _PreparedAudio, results: Sequence[Any]) -> List[Any]:
     onnx_asr builds it. The context either side (plan_chunks) is decoded only
     so that the piece's edge words are not ones Parakeet makes up as its input
     ends (#68); the words in it are the neighbours'. Near a cut with context
-    across it, a word both pieces heard decides which keeps what (_seam), so
+    across it, each word both pieces heard is kept by one of them (_seam), so
     each word there is kept once. A piece decoded without context, and with
     no such cut, comes back as it was."""
     ranges, windows = prepared.ranges, prepared.windows
@@ -554,10 +561,11 @@ def _trimmed(prepared: _PreparedAudio, results: Sequence[Any]) -> List[Any]:
         [(word, window_start / TARGET_SR + info["timestamps"][first]) for word, first, _last in found]
         for (window_start, _window_end), info, found in zip(windows, infos, spans)
     ]
-    # The word spans each piece keeps, from the seam before it and to the one
-    # after it; None keeps the words that start in its range.
-    starts: List[Optional[int]] = [None] * len(results)
-    stops: List[Optional[int]] = [None] * len(results)
+    # Each piece's (first, stop) of the word spans that go by their time, at
+    # the seam before it (those before are dropped, those after kept) and the
+    # one after it (those before are kept, those after dropped).
+    starts = [_UNSEAMED] * len(results)
+    stops = [_UNSEAMED] * len(results)
     for index, ((start, cut), (following, following_end)) in enumerate(zip(ranges, ranges[1:])):
         if following != cut or windows[index][1] == cut == windows[index + 1][0]:
             continue  # a long silence cut out between them, or no context across the cut
@@ -570,18 +578,20 @@ def _trimmed(prepared: _PreparedAudio, results: Sequence[Any]) -> List[Any]:
     for piece, ((start, end), (window_start, window_end), result, info) in enumerate(
         zip(ranges, windows, results, infos)
     ):
-        low, high = starts[piece], stops[piece]
-        if not info["tokens"] or ((start, end) == (window_start, window_end) and low is None and high is None):
+        unseamed = starts[piece] == stops[piece] == _UNSEAMED
+        if not info["tokens"] or ((start, end) == (window_start, window_end) and unseamed):
             out.append(result)  # Whisper (no tokens) never gets context: _chunk_bounds
             continue
         tokens, timestamps = info["tokens"], info["timestamps"]
         head = (start - window_start) / TARGET_SR
         tail = (end - window_start) / TARGET_SR if window_end > end else math.inf
+        (start_timed, kept_from), (end_timed, dropped_from) = starts[piece], stops[piece]
         kept: List[int] = []
         previous = -1
         for position, (_word, first, last) in enumerate(spans[piece]):
-            after_start = head <= timestamps[first] if low is None else position >= low
-            before_end = timestamps[first] < tail if high is None else position < high
+            at = timestamps[first]
+            after_start = position >= kept_from or (position >= start_timed and head <= at)
+            before_end = position < end_timed or (position < dropped_from and at < tail)
             if after_start and before_end:
                 kept.extend(range(previous + 1, last + 1))  # with the lone markers before it
             previous = last

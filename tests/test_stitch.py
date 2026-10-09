@@ -259,6 +259,64 @@ def test_a_word_said_again_at_a_cut_is_matched_with_itself_not_its_twin():
     assert _timed(words) == [("it", 19.44), ("I", 19.84), ("I", 20.07), ("I", 20.47)]
 
 
+@pytest.mark.parametrize(
+    "first_words, second_words, expected",
+    [
+        # Only the second piece hears X, after the cut: it keeps it
+        (
+            [(" A", 19.5), (" B", 20.4)],
+            [(" A", 4.5), (" X", 5.1), (" B", 5.4)],
+            [("A", 19.5), ("X", 20.1), ("B", 20.4)],
+        ),
+        # Only the first hears Y, before the cut: it keeps it, with a match after the cut or none
+        (
+            [(" A", 19.7), (" Y", 19.9), (" B", 20.4)],
+            [(" A", 4.7), (" B", 5.4)],
+            [("A", 19.7), ("Y", 19.9), ("B", 20.4)],
+        ),
+        ([(" A", 19.7), (" Y", 19.9)], [(" A", 4.7)], [("A", 19.7), ("Y", 19.9)]),
+        # They hear it differently, after the cut: the second's, timed as it heard it
+        (
+            [(" gonna", 20.1), (" B", 20.5)],
+            [(" going", 5.08), (" to", 5.2), (" B", 5.5)],
+            [("going", 20.08), ("to", 20.2), ("B", 20.5)],
+        ),
+    ],
+)
+def test_words_only_one_piece_heard_near_a_cut_stay_in_the_range_they_start_in(
+    first_words, second_words, expected
+):
+    first, second = (_result(*map(list, zip(*words))) for words in (first_words, second_words))
+    prepared = _prepared([(0.0, 20.0), (20.0, 40.0)], windows_sec=[(0.0, 25.0), (15.0, 40.0)])
+    text, _segments, words = routes._stitch(prepared, [first, second])
+    assert text == " ".join(word for word, _start in expected)
+    assert _timed(words) == expected
+
+
+def test_a_word_at_each_cut_of_three_pieces_is_kept_once():
+    # "two" would be lost at the cut at 20 s, and "four" kept twice at 40 s
+    first = _result([" one", " two", " three"], [19.2, 20.0, 20.8])
+    second = _result([" one", " two", " three", " four", " five"], [4.16, 4.96, 5.76, 24.88, 25.68])
+    third = _result([" four", " five"], [4.96, 5.68])
+    prepared = _prepared(
+        [(0.0, 20.0), (20.0, 40.0), (40.0, 60.0)], windows_sec=[(0.0, 25.0), (15.03, 45.0), (35.07, 60.0)]
+    )
+    text, segments, _words = routes._stitch(prepared, [first, second, third])
+    assert text == "one two three four five"
+    assert [s["segment"] for s in segments] == ["one", "two three", "four five"]
+
+
+def test_a_word_at_a_cut_is_kept_once_beside_a_piece_decoded_without_context():
+    # The first piece was decoded again as just its range (_redo_stalled), so
+    # hears up to the cut: "two" starts before it there, after it in the second
+    first = _result([" one", " two"], [19.2, 19.92])
+    second = _result([" one", " two", " three"], [4.16, 4.96, 5.76])
+    prepared = _prepared([(0.0, 20.0), (20.0, 40.0)], windows_sec=[(0.0, 20.0), (15.07, 40.0)])
+    text, segments, _words = routes._stitch(prepared, [first, second])
+    assert text == "one two three"
+    assert [s["segment"] for s in segments] == ["one", "two three"]
+
+
 def test_trimmed_text_is_rebuilt_as_onnx_asr_joins_it():
     # "So" is in the context before the range; the lone marker before "£" stays with its word
     result = SimpleNamespace(
