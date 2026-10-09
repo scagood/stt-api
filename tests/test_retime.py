@@ -138,3 +138,17 @@ def test_the_words_given_are_left_as_they_were():
     words = [_w("late", 2.2, 2.5)]
     retime.retime(words, GAP, 0.0, 10.0)
     assert words == [_w("late", 2.2, 2.5)]
+
+
+def test_a_quiet_word_reaching_past_a_phrases_reach_is_no_pause():
+    # A quiet 1 s phrase in a pause, then a word reaching past the 3 s around
+    # it: no pause starts inside the word. Kept frame by frame, one did at 3 s.
+    rng = np.random.default_rng(1)
+    pause = rng.standard_normal(20 * SR) * 10 ** (-55 / 20)
+    for at, seconds in [(5.0, 1.0), (8.95, 0.4)]:
+        n = int(seconds * SR)
+        pause[int(at * SR): int(at * SR) + n] += rng.standard_normal(n) * 10 ** (-40 / 20)
+    first = _turn(40, -20)
+    word = (first.size / SR + 8.95, first.size / SR + 9.35)
+    wav = np.concatenate([first, pause.astype(np.float32), _turn(40, -20)])
+    assert not [(a, b) for a, b in retime.pauses(wav) if a < word[1] and b > word[0]]
