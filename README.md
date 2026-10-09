@@ -528,10 +528,9 @@ Silero's run of *The War of the Worlds* lost a sentence that volume's kept;
 where chunks fall decides that, so take it as luck rather than an advantage.
 Volume needs pauses quieter than the speech. Under a noise bed the file's own
 gate rises with the noise: at -40 dBFS it still found every pause, at -35 dBFS
-(5 dB under the speech) it missed some and 10 chunks were cut mid-speech at
-their full length. A fixed gate below the noise finds no pause at all, and
-the whole file is cut mid-speech, into the fewest equal chunks that fit. Music
-hasn't been measured.
+(5 dB under the speech) it missed some and 10 chunks were cut mid-speech. A
+fixed gate below the noise finds no pause at all, and the whole file is cut
+mid-speech, into the fewest equal chunks that fit. Music hasn't been measured.
 
 **Words and numbers**
 
