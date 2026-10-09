@@ -535,8 +535,10 @@ side (stretches that close as one decode), and the words heard where the
 chunk heard none are put in among its own, if two or more are in what it
 skipped: to VAD, music or noise can be speech, and one word may be made up.
 The chunk's words and the redo's are matched up word by word, as at a cut,
-rather than by a fixed time either side of the stretch, and every word the
-chunk heard stays. Each such stretch costs one more decode, at most 4 s longer than
+and the redo's are put in only between words both heard either side of what
+was skipped, never where the chunk heard the speech as another word or split
+it differently, and never the redo's last word, which it may have made up as
+its input ended. Every word the chunk heard stays. Each such stretch costs one more decode, at most 4 s longer than
 it. On a clip short enough to be one chunk, VAD runs only once it has 3 s or
 more with no word. A redo that fails keeps what was heard.
 

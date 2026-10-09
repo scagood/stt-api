@@ -8,6 +8,7 @@ import math
 import re
 import time
 from dataclasses import dataclass
+from itertools import accumulate
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
@@ -972,7 +973,8 @@ _REDO_MARGIN_SEC = 2.0
 # Two decodes of the same audio time a word up to a frame or two apart, each
 # on its own 80 ms grid. A word a redo starts this close to the start of one
 # the piece heard, or among its tokens, and which is not the same word, is
-# that speech heard as another word, not a new one.
+# that speech heard as another word, not a new one; this far past where a
+# word the redo did not hear could still be sounding, too (_merged).
 _SAME_SPEECH_SEC = 0.2
 
 # How many of the pieces that still skipped speech the log names.
@@ -1002,46 +1004,90 @@ def _redo_windows(window: Tuple[int, int], stretches: Sequence[Tuple[int, int]])
 
 
 def _merged(
-    result: Any, origin: int, again: Any, start: int, stop: int, taken: Sequence[Tuple[int, int]] = ()
+    result: Any,
+    origin: int,
+    again: Any,
+    start: int,
+    stop: int,
+    stretches: Sequence[Tuple[int, int]],
+    own: Tuple[int, int],
+    taken: Sequence[Tuple[int, int, str]] = (),
 ) -> Tuple[Any, List[int]]:
-    """`result`, decoded from sample `origin`, with the words `again`, decoded
-    from sample `start` to `stop`, heard where it heard none put in among its
-    own; and where each word put in starts, in samples.
+    """`result`, decoded from sample `origin` (its range `own`), with the
+    words `again`, decoded from sample `start` to `stop`, heard in
+    `stretches` where it heard none put in among its own; and where each word
+    put in starts, in samples.
 
-    The two decodes' words there are put in step as at a cut (_aligned). Each
-    of the redo's words the piece did not hear goes in by its time, between
-    the words both heard either side of it, unless the piece heard another
-    word there (_SAME_SPEECH_SEC), or a neighbour keeps one there (`taken`: each
-    word's first and last token, in samples). Its own words all stay. Words
-    in the margin past a cut go in too: _trimmed matches them with the
-    neighbour's."""
+    The two decodes' words are put in step as at a cut (_aligned), and the
+    redo's that the piece did not hear go in only between the words both
+    heard either side of a stretch: the redo's margins are context, where it
+    may make up a word as its input ends (#68). Past a cut they go in too,
+    for _trimmed to match with the neighbour's. With no word both heard on a
+    side, from the piece's last token before the stretch, or up to its next.
+    The redo's last word never goes in: it may be the one made up. Each goes
+    in by its time, unless it starts where the piece heard a word (held), or
+    where a neighbour heard another word at the cut (`taken`: each one's
+    first and last token, in samples, and _seam_key). The piece's own words
+    all stay."""
     info, heard = _extract(result), _extract(again)
     tokens, timestamps, others = info["tokens"], info["timestamps"], _word_spans(heard["tokens"])
     spans = _word_spans(tokens)
     firsts = [origin + int(timestamps[first] * TARGET_SR) for _word, first, _last in spans]
-    near = int(_SAME_SPEECH_SEC * TARGET_SR)
-    ends = [max(origin + int(timestamps[last] * TARGET_SR), at + near) for (_word, _first, last), at in zip(spans, firsts)]
+    lasts = [origin + int(timestamps[last] * TARGET_SR) for _word, _first, last in spans]
     theirs = [start + int(heard["timestamps"][first] * TARGET_SR) for _word, first, _last in others]
-    reach = int(_SEAM_MATCH_SEC * TARGET_SR)
-    taken = [(first, max(last, first + near)) for first, last in taken]
+    keys = [_seam_key(word) for word, _first, _last in others]
+    reach, near, tail = (int(sec * TARGET_SR) for sec in (_SEAM_MATCH_SEC, _SAME_SPEECH_SEC, _WORD_TAIL_SEC))
     lows = [
         (i, at / TARGET_SR, _seam_key(word))
         for i, ((word, _first, _last), at) in enumerate(zip(spans, firsts))
         if start - reach <= at < stop + reach
     ]
-    highs = [(j, at / TARGET_SR, _seam_key(word)) for j, ((word, _first, _last), at) in enumerate(zip(others, theirs))]
+    highs = [(j, at / TARGET_SR, key) for j, (at, key) in enumerate(zip(theirs, keys))]
     pairs = _aligned(lows, highs)
     matched = [j for _i, j, _at, _there in pairs]
+    anchors = [firsts[i] for i, _j, _at, _there in pairs]  # in order, as the pairs are
+
+    def held(first: int, last: int, same: bool) -> int:
+        """Where the speech of a word heard from `first` to `last` ends, for a
+        redo's word starting from just before it: at its last token if the
+        redo heard it too (`same`), else as far as that token can reach and a
+        frame or two more, as a redo that heard it another way may split it."""
+        return max(last, first + near) if same else last + tail + near
+
+    both = {i for i, _j, _at, _there in pairs}
+    reaches = list(accumulate((held(first, last, i in both) for i, (first, last) in enumerate(zip(firsts, lasts))), max))
+    # The neighbour's words at the cut, put in step with the redo's the same
+    # way: _seam pairs those that are the same.
+    beside = _aligned([(k, first / TARGET_SR, key) for k, (first, _last, key) in enumerate(taken)], highs)
+    paired, alike = {j for _k, j, _at, _there in beside}, {k for k, _j, _at, _there in beside}
+    taken = [(first - near, held(first, last, k in alike)) for k, (first, last, _key) in enumerate(taken)]
+    zone = [False] * len(others)
+    for low, high in stretches:
+        prior, later = bisect.bisect_left(anchors, low), bisect.bisect_left(anchors, high)  # pairs before it, and to its end
+        if prior:
+            first_word = pairs[prior - 1][1] + 1
+        elif low == own[0] and start < own[0]:
+            first_word = 0  # past a cut
+        else:
+            first_word = bisect.bisect_left(theirs, low - tail)
+        if later < len(pairs):
+            stop_word = pairs[later][1]
+        elif high == own[1] and stop > own[1]:
+            stop_word = len(others)  # past a cut
+        else:
+            stop_word = bisect.bisect_left(theirs, high)
+        zone[first_word:stop_word] = [True] * max(0, stop_word - first_word)
+    zone[-1:] = [False]  # the redo's last word, which it may have made up
     put: Dict[int, List[int]] = {}  # before which of the piece's words: the redo's words that go there
     for j, at in enumerate(theirs):
         side = bisect.bisect_left(matched, j)
-        if side < len(matched) and matched[side] == j:
-            continue  # both heard it
+        if not zone[j] or (side < len(matched) and matched[side] == j):
+            continue  # in the redo's margins, or both heard it
         candidates = bisect.bisect_right(firsts, at + near)
-        if any(ends[k] >= at for k in range(max(0, candidates - 2), candidates)):
+        if candidates and reaches[candidates - 1] >= at:
             continue  # the piece heard this speech as another word
-        if any(first - near <= at <= end for first, end in taken):
-            continue  # so did its neighbour, past the cut
+        if j not in paired and any(low <= at <= high for low, high in taken):
+            continue  # so did its neighbour, at the cut
         lowest = pairs[side - 1][0] + 1 if side else 0
         highest = pairs[side][0] if side < len(pairs) else len(spans)
         put.setdefault(min(max(bisect.bisect_right(firsts, at), lowest), highest), []).append(j)
@@ -1067,17 +1113,18 @@ def _merged(
     return SimpleNamespace(text=_decoded(out_tokens), tokens=out_tokens, timestamps=out_times), added
 
 
-def _kept_near(result: Any, origin: int, own: Tuple[int, int], cut: int) -> List[Tuple[int, int]]:
-    """The first and last token, in samples, of each of `result`'s words,
-    decoded from sample `origin`, that start in its range `own` within
-    _SEAM_SEC of `cut`: a neighbour's words that its piece keeps there."""
+def _heard_near(result: Any, origin: int, cut: int) -> List[Tuple[int, int, str]]:
+    """The first and last token, in samples, and _seam_key of each of
+    `result`'s words, decoded from sample `origin`, that start within
+    _SEAM_SEC of `cut`, either side: a neighbour's words at the cut, which
+    _seam matches with the piece's only where they are the same."""
     info, reach = _extract(result), int(_SEAM_SEC * TARGET_SR)
-    timestamps, kept = info["timestamps"], []
-    for _word, first, last in _word_spans(info["tokens"]):
+    timestamps, near = info["timestamps"], []
+    for word, first, last in _word_spans(info["tokens"]):
         at = origin + int(timestamps[first] * TARGET_SR)
-        if own[0] <= at < own[1] and abs(at - cut) <= reach:
-            kept.append((at, origin + int(timestamps[last] * TARGET_SR)))
-    return kept
+        if abs(at - cut) <= reach:
+            near.append((at, origin + int(timestamps[last] * TARGET_SR), _seam_key(word)))
+    return near
 
 
 async def _redo_stretches(
@@ -1088,57 +1135,62 @@ async def _redo_stretches(
     words heard there put in among the piece's own (_merged) where there are
     at least _REDO_MIN_WORDS in its stretches. Finding the stretches (with
     VAD, for a clip of one piece) and putting words in run on the audio pool:
-    for hours of audio, that is a scan of every token."""
+    for hours of audio, that is a scan of every token. If any of it fails,
+    what was heard stands."""
     loop, pool = asyncio.get_running_loop(), request.app.state.audio_pool
 
-    def find() -> List[Tuple[int, int, List[Tuple[int, int]], List[Tuple[int, int, Any]], List[Tuple[int, int]]]]:
-        """(in results, its window's start, its stretches, each (start, stop,
-        audio) to decode, the words its neighbours keep near its cuts) for
-        each piece that still skipped speech."""
+    def find() -> List[Tuple[int, Tuple[int, int], Tuple[int, int], List[Tuple[int, int]], List[Tuple[int, int, Any]], List[Tuple[int, int, int]]]]:
+        """(in results, its window, its range, its stretches, each (start,
+        stop, audio) to decode, and (in results, window start, cut) for each
+        neighbour it meets) for each piece that still skipped speech."""
         found = []
         cursor = 0
         for prepared in files:
-            count, ranges = len(prepared.pieces), prepared.ranges
+            count, ranges, windows = len(prepared.pieces), prepared.ranges, prepared.windows
             for index, stretches in _stalled(prepared, results[cursor : cursor + count]).items():
-                window, piece = prepared.windows[index], prepared.pieces[index]
+                window, piece = windows[index], prepared.pieces[index]
                 redos = [(a, b, piece[a - window[0] : b - window[0]]) for a, b in _redo_windows(window, stretches)]
+                neighbours = [
+                    (cursor + other, windows[other][0], cut)
+                    for other, cut, side in ((index - 1, ranges[index][0], 1), (index + 1, ranges[index][1], 0))
+                    if 0 <= other < count and ranges[other][side] == cut  # not across a silence cut out
+                ]
                 if redos:
-                    taken = []
-                    for other, cut, side in ((index - 1, ranges[index][0], 1), (index + 1, ranges[index][1], 0)):
-                        if 0 <= other < count and ranges[other][side] == cut:  # a neighbour, not across a cut-out silence
-                            taken += _kept_near(results[cursor + other], prepared.windows[other][0], ranges[other], cut)
-                    found.append((cursor + index, window[0], stretches, redos, taken))
+                    found.append((cursor + index, window, ranges[index], stretches, redos, neighbours))
             cursor += count
         return found
 
-    found = await loop.run_in_executor(pool, find)
-    if not found:
-        return results
-    audio = [piece for _at, _origin, _stretches, redos, _taken in found for _start, _stop, piece in redos]
-    try:
-        again = await _infer(request, audio, model_key)
-    except Exception:  # the first decode stands: never a failed request for a redo
-        logger.exception("decoding %d stretches of skipped speech again failed; keeping what was heard", len(audio))
-        return results
-
-    def splice() -> Tuple[List[Any], List[int]]:
-        """The results with each piece's redos put in, and how many words each heard in its stretches."""
+    def splice(again: Sequence[Any]) -> Tuple[List[Any], List[int]]:
+        """The results with each piece's redos put in, in order, so a piece
+        sees what its neighbour before it had put in at their cut; and how
+        many words each heard in its stretches."""
         spliced, heard, cursor = list(results), [], 0
-        for at, origin, stretches, redos, taken in found:
+        for at, window, own, stretches, redos, neighbours in found:
+            taken = [word for other, origin, cut in neighbours for word in _heard_near(spliced[other], origin, cut)]
             merged, new = results[at], 0
             for (start, stop, _piece), result in zip(redos, again[cursor : cursor + len(redos)]):
-                merged, added = _merged(merged, origin, result, start, stop, taken)
-                new += sum(low <= word < high for word in added for low, high in stretches)
+                inside = [(low, high) for low, high in stretches if start <= low and high <= stop]
+                merged, added = _merged(merged, window[0], result, start, stop, inside, own, taken)
+                new += sum(low <= word < high for word in added for low, high in inside)
             cursor += len(redos)
             heard.append(new)
             if new >= _REDO_MIN_WORDS:
                 spliced[at] = merged
         return spliced, heard
 
-    results, heard = await loop.run_in_executor(pool, splice)
+    try:
+        found = await loop.run_in_executor(pool, find)
+        if not found:
+            return results
+        audio = [piece for *_found, redos, _neighbours in found for _start, _stop, piece in redos]
+        again = await _infer(request, audio, model_key)
+        spliced, heard = await loop.run_in_executor(pool, splice, again)
+    except Exception:  # what was heard stands: never a failed request for a redo
+        logger.exception("decoding skipped speech again failed; keeping what was heard")
+        return results
     named = [
         ", ".join(f"{low / TARGET_SR:.1f}-{high / TARGET_SR:.1f} s" for low, high in stretches) + f": {count} words"
-        for (_at, _origin, stretches, _redos, _taken), count in zip(found, heard)
+        for (_at, _window, _own, stretches, _redos, _neighbours), count in zip(found, heard)
     ]
     if len(named) > _LOGGED_PIECES:
         named[_LOGGED_PIECES:] = [f"{len(named) - _LOGGED_PIECES} more"]
@@ -1146,12 +1198,12 @@ async def _redo_stretches(
         "%d of %d chunks still skipped speech; decoded it again on its own in %d pieces of audio, "
         "%d heard words there and had them put in (%s)",
         len(found),
-        len(results),
+        len(spliced),
         len(audio),
         sum(count >= _REDO_MIN_WORDS for count in heard),
         "; ".join(named),
     )
-    return results
+    return spliced
 
 
 async def _redo_stalled(
@@ -1165,8 +1217,10 @@ async def _redo_stalled(
     results = list(results)
     if _family(model_key.partition(":")[0]) != "parakeet":
         return results  # Whisper returns no token times to find a skip by
-    if len(files) == len(results) == 1 and not _untimed(files[0], results):
-        return results  # a clip of one piece with no long stretch untimed: no need to wait on the audio pool
+    if all(len(prepared.pieces) <= 1 for prepared in files) and not any(
+        _untimed(prepared, [result]) for prepared, result in zip([p for p in files if p.pieces], results)
+    ):
+        return results  # clips of one piece with no long stretch untimed: no need to wait on the audio pool
     results = await _redo_ranges(request, files, results, model_key)
     return await _redo_stretches(request, files, results, model_key)
 
