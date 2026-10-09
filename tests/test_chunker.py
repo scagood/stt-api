@@ -327,14 +327,14 @@ def test_context_stays_out_of_long_silences():
 V2 = {"target_sec": 25.0, "max_sec": 30.0, "min_sec": 20.0, "context_sec": 5.0}  # ranges of 20 s at most
 
 
-def _words(seconds, quiet=(), word_db=-20.0, gap_db=-30.0, seed=0):
-    """Noise like speech: 0.3 s words with 0.1 s gaps 10 dB down between them,
-    and each (start, end) second span in `quiet` a gap 35 dB down."""
+def _words(seconds, quiet=(), word_db=-20.0, gap_db=-30.0, seed=0, word=0.3, gap=0.1):
+    """Noise like speech: `word` s words with `gap` s gaps 10 dB down between
+    them, and each (start, end) second span in `quiet` a gap 35 dB down."""
     rng = np.random.default_rng(seed)
     total = int(seconds * SR)
     level = np.full(total, 10 ** (word_db / 20), dtype=np.float32)
-    phase = np.arange(total) % int(0.4 * SR)
-    level[phase >= int(0.3 * SR)] = 10 ** (gap_db / 20)
+    phase = np.arange(total) % int((word + gap) * SR)
+    level[phase >= int(word * SR)] = 10 ** (gap_db / 20)
     for start, end in quiet:
         level[_at(start)[0]: _at(end)[0]] = 10 ** ((word_db - 35) / 20)
     return rng.standard_normal(total).astype(np.float32) * level
@@ -359,12 +359,35 @@ def test_a_cut_in_speech_lands_in_the_quietest_gap_near_it(monkeypatch):
 
 
 def test_a_cut_in_speech_without_a_deep_gap_still_lands_between_words(monkeypatch):
-    # gaps 10 dB down every 0.4 s: each cut goes in one near the even split
-    ranges = _forced(monkeypatch, _words(41), [(0, 41)], **V2).ranges
+    # gaps of 0.25 s 10 dB down every 0.6 s: each cut goes in one near the even split
+    ranges = _forced(monkeypatch, _words(41, word=0.35, gap=0.25), [(0, 41)], **V2).ranges
     assert len(ranges) == 3
     for index, (_start, cut) in enumerate(ranges[:-1], 1):
-        assert cut % _at(0.4)[0] > _at(0.3)[0]
+        assert cut % _at(0.6)[0] > _at(0.35)[0]
         assert abs(cut - _at(41)[0] * index // 3) < SR
+
+
+def test_a_cut_in_speech_stays_put_where_no_point_near_is_clearly_quieter(monkeypatch):
+    # gaps of 0.1 s 10 dB down: no 200 ms near the even split is 3 dB under it
+    ranges = _forced(monkeypatch, _words(41), [(0, 41)], **V2).ranges
+    assert ranges == chunker._split_oversized(0, _at(41)[0], _at(20)[0])
+
+
+@pytest.mark.parametrize(
+    ("dip", "db"),
+    [
+        ((14.9, 15.0), -35),  # a stop closure inside the word at 14.8-15.1 s
+        ((14.8, 15.1), -16),  # that word said 16 dB quieter than the rest
+    ],
+)
+def test_a_cut_already_in_a_gap_does_not_move_into_a_word(monkeypatch, dip, db):
+    # 41.85 s splits evenly at 13.95 s, in the 0.1 s gap at 13.9-14.0 s. The
+    # dip inside a word 1 s on is quieter than that gap, but no gap.
+    wav = _words(41.85)
+    wav[slice(*_at(*dip))] *= 10 ** (db / 20)
+    ranges = _forced(monkeypatch, wav, [(0, 41.85)], **V2).ranges
+    assert ranges == chunker._split_oversized(0, _at(41.85)[0], _at(20)[0])
+    assert _at(13.9)[0] < ranges[0][1] < _at(14.0)[0]
 
 
 def test_a_dip_shorter_than_a_syllable_does_not_draw_the_cut(monkeypatch):
@@ -386,15 +409,48 @@ def test_speech_as_loud_throughout_keeps_the_even_split(monkeypatch):
 def test_a_cut_in_speech_reaches_a_gap_past_the_even_split_by_giving_up_silence(monkeypatch):
     # 38.5 s of speech spans 40 s with the margin after it: two pieces of
     # exactly 20 s, the cut fixed at 20 s. Ending the last range sooner, in
-    # the margin (never closer than EDGE_KEEP_SEC to the speech), lets the
-    # cut move to the gap at 19.6 s.
+    # the margin's silence, lets the cut move to the gap at 19.6 s.
     wav = _words(45, [(19.6, 19.75)])
     wav[_at(38.5)[0]:] *= 1e-3
     ranges = _forced(monkeypatch, wav, [(0, 38.5)], **V2).ranges
     assert len(ranges) == 2 and ranges[0][0] == 0 and ranges[0][1] == ranges[1][0]
     assert _at(19.6)[0] < ranges[0][1] < _at(19.75)[0]
-    assert _at(39.5)[0] <= ranges[1][1] <= _at(40)[0]
+    assert _at(38.5)[0] <= ranges[1][1] <= _at(40)[0]
     _assert_valid(ranges, _at(45)[0], _at(20)[0])
+
+
+def _margin_word(quiet, word):
+    """45 s: words from 3.15 s to 37.3 s (all VAD hears), the gap `quiet`
+    among them 35 dB down, room tone either side, and if `word`, a word VAD
+    missed there at -42 dBFS, 22 dB under the rest."""
+    wav = _words(45, [quiet])
+    wav[: _at(3.15)[0]] *= 10 ** (-55 / 20)
+    wav[_at(37.3)[0]:] *= 10 ** (-55 / 20)
+    if word:
+        span = slice(*_at(*word))
+        wav[span] = np.random.default_rng(5).standard_normal(span.stop - span.start) * 10 ** (-42 / 20)
+    return wav
+
+
+@pytest.mark.parametrize(
+    ("quiet", "word"),
+    [
+        ((18.4, 18.55), (38.3, 38.7)),  # the cut reaches the gap only if the range ends by 38.55 s
+        ((21.7, 21.85), (1.4, 1.8)),  # ... only if it starts from 1.7 s
+    ],
+)
+def test_a_split_first_or_last_range_keeps_a_quiet_word_in_its_margin(monkeypatch, quiet, word):
+    # The first and last ranges reach up to CHUNK_TRIM_SILENCE_SEC past the
+    # speech, in case VAD missed a quiet syllable there; nothing else decodes
+    # that audio. A cut may have that margin's silence, never a sound in it.
+    plan = _forced(monkeypatch, _margin_word(quiet, None), [(3.15, 37.3)], **V2)
+    assert _at(quiet[0])[0] < plan.ranges[0][1] < _at(quiet[1])[0]  # silence alone gives way
+    plan = _forced(monkeypatch, _margin_word(quiet, word), [(3.15, 37.3)], **V2)
+    low, high = _at(*word)
+    assert len(plan.ranges) == 2
+    assert plan.ranges[0][0] <= low and high <= plan.ranges[-1][1]
+    assert plan.windows[0][0] <= low and high <= plan.windows[-1][1]
+    _assert_valid(plan.ranges, _at(45)[0], _at(20)[0])
 
 
 def test_a_cut_in_speech_may_give_the_pause_after_it_to_the_next_range(monkeypatch):
