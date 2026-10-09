@@ -251,6 +251,33 @@ def test_ranges_close_in_a_pause_rather_than_pass_their_maximum(monkeypatch, spe
     assert ranges == [_at(*span) for span in expected]
 
 
+@pytest.mark.parametrize(
+    ("trim_sec", "context_sec", "speech", "seconds", "in_speech"),
+    [
+        # a 1 s trim gap would let the cut at the pause leave a 1.5 s range;
+        # the long phrase is cut evenly, twice, as without the pause
+        (1.0, 5.0, [(0, 1), (1.5, 40.012)], 40.012, 2),
+        # a 6 s trim gap and 15 s ranges: the silence before the last phrase
+        # but one would cost the range after the cut a piece, its even split
+        # a cut inside speech
+        (6.0, 7.5, [(0, 8), (11, 15.05), (20, 24.3), (30, 40)], 40, 0),
+    ],
+)
+def test_a_cut_before_the_minimum_leaves_no_sliver_or_cut_in_speech(
+    monkeypatch, trim_sec, context_sec, speech, seconds, in_speech
+):
+    monkeypatch.setattr(chunker, "CHUNK_TRIM_SILENCE_SEC", trim_sec)
+    speech = [_at(*span) for span in speech]
+    monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: speech)
+    ranges = chunker.plan_chunks(
+        np.zeros(_at(seconds)[0], dtype=np.float32),
+        target_sec=25.0, max_sec=30.0, min_sec=20.0, context_sec=context_sec,
+    ).ranges
+    assert all(end - start >= 2 * SR for start, end in ranges)
+    cuts = [cut for _start, cut in ranges[:-1]]
+    assert sum(any(start < cut < end for start, end in speech) for cut in cuts) == in_speech
+
+
 def _at(*seconds):
     return tuple(int(second * SR) for second in seconds)
 
