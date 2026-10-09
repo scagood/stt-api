@@ -215,11 +215,13 @@ def plan_chunks(
     # VAD can miss a quiet first or last syllable (the energy fallback in
     # particular), so the first and last chunks reach up to trim_gap past the
     # detected speech: room for the syllable, without feeding the model the
-    # long silences cut out below. Less where the first phrase has no _room
-    # for all of the margin before it.
-    current_start, current_end = max(0, segments[0][0] - trim_gap), segments[0][1]
-    current_start = max(current_start, current_end - _room(current_end - segments[0][0], own_maximum))
+    # long silences cut out below. Less where the first range's speech, however
+    # many phrases it takes in, has no _room for all of the margin before it.
+    first, lead = segments[0][0], max(0, segments[0][0] - trim_gap)
+    current_start, current_end = lead, segments[0][1]
     for start, end in segments[1:]:
+        if not packed:  # the first range, as far as it reaches so far
+            current_start = max(lead, current_end - _room(current_end - first, own_maximum))
         # Cut at long silences and skip them entirely: feeding multi-second
         # silence to the model degrades recognition of the following speech,
         # and VAD already pads each segment, so no speech is lost.
@@ -250,6 +252,8 @@ def plan_chunks(
         else:
             current_end = end
 
+    if not packed:
+        current_start = max(lead, current_end - _room(current_end - first, own_maximum))
     last_end = min(total, current_end + trim_gap, current_start + _room(current_end - current_start, own_maximum))
     if last_end > current_start:
         packed.append((current_start, last_end))

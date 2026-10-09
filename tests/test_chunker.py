@@ -119,6 +119,7 @@ def test_speech_with_no_pause_is_split_evenly(monkeypatch, seconds, bounds, own_
         ([(0, 38.5)], 45, [(0, 20), (20, 40)]),
         ([(0, 39.8), (40.8, 45.8)], 50, [(0, 20), (20, 40), (40, 48.8)]),  # mid-way through a pause
         ([(3, 41.5)], 45, [(1.5, 21.5), (21.5, 41.5)]),  # the margin before the first phrase
+        ([(3, 10), (10.5, 41.5)], 45, [(1.5, 21.5), (21.5, 41.5)]),  # before a first range of two
     ],
 )
 def test_silence_around_the_speech_adds_no_piece(monkeypatch, speech, seconds, expected):
