@@ -567,17 +567,26 @@ mid-speech, into the fewest chunks that fit. Music hasn't been measured.
 
 **Speech with no pause.** A stretch of speech too long for one chunk, with no
 pause in it as long as `PARAKEET_VAD_MIN_SILENCE_MS`, is still cut into the
-fewest chunks that fit, but each cut goes where the 80 ms around it is
-quietest: the gap between two words, within 3 s (and an eighth of the chunk)
-of where an even split would put it. A chunk ending in silence may give some
-up, to its neighbour where that still fits one chunk, else down to 1 s past
-its speech, so the cuts can reach a gap. Where no point is 6 dB quieter than
-the rest, the split stays even. Under a noise bed a fixed gate can't hear
-through, three LibriVox chapters had 552 such cuts: 48% of `parakeet-v2`'s
-fell inside a word (by wav2vec2's word times) and 38% now do; 36% and 10% of
-`parakeet-v3`'s, whose longer chunks leave the cuts more room to move. A
-chunk that is exactly its maximum leaves none, and a noise bed fills the gaps
-between words.
+fewest chunks that fit, as evenly as before, but a cut that falls inside a
+word moves, within 3 s (and an eighth of the chunk), to a quieter point: one
+3 dB under where it was, over 200 ms, so a gap between words rather than a
+stop or a quieter syllable. A cut already in a dip (3 dB under the speech
+around it) stays. A split chunk may give up silence at its ends so a cut can
+reach a gap: a pause it shares with the next chunk, to that chunk, as long as
+it needs no more chunks; and at the first chunk's lead or the last one's tail,
+which nothing else decodes, only frames with no sound in them, so a quiet word
+VAD missed there is still decoded.
+
+How much this helps depends on the room the cuts have. Measured with
+`PARAKEET_VAD_GATE_DB=-45` under pink noise at -40 and -35 dBFS, so each
+chapter is one stretch cut only by length (LibriVox: *The Adventures of
+Sherlock Holmes* ch. 1, first 15 min; *Alice's Adventures in Wonderland* ch.
+3; *The War of the Worlds* ch. 1), against wav2vec2's word times: with
+`parakeet-v3`'s 65 s chunks, cuts inside a word went from 36% to 7%; with 30 s
+chunks (Whisper, or Parakeet without context) from 48% to 35%; with
+`parakeet-v2`'s 20 s, from 48% to 37%, and not at all for Holmes, whose 900 s
+is exactly 45 chunks of 20 s. No file had more cuts inside a word than before.
+`scripts/quiet_cuts_fuzz.py` measures it on synthetic speech.
 
 **Quieter speakers.** The file's own gate follows its average, so a speaker
 far quieter than the rest (a remote guest, a phone leg, a question from the

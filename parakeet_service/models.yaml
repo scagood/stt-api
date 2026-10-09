@@ -46,8 +46,8 @@
 # preferred, "chunk_max_sec" at most (and audio no longer than that is not cut
 # at all). For Parakeet, the most includes the context a chunk decodes past
 # each cut (PARAKEET_CHUNK_CONTEXT_SEC). Speech with no pause to cut in is
-# cut into the fewest pieces that fit, each cut in the quietest gap between
-# words near an even split (chunker._quiet_cuts). Parakeet v2, fp32 and int8 alike,
+# cut into the fewest pieces that fit, evenly, but a cut inside a word moves
+# to a quieter gap near it (chunker._quiet_cuts). Parakeet v2, fp32 and int8 alike,
 # hears whole stretches of clear speech in a chunk of 45 s or more as silence,
 # which ones depending chaotically on where the chunk starts; no 20 or 30 s
 # chunk did (#36).
