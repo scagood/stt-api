@@ -212,8 +212,8 @@ A quiet stretch of 3 s or more is heard again at its own level, as when
 gets pauses of its own instead of being one. In a 25-word turn 20 dB quieter
 than the rest, `retime_words` used to move 24 words' starts over 200 ms from
 the aligner's (aligning the turn on its own) and squeeze 23 into 40 ms; now 3
-and 1, against Parakeet's own 5 and 0. On three LibriVox chapters it moves 24
-of 5,967 words differently than before, 16 of them closer to the aligner and
+and 1, against Parakeet's own 5 and 0. On three LibriVox chapters it moves 23
+of 5,967 words differently than before, 15 of them closer to the aligner and
 8 farther: most are runs Parakeet timed more than a word early or late, which
 no edge fixes.
 
@@ -555,12 +555,16 @@ audience) can sit under it for a whole turn, which would then be cut out as a
 long silence and never decoded. So a quiet stretch at least
 `PARAKEET_CHUNK_TRIM_SILENCE_SEC` long is heard again at its own level: 100 ms
 of it louder than 0.4× its own average, and 10 dB over its quietest tenth, is
-speech, if that comes to half a second or more. The 100 ms is a median, so no
-click or knock passes, and room tone stays within a few dB of its floor. On
-LibriVox narration a long pause's breaths and rustles came to 0.1-0.34 s
-(decoded alone, one made Parakeet say "yeah"), a quieter reader's stretches
-to 1.9-5.5 s. With a 15 s turn (25 words) of one LibriVox reader between two
-minutes of another:
+loud. The 100 ms is a median, so no click or knock passes, and room tone stays
+within a few dB of its floor. A loud sound (joined across dips shorter than
+`PARAKEET_VAD_MIN_SILENCE_MS`) is speech if half a second of it is loud, and
+so is any shorter one within `PARAKEET_CHUNK_TRIM_SILENCE_SEC` of such a sound:
+a quiet speaker's short words, which would otherwise leave a stretch to cut
+out between two phrases. Breaths alone in a pause never add up to speech,
+however many. On LibriVox narration a long pause's breaths and rustles were
+0.1-0.34 s (decoded alone, one made Parakeet say "yeah"); 26 dB down, a
+quieter reader's phrases were 0.58-1.18 s and the words between them 0.12-0.32 s. With a 15 s turn (25 words) of one LibriVox reader between
+two minutes of another:
 
 | Quiet turn | words heard before | now |
 |---|---|---|
@@ -570,10 +574,11 @@ minutes of another:
 
 On other recordings of the three chapters above (not the table's), and the
 two noise beds, the chunks, and so the transcripts, are the same as before.
-Still taken for a pause: less than half a second of speech alone in a long
-one (a quiet "Yes."), a quiet stretch that never rises 10 dB over its own
-floor (a steady tone, or speech under noise within 10 dB of it), and all
-under a fixed `PARAKEET_VAD_GATE_DB`, which is never heard again.
+Still taken for a pause: a sound under half a second with no longer one near
+it (a quiet "Yes." alone in a long pause), a quiet stretch that never rises
+10 dB over its own floor (a steady tone, or speech under noise within 10 dB of
+it), and all under a fixed `PARAKEET_VAD_GATE_DB`, which is never heard
+again.
 
 **Words and numbers**
 

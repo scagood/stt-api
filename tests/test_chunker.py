@@ -361,25 +361,59 @@ def test_volume_still_cuts_out_a_long_pause_of_room_tone(volume):
     assert [(round(a / SR), round(b / SR)) for a, b in ranges] == [(0, 40), (50, 90)]
 
 
+def _pause_between_turns(pause_sec, sounds):
+    """40 s turns at -20 dBFS either side of a pause of -55 dBFS room tone,
+    with `sounds` in it: (seconds into the pause, seconds long, dBFS)."""
+    rng = np.random.default_rng(1)
+    pause = rng.standard_normal(int(pause_sec * SR)) * 10 ** (-55 / 20)
+    for at, seconds, level_db in sounds:
+        n = int(seconds * SR)
+        pause[int(at * SR): int(at * SR) + n] += rng.standard_normal(n) * 10 ** (level_db / 20)
+    first, last = _turn(40, -20, floor_db=-55), _turn(40, -20, floor_db=-55)
+    return np.concatenate([first, pause.astype(np.float32), last])
+
+
 @pytest.mark.parametrize(
-    ("pause_sec", "seconds", "level_db"),
+    ("pause_sec", "sounds"),
     [
-        (10, 0.01, -30),  # a click: a frame 25 dB over the room tone
-        (10, 0.03, -35),  # a knock: two frames 20 dB over it
-        (5, 0.3, -42),  # a breath: 13 dB over it, for 300 ms
+        (10, [(4.9, 0.01, -30)]),  # a click: a frame ~22 dB over the room tone
+        (10, [(4.9, 0.03, -35)]),  # a knock: two frames 17-20 dB over it
+        (10, [(1.0 + 0.27 * k, 0.01, -30) for k in range(30)]),  # thirty clicks: a mean of 100 ms passed them
+        (5, [(2.4, 0.3, -42)]),  # a breath: 13 dB over it, for 300 ms
+        (15, [(3.5, 0.25, -42), (8.0, 0.25, -42), (12.5, 0.25, -42)]),  # three: 0.75 s summed, under 0.5 s each
+        (10, [(4.6, 0.17, -42), (5.07, 0.17, -42)]),  # a rustle: 0.64 s from end to end, 0.34 s of it loud
     ],
 )
-def test_volume_still_cuts_out_a_long_pause_with_a_sound_in_it(volume, pause_sec, seconds, level_db):
-    # No syllable, or too little speech to be any: the pause is still cut out
-    # whole, not decoded as a chunk of its own around the sound, where
-    # Parakeet can make up a word.
-    rng = np.random.default_rng(1)
-    pause = rng.standard_normal(pause_sec * SR) * 10 ** (-55 / 20)
-    at = int((pause_sec / 2 - 0.1) * SR)
-    pause[at: at + int(seconds * SR)] += rng.standard_normal(int(seconds * SR)) * 10 ** (level_db / 20)
-    first, last = _turn(40, -20, floor_db=-55), _turn(40, -20, floor_db=-55)
-    ranges = chunker.plan_chunks(np.concatenate([first, pause.astype(np.float32), last]), **BOUNDS, context_sec=5.0).ranges
+def test_volume_still_cuts_out_a_long_pause_with_sounds_in_it(volume, pause_sec, sounds):
+    # No syllable, or no sound long enough to be speech: the pause is still
+    # cut out whole, not decoded as chunks of their own around the sounds,
+    # where Parakeet can make up a word.
+    wav = _pause_between_turns(pause_sec, sounds)
+    ranges = chunker.plan_chunks(wav, **BOUNDS, context_sec=5.0).ranges
     assert [(round(a / SR), round(b / SR)) for a, b in ranges] == [(0, 40), (40 + pause_sec, 80 + pause_sec)]
+
+
+def test_volume_keeps_a_quieter_speakers_short_words_between_phrases(volume):
+    # Two 2 s phrases 24 dB under the rest, and between them 4 s of short
+    # words alone (250 ms, 0.8 s apart): each under half a second, but near
+    # speech. Dropped, they left 4 s to cut out of the quiet turn.
+    words = np.concatenate([np.concatenate([part, np.zeros(int(0.55 * SR), np.float32)])
+                            for part in [_turn(0.25, -44)[: SR // 4]] * 5])
+    quiet = np.concatenate([_turn(2, -44), words, _turn(2, -44)])
+    quiet += (np.random.default_rng(2).standard_normal(quiet.size) * 10 ** (-70 / 20)).astype(np.float32)
+    first, last = _turn(50, -20), _turn(50, -20)
+    plan = chunker.plan_chunks(np.concatenate([first, quiet, last]), **BOUNDS, context_sec=5.0)
+    start, end = first.size, first.size + quiet.size
+    assert sum(max(0, min(b, end) - max(a, start)) for a, b in plan.ranges) == quiet.size
+
+
+def test_volume_keeps_a_quiet_reply_over_half_a_second(volume):
+    # 550 ms 15 dB over the room tone, alone in a 10 s pause: decoded.
+    wav = _pause_between_turns(10, [(4.8, 0.55, -40)])
+    ranges = chunker.plan_chunks(wav, **BOUNDS, context_sec=5.0).ranges
+    reply = (int(44.8 * SR), int(45.35 * SR))
+    assert any(a <= reply[0] and reply[1] <= b for a, b in ranges)
+    assert [(round(a / SR), round(b / SR)) for a, b in ranges if b < reply[0] or a > reply[1]] == [(0, 40), (50, 90)]
 
 
 def test_a_fixed_gate_is_not_heard_again(volume, monkeypatch):

@@ -103,10 +103,11 @@ def frame_rms(wav: np.ndarray) -> np.ndarray:
 # stays within a few dB of its floor.
 _OVER_FLOOR = 10.0 ** (10.0 / 20.0)
 _SYLLABLE = 5  # frames: 100 ms
-# Less speech than this in a quiet stretch heard again is none. Breaths and
-# rustles in LibriVox narration's long pauses came to 0.1-0.34 s of one, and
-# decoded alone, made up a word ("yeah"); a quieter reader's stretches held
-# 1.9-5.5 s. A quiet "Yes." alone in a long pause is lost with them.
+# A sound shorter than this in a quiet stretch heard again is no speech, unless
+# a longer one is near. Breaths and rustles in LibriVox narration's long pauses
+# were 0.1-0.34 s, and decoded alone, made up a word ("yeah"); 26 dB down, a
+# quieter reader's phrases were 0.58-1.18 s and the words between them
+# 0.12-0.32 s. A quiet "Yes." alone in a long pause is lost with the breaths.
 _HEARD_ENOUGH = 25  # frames: 0.5 s
 
 
@@ -125,6 +126,21 @@ def _runs_of(frames: np.ndarray, shortest: int) -> List[Range]:
     return [(start, end) for start, end in runs(frames).tolist() if end - start >= shortest]
 
 
+def _joined(spans: np.ndarray, dip: int) -> np.ndarray:
+    """`spans` (rows of runs()) joined across dips shorter than `dip` frames."""
+    if not spans.size:
+        return spans
+    # Each run opens a span unless the dip before it is too short to be a pause.
+    opens = np.concatenate(([True], spans[1:, 0] - spans[:-1, 1] >= dip))
+    closes = np.concatenate((opens[1:], [True]))
+    return np.stack((spans[opens, 0], spans[closes, 1]), axis=1)
+
+
+def _dip_frames() -> int:
+    """The shortest pause, VAD_MIN_SILENCE_MS, in 20 ms frames."""
+    return max(1, int(VAD_MIN_SILENCE_MS / 20))
+
+
 def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
     """Which frames (their levels, `rms`) are louder than `ratio` x the level
     of the audio around them, and than -60 dBFS.
@@ -134,9 +150,11 @@ def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
     under throughout, and be taken for one long pause. So each run of quiet
     frames at least `relisten` long is heard again at its own level: where
     100 ms of it is louder than `ratio` x its average, and 10 dB over its
-    quietest tenth, it is loud too, if that comes to half a second or more.
-    Then again within each run still that long, until none changes. A pause
-    holding only room tone, clicks, or a breath stays quiet, however long.
+    quietest tenth, it is loud too: in a sound (joined across dips shorter
+    than VAD_MIN_SILENCE_MS) heard for half a second or more, or within
+    `relisten` of one. Then again within each run still that long, until none
+    changes. A pause holding only room tone, clicks, or breaths stays quiet,
+    however long or many.
     """
     loud = rms > relative_gate(rms, ratio)
     todo = _runs_of(~loud, relisten)
@@ -148,9 +166,19 @@ def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
         # frame or two loud in a pause, never passes.
         padded = np.pad(part, _SYLLABLE // 2, mode="edge")
         heard = np.median(np.lib.stride_tricks.sliding_window_view(padded, _SYLLABLE), axis=1) > gate
-        if heard.sum() >= _HEARD_ENOUGH:
-            loud[start:end] = heard
-            todo.extend((start + a, start + b) for a, b in _runs_of(~heard, relisten))
+        # Speech is a sound (joined across dips shorter than a pause) heard for
+        # half a second or more, so that breaths spread through one pause never
+        # add up to any; and the shorter sounds within `relisten` of one, a
+        # quiet speaker's short words, which would otherwise leave a stretch
+        # long enough to cut out between two of their phrases.
+        near = np.zeros_like(heard)
+        for a, b in _joined(runs(heard), _dip_frames()).tolist():
+            if heard[a:b].sum() >= _HEARD_ENOUGH:
+                near[max(0, a - relisten): b + relisten] = True
+        kept = heard & near
+        if kept.any():
+            loud[start:end] = kept
+            todo.extend((start + a, start + b) for a, b in _runs_of(~kept, relisten))
     return loud
 
 
@@ -171,16 +199,10 @@ def _volume_speech_segments(wav: np.ndarray) -> List[Range]:
         loud = runs(loud_frames(rms, 0.4, max(1, int(CHUNK_TRIM_SILENCE_SEC * TARGET_SR) // FRAME)))
     else:
         loud = runs(rms > 10.0 ** (VAD_GATE_DB / 20.0))
-    if not loud.size:
-        return []
-    minimum_silence_frames = max(1, int(VAD_MIN_SILENCE_MS / 20))
-    # Each run opens a segment unless the dip before it is too short to be a pause.
-    opens = np.concatenate(([True], loud[1:, 0] - loud[:-1, 1] >= minimum_silence_frames))
-    closes = np.concatenate((opens[1:], [True]))
     pad = int(VAD_SPEECH_PAD_MS * TARGET_SR / 1000)
     return [
         (max(0, start * FRAME - pad), min(wav.size, end * FRAME + pad))
-        for start, end in zip(loud[opens, 0].tolist(), loud[closes, 1].tolist())
+        for start, end in _joined(loud, _dip_frames()).tolist()
     ]
 
 
