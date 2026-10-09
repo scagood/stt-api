@@ -322,7 +322,10 @@ def plan_chunks(
         # would put in speech. Only while the side after the cut keeps trim_gap
         # of its _room spare, or what the whole would: the next cut, capped by
         # that _room, must still reach over a pause to the phrase after it, or
-        # the range after opens on silence that can cost it a piece.
+        # the range after opens on silence that can cost it a piece. And only
+        # where the silence before the phrase costs that side no piece either,
+        # or its even split could cut inside speech, and the side before is
+        # 2 s or more: no sliver, at a short trim_gap.
         whole = end - (current_start if packed else first)
         after = end - cut
         if (
@@ -331,6 +334,8 @@ def plan_chunks(
             or (
                 _room(cut - current_start, own_maximum) + _room(after, own_maximum) <= _room(whole, own_maximum)
                 and _room(after, own_maximum) - after >= min(trim_gap, _room(whole, own_maximum) - whole)
+                and _room(end - start, own_maximum) == _room(after, own_maximum)
+                and cut - current_start >= 2 * TARGET_SR
             )
         ):
             if cut > current_start:
