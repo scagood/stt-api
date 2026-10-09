@@ -517,6 +517,16 @@ def test_volume_keeps_a_quiet_word_near_a_phrase_whole(volume, word):
     assert any(a <= start and end <= b for a, b in chunker.plan_chunks(wav, **BOUNDS).ranges)
 
 
+def test_volume_keeps_no_train_of_clicks_far_past_a_phrase(volume):
+    # Seven clicks 0.36 s apart, one sound, from just inside the 3 s past a
+    # quiet phrase: kept no more than half a second past it, so the rest of
+    # the pause is still cut out. Kept whole, the clicks left too little to.
+    clicks = [(4.8 + 0.36 * k, 0.06, -44) for k in range(7)]
+    wav = _pause_between_turns(10, [(1.0, 1.0, -40)] + clicks)
+    ranges = chunker.plan_chunks(wav, **BOUNDS, context_sec=5.0).ranges
+    assert [(round(a / SR), round(b / SR)) for a, b in ranges] == [(0, 45), (50, 90)]
+
+
 @pytest.mark.parametrize("min_silence_ms", [60, 3000])
 def test_volume_hears_quiet_sounds_alike_whatever_the_shortest_pause(volume, monkeypatch, min_silence_ms):
     # PARAKEET_VAD_MIN_SILENCE_MS is where to cut, not what a sound is: joined
