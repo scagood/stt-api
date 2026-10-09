@@ -568,25 +568,29 @@ mid-speech, into the fewest chunks that fit. Music hasn't been measured.
 **Speech with no pause.** A stretch of speech too long for one chunk, with no
 pause in it as long as `PARAKEET_VAD_MIN_SILENCE_MS`, is still cut into the
 fewest chunks that fit, as evenly as before, but a cut that falls inside a
-word moves, within 3 s (and an eighth of the chunk), to a quieter point: one
-3 dB under where it was, over 200 ms, so a gap between words rather than a
-stop or a quieter syllable. A cut already in a dip (3 dB under the speech
-around it) stays. A split chunk may give up silence at its ends so a cut can
-reach a gap: a pause it shares with the next chunk, to that chunk, as long as
-it needs no more chunks; and at the first chunk's lead or the last one's tail,
-which nothing else decodes, only frames with no sound in them, so a quiet word
-VAD missed there is still decoded.
+word moves, within 3 s (and an eighth of the chunk), to a quieter point: one 3
+dB under where it was, over 200 ms. A cut that already looks like a gap stays
+where it is: one 3 dB under the speech around it, or one in a stretch of 40 ms
+or more that is 1.5 dB under the loudest speech within 1.2 s either side, and
+moves from there only to a pause far deeper (13 dB under that gap, 17 dB under
+the speech). That second test catches a short gap the cut sits at the edge of,
+and a gap beside a quieter word or a fricative. Loudness can't always tell a
+gap from a quieter word or a fricative, so a cut that moves can still land in
+one. A split chunk may give up silence at its ends so a cut can reach a gap: a
+pause it shares with the next chunk, to that chunk, as long as it needs no
+more chunks; and at the first chunk's lead or the last one's tail, which
+nothing else decodes, only frames with no sound in them. A frame there is
+sound if it is louder than -50 dBFS, or louder than -60 dBFS and 10 dB over
+the margin's quietest tenth, so a word under a hum, an offset or a noise bed,
+or a quieter talker filling the margin, is kept. A word VAD missed there that
+is quieter than -50 dBFS and within 10 dB of the margin's floor is given up.
 
-How much this helps depends on the room the cuts have. Measured with
-`PARAKEET_VAD_GATE_DB=-45` under pink noise at -40 and -35 dBFS, so each
-chapter is one stretch cut only by length (LibriVox: *The Adventures of
-Sherlock Holmes* ch. 1, first 15 min; *Alice's Adventures in Wonderland* ch.
-3; *The War of the Worlds* ch. 1), against wav2vec2's word times: with
-`parakeet-v3`'s 65 s chunks, cuts inside a word went from 36% to 7%; with 30 s
-chunks (Whisper, or Parakeet without context) from 48% to 35%; with
-`parakeet-v2`'s 20 s, from 48% to 37%, and not at all for Holmes, whose 900 s
-is exactly 45 chunks of 20 s. No file had more cuts inside a word than before.
-`scripts/quiet_cuts_fuzz.py` measures it on synthetic speech.
+How much this helps varies by recording, and by the room the cuts have.
+`scripts/quiet_cuts_real.py` measures it on a recording against word times
+(for one stretch cut only by length, set `PARAKEET_VAD_GATE_DB` under a noise
+bed); `scripts/quiet_cuts_fuzz.py` measures it on synthetic speech. Where gaps
+between words are no quieter than a quieter word or a fricative, loudness
+can't find them, and cuts land in words about as often as an even split's.
 
 **Quieter speakers.** The file's own gate follows its average, so a speaker
 far quieter than the rest (a remote guest, a phone leg, a question from the
