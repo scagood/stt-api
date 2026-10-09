@@ -256,10 +256,13 @@ async def test_aligner_quantization_is_a_400_pointing_at_the_colon():
     async def form(*pairs):
         return FormData(list(pairs))
 
-    sent = SimpleNamespace(form=lambda: form(("aligner", BASE), ("aligner_quantization", "fp32")))
-    with pytest.raises(HTTPException) as caught:
-        await routes._no_aligner_quantization(sent)
-    assert caught.value.status_code == 400 and f"aligner={BASE}:fp32" in caught.value.detail
+    for sent, said in [
+        ([("aligner", "mms-300m-forced-aligner"), ("aligner_quantization", "int8")], "aligner=mms-300m-forced-aligner:int8"),
+        ([("aligner_quantization", "fp32")], "aligner=<name>:fp32"),
+    ]:
+        with pytest.raises(HTTPException) as caught:
+            await routes._no_aligner_quantization(SimpleNamespace(form=lambda sent=sent: form(*sent)))
+        assert caught.value.status_code == 400 and f"send {said} instead" in caught.value.detail
     assert await routes._no_aligner_quantization(SimpleNamespace(form=lambda: form(("aligner", BASE)))) is None
     checked = {
         route.path for route in routes.router.routes

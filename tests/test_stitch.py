@@ -354,6 +354,37 @@ async def test_a_piece_that_skips_speech_mid_way_is_decoded_again():
 
 
 @pytest.mark.asyncio
+async def test_the_next_word_timed_a_frame_earlier_is_not_a_new_one():
+    # The second piece skips 11.32-16.04 s. Decoded from 10 s, not 7 s, the
+    # redo times "three" a frame earlier (16.00 s), just inside that stretch:
+    # with a made-up "uh" it would make two new words.
+    prepared = _two_pieces()
+    prepared.speech = _samples([(0.0, 20.0)])
+    heard = [3.0, 3.5, 4.0, 9.04, 9.5, 10.0, 11.0, 12.0]  # from 7 s: 10, 10.5, 11, 16.04 ...
+    skipping = _result([f" w{i}" for i in range(3)] + [" three"] + [f" v{i}" for i in range(4)], heard)
+    again = _result(
+        [f" w{i}" for i in range(3)] + [" uh", " three"] + [f" v{i}" for i in range(4)],
+        [0.0, 0.5, 1.0, 3.04, 6.0, 6.5, 7.0, 8.0, 9.0],
+    )
+    results = [_words(10, 0.5), skipping]
+    worker = _Redo([again])
+    assert await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:fp32") == results
+    assert len(worker.pieces) == 1 and prepared.windows == _samples([(0.0, 13.0), (7.0, 20.0)])
+
+
+@pytest.mark.asyncio
+async def test_a_redo_that_loses_more_words_than_it_finds_is_dropped():
+    prepared = _two_pieces()
+    prepared.speech = _samples([(0.0, 20.0)])
+    stopped = _result([f" w{i}" for i in range(6)], [0.3, 0.7, 1.1, 1.5, 1.9, 2.3])  # nothing after 2.3 s
+    again = _result([" x", " y"], [8.0, 8.5])  # two new words, but six lost
+    results = [stopped, _words(10, 3.0)]
+    worker = _Redo([again])
+    assert await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:fp32") == results
+    assert len(worker.pieces) == 1 and prepared.windows == _samples([(0.0, 13.0), (7.0, 20.0)])
+
+
+@pytest.mark.asyncio
 async def test_no_piece_is_decoded_again_when_the_rest_is_silence():
     prepared = _two_pieces()
     prepared.speech = _samples([(0.0, 1.5), (10.5, 19.0)])  # quiet from 1.5 s to the cut
