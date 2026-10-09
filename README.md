@@ -495,7 +495,7 @@ the catalog)
 
 | Variable | Default | |
 |---|---|---|
-| `PARAKEET_CHUNK_MIN_SEC` | `20` | shortest chunk before neighbours are merged, unless merging would pass the model's `chunk_max_sec` less `PARAKEET_CHUNK_CONTEXT_SEC` on both sides (20 s for `parakeet-v2`) while the next phrase fits a chunk of its own, as that would cut inside speech |
+| `PARAKEET_CHUNK_MIN_SEC` | `20` | shortest chunk before neighbours are merged, unless merging would pass the model's `chunk_max_sec` less `PARAKEET_CHUNK_CONTEXT_SEC` on both sides (20 s for `parakeet-v2`) and either the next phrase fits a chunk of its own or cutting at the pause adds no chunk, as merging would cut inside speech |
 | `PARAKEET_CHUNK_TRIM_SILENCE_SEC` | `3` | cut silences at least this long out of a chunk; the first and last chunks keep up to this much before and after the speech |
 | `PARAKEET_CHUNK_CONTEXT_SEC` | `5` | Parakeet only: each chunk also decodes this much of its neighbours' audio either side, from and to a pause, and keeps only the words that start in its own range (see below); at most a quarter of the model's `chunk_max_sec`; `0` turns it off |
 | `PARAKEET_VAD` | `volume` | how pauses are found: `volume`, frames quieter than a gate, or `silero`, a speech model, 30x slower or more (see below) |
