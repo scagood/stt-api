@@ -371,18 +371,19 @@ def test_long_audio_decodes_each_range_with_its_context():
 
 
 class _Redo:
-    """A worker that answers each piece with the next of `answers`, noting the pieces."""
+    """A worker that answers each piece with the next of `answers`, then with
+    nothing heard, noting the pieces."""
 
     def __init__(self, answers):
         self.answers, self.pieces = list(answers), []
 
     async def submit_many(self, pieces, _model_key):
         self.pieces += pieces
-        return [self.answers.pop(0) for _piece in pieces]
+        return [self.answers.pop(0) if self.answers else _result([], []) for _piece in pieces]
 
 
-def _request(worker):
-    state = SimpleNamespace(worker=worker, ready=True, audio_pool=None)  # None: asyncio's own pool
+def _request(worker, pool=None):
+    state = SimpleNamespace(worker=worker, ready=True, audio_pool=pool)  # None: asyncio's own pool
     return SimpleNamespace(app=SimpleNamespace(state=state))
 
 
@@ -390,33 +391,53 @@ def _words(count, first, step=1.0):
     return _result([f" w{i}" for i in range(count)], [first + step * i for i in range(count)])
 
 
+def _heard(origin, words):
+    """A decode from `origin` s of `words`, each (token, its start in the audio)."""
+    return _result([token for token, _at in words], [round(at - origin, 6) for _token, at in words])
+
+
+def _decoded_spans(worker):
+    """Where each piece of audio the worker was given starts and ends, in s
+    (its samples are their own index: _two_pieces, _one_piece)."""
+    return [(round(piece[0] / TARGET_SR, 2), round((piece[0] + piece.size) / TARGET_SR, 2)) for piece in worker.pieces]
+
+
 def _two_pieces(pieces=None):
     """Cut at 10 s, each piece decoding 3 s of the other."""
     windows = [(0.0, 13.0), (7.0, 20.0)]
-    return _prepared([(0.0, 10.0), (10.0, 20.0)], pieces=pieces, windows_sec=windows)
+    wav = np.arange(20 * TARGET_SR, dtype=np.float32)  # each sample its own index, so a piece shows where it starts
+    pieces = pieces or [wav[a:b] for a, b in _samples(windows)]
+    prepared = _prepared([(0.0, 10.0), (10.0, 20.0)], pieces=pieces, windows_sec=windows)
+    prepared.speech = _samples([(0.0, 20.0)])  # speech throughout
+    return prepared
+
+
+def _one_piece(seconds, speech=None):
+    """A clip short enough to be one piece, as _prepare_audio leaves it: no VAD yet."""
+    wav = np.arange(int(seconds * TARGET_SR), dtype=np.float32)
+    prepared = _prepared([(0.0, seconds)], pieces=[wav])
+    prepared.waveform, prepared.speech = wav, speech
+    return prepared
+
+
+# A piece that decoded context and skipped speech is first decoded again as
+# just its range, without context, which is kept or not as a whole.
 
 
 @pytest.mark.asyncio
-async def test_what_a_piece_skipped_is_decoded_again_on_its_own_and_put_in():
-    wav = np.arange(20 * TARGET_SR, dtype=np.float32)
-    prepared = _two_pieces([wav[a:b] for a, b in _samples([(0.0, 13.0), (7.0, 20.0)])])
-    prepared.speech = _samples([(0.0, 20.0)])  # speech throughout
+async def test_a_piece_that_stops_short_is_decoded_again_without_context():
+    prepared = _two_pieces()
     stopped = _result([" One", " two"], [0.5, 1.0])  # nothing after 1 s: 8.7 s of its speech unheard
     whole = _words(10, 3.0)  # a word a second, from 10 s
-    # Heard from 0 s, as the piece was: its first words go by the piece's own
-    # decode, and "and" is past the cut, the next piece's.
-    again = _result([" one", " two", " three", " four", " and"], [0.5, 1.0, 5.0, 9.0, 11.5])
+    again = _result([" One", " two", " three", " four", " five"], [0.5, 1.0, 3.5, 6.0, 8.5])
     worker = _Redo([again])
     results = await routes._redo_stalled(_request(worker), [prepared], [stopped, whole], "parakeet-v3:fp32")
-    # 1.32-10 s, and 2 s either side within the piece's window
-    assert [(piece[0], piece.size) for piece in worker.pieces] == [(0, 12 * TARGET_SR)]
-    assert results[1] is whole
-    assert results[0].tokens == [" One", " two", " three", " four"]
-    assert results[0].timestamps == [0.5, 1.0, 5.0, 9.0]
-    assert prepared.windows == _samples([(0.0, 13.0), (7.0, 20.0)])  # the piece's own, as its times are
-    assert prepared.pieces[0].size == 13 * TARGET_SR
+    assert results == [again, whole]
+    assert _decoded_spans(worker) == [(0.0, 10.0)]
+    assert prepared.windows == _samples([(0.0, 10.0), (7.0, 20.0)])
+    assert prepared.pieces[0].size == 10 * TARGET_SR
     text, _segments, _words_ = routes._stitch(prepared, results)
-    assert text == "One two three four " + " ".join(f"w{i}" for i in range(10))
+    assert text == "One two three four five " + " ".join(f"w{i}" for i in range(10))
 
 
 @pytest.mark.asyncio
@@ -424,77 +445,203 @@ async def test_what_a_piece_skipped_is_decoded_again_on_its_own_and_put_in():
     "again",
     [
         _result([" One", " two"], [0.5, 1.0]),  # music, laughter or noise: no words to find
-        _result([" One", " two", " and"], [0.5, 1.0, 9.6]),  # one word, as Parakeet makes up (#68)
+        _result([" One", " two", " and"], [0.5, 1.0, 9.6]),  # a word made up as the input ends (#68)
     ],
 )
 async def test_a_redo_that_hears_no_more_words_is_dropped(again):
-    wav = np.arange(20 * TARGET_SR, dtype=np.float32)
-    prepared = _two_pieces([wav[a:b] for a, b in _samples([(0.0, 13.0), (7.0, 20.0)])])
-    prepared.speech = _samples([(0.0, 20.0)])  # VAD called it all speech
+    prepared = _two_pieces()
     stopped = _result([" One", " two"], [0.5, 1.0])
     results = [stopped, _words(10, 3.0)]
-    worker = _Redo([again])
+    worker = _Redo([again])  # then the stretch on its own: nothing there either
     assert await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:fp32") == results
-    assert len(worker.pieces) == 1  # decoded again, and the first decode kept
+    assert _decoded_spans(worker) == [(0.0, 10.0), (0.0, 12.0)]  # its range, then 1.32-10 s and 2 s either side
     assert prepared.windows == _samples([(0.0, 13.0), (7.0, 20.0)])
     assert prepared.pieces[0].size == 13 * TARGET_SR
 
 
 @pytest.mark.asyncio
-async def test_a_piece_that_skips_speech_mid_way_has_that_stretch_decoded_again():
-    # Its last word is at its range's end, but 11.32-18 s of speech has none
+async def test_a_piece_that_skips_speech_mid_way_is_decoded_again():
+    # Its last word is at its range's end, but 11.3-18 s of speech has none
     prepared = _two_pieces()
-    prepared.speech = _samples([(0.0, 20.0)])
     skipping = _result([" a", " b", " c", " x", " y", " z"], [3.0, 3.5, 4.0, 11.0, 11.5, 12.5])
-    # From 9.32 s: "b" and "c" the piece heard, "d" and "e" it skipped, and "x"
-    # a frame earlier than it heard it.
-    again = _result([" b", " c", " d", " e", " x"], [1.18, 1.68, 3.68, 5.68, 8.6])
+    again = _words(10, 0.0)
     worker = _Redo([again])
     results = await routes._redo_stalled(_request(worker), [prepared], [_words(10, 0.5), skipping], "parakeet-v3:fp32")
-    assert [piece.size for piece in worker.pieces] == [int(10.68 * TARGET_SR)]  # 9.32-20 s
-    assert results[1].tokens == [" a", " b", " c", " d", " e", " x", " y", " z"]
-    assert results[1].timestamps == pytest.approx([3.0, 3.5, 4.0, 6.0, 8.0, 11.0, 11.5, 12.5])
-    assert results[1].text == "a b c d e x y z"
-    assert prepared.windows == _samples([(0.0, 13.0), (7.0, 20.0)])
+    assert results[1] is again and len(worker.pieces) == 1
+    assert prepared.windows == _samples([(0.0, 13.0), (10.0, 20.0)])
 
 
 @pytest.mark.asyncio
 async def test_the_next_word_timed_a_frame_earlier_is_not_a_new_one():
-    # The second piece skips 11.32-16.04 s. Decoded again from 9.32 s, the
+    # The second piece skips 11.32-16.04 s. Decoded from 10 s, not 7 s, the
     # redo times "three" a frame earlier (16.00 s), just inside that stretch:
-    # with a made-up "uh" it would make two new words.
+    # with a made-up "uh" it would make two new words. So does the stretch's
+    # own redo, from 9.32 s.
     prepared = _two_pieces()
-    prepared.speech = _samples([(0.0, 20.0)])
     heard = [3.0, 3.5, 4.0, 9.04, 9.5, 10.0, 11.0, 12.0]  # from 7 s: 10, 10.5, 11, 16.04 ...
     skipping = _result([f" w{i}" for i in range(3)] + [" three"] + [f" v{i}" for i in range(4)], heard)
     again = _result(
-        [f" w{i}" for i in range(3)] + [" uh", " three"] + [f" v{i}" for i in range(2)],
-        [0.68, 1.18, 1.68, 3.72, 6.68, 7.18, 7.68],
+        [f" w{i}" for i in range(3)] + [" uh", " three"] + [f" v{i}" for i in range(4)],
+        [0.0, 0.5, 1.0, 3.04, 6.0, 6.5, 7.0, 8.0, 9.0],
     )
+    stretch = _heard(9.32, [(" w0", 10.0), (" w1", 10.5), (" w2", 11.0), (" uh", 13.04), (" three", 16.0), (" v0", 16.5)])
     results = [_words(10, 0.5), skipping]
-    worker = _Redo([again])
+    worker = _Redo([again, stretch])
     assert await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:fp32") == results
-    assert [piece.size for piece in worker.pieces] == [int(8.72 * TARGET_SR)]  # 9.32-18.04 s
+    assert _decoded_spans(worker) == [(10.0, 20.0), (9.32, 18.04)]
+    assert prepared.windows == _samples([(0.0, 13.0), (7.0, 20.0)])
 
 
 @pytest.mark.asyncio
-async def test_a_redo_never_costs_the_piece_its_own_words():
+async def test_a_redo_that_loses_more_words_than_it_finds_is_dropped():
     prepared = _two_pieces()
-    prepared.speech = _samples([(0.0, 20.0)])
     stopped = _result([f" w{i}" for i in range(6)], [0.3, 0.7, 1.1, 1.5, 1.9, 2.3])  # nothing after 2.3 s
-    again = _result([" w4", " x", " y"], [1.3, 7.38, 7.88])  # from 0.62 s: two new words, four of its own lost
+    again = _result([" x", " y"], [8.0, 8.5])  # two new words, but six lost
+    results = [stopped, _words(10, 3.0)]
     worker = _Redo([again])
-    results = await routes._redo_stalled(_request(worker), [prepared], [stopped, _words(10, 3.0)], "parakeet-v3:fp32")
-    assert results[0].text == "w0 w1 w2 w3 w4 w5 x y"
-    assert results[0].timestamps == pytest.approx([0.3, 0.7, 1.1, 1.5, 1.9, 2.3, 8.0, 8.5])
+    assert await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:fp32") == results
+    assert len(worker.pieces) == 2 and prepared.windows == _samples([(0.0, 13.0), (7.0, 20.0)])
 
 
-def _one_piece(seconds, speech=None):
-    """A clip short enough to be one piece, as _prepare_audio leaves it: no VAD yet."""
-    wav = np.full(int(seconds * TARGET_SR), 0.1, dtype=np.float32)
-    prepared = _prepared([(0.0, seconds)], pieces=[wav])
-    prepared.waveform, prepared.speech = wav, speech
-    return prepared
+@pytest.mark.asyncio
+async def test_no_piece_is_decoded_again_when_the_rest_is_silence():
+    prepared = _two_pieces()
+    prepared.speech = _samples([(0.0, 1.5), (10.5, 19.0)])  # quiet from 1.5 s to the cut
+    results = [_result([" One", " two"], [0.5, 1.0]), _words(9, 3.5)]
+    worker = _Redo([])
+    assert await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:fp32") == results
+    assert worker.pieces == [] and prepared.windows == _samples([(0.0, 13.0), (7.0, 20.0)])
+
+
+# Then each stretch still skipped, in any piece, is decoded again on its own,
+# and the words heard there are put in among the piece's own.
+
+
+@pytest.mark.asyncio
+async def test_what_a_range_redo_skips_again_is_decoded_again_on_its_own_and_put_in():
+    prepared = _two_pieces()
+    stopped = _result([" One", " two"], [0.5, 1.0])  # nothing after 1 s
+    whole = _words(10, 3.0)
+    # Heard from 0 s, as the piece was: its first words go by the piece's own
+    # decode, and "and" is past the cut, where the next piece heard nothing:
+    # its context, which _trimmed drops.
+    stretch = _result([" one", " two", " three", " four", " and"], [0.5, 1.0, 5.0, 9.0, 11.5])
+    worker = _Redo([_result([" One", " two"], [0.5, 1.0]), stretch])
+    results = await routes._redo_stalled(_request(worker), [prepared], [stopped, whole], "parakeet-v3:fp32")
+    assert _decoded_spans(worker) == [(0.0, 10.0), (0.0, 12.0)]
+    assert results[1] is whole
+    assert results[0].tokens == [" One", " two", " three", " four", " and"]
+    assert results[0].timestamps == [0.5, 1.0, 5.0, 9.0, 11.5]
+    assert prepared.windows == _samples([(0.0, 13.0), (7.0, 20.0)])  # the piece's own, as its times are
+    text, _segments, _words_ = routes._stitch(prepared, results)
+    assert text == "One two three four " + " ".join(f"w{i}" for i in range(10))
+
+
+def _filler(name, start, stop, step=0.5):
+    return [(f" {name}{i}", start + step * i) for i in range(int(round((stop - start) / step)) + 1)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gap", [0.16, 0.24])
+async def test_words_close_to_those_either_side_of_a_skip_are_put_in(gap):
+    # #79 review: the piece hears up to "under|stand|ing" (its last token at
+    # 19.84 s), skips, and hears again from "Rome" (28 s). The redo hears
+    # "the" just after that last token, and "of" 0.24 s before "Rome", which
+    # it times a frame early.
+    before = _filler("a", 0.5, 18.5) + [(" we", 18.9), (" were", 19.2), (" under", 19.52), ("stand", 19.68), ("ing", 19.84)]
+    after = [(" Rome", 28.0)] + _filler("b", 28.5, 39.5)
+    middle = [(" the", 19.84 + gap), (" history", 20.4), (" of", 21.0)] + _filler("c", 21.5, 27.0) + [(" part", 27.4), (" of", 27.76)]
+    prepared = _one_piece(40.0, speech=_samples([(0.0, 40.0)]))
+    redo = _heard(18.16, [(" a36", 18.5)] + before[-5:] + middle + [(" Rome", 27.92), (" b0", 28.5), (" b1", 29.0)])
+    worker = _Redo([redo])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_heard(0.0, before + after)], "parakeet-v3:fp32")
+    assert _decoded_spans(worker) == [(18.16, 30.0)]  # 20.16-28 s and 2 s either side
+    text, _segments, words = routes._stitch(prepared, results)
+    assert "a36 we were understanding the history of c0" in text
+    assert "c11 part of Rome b0 b1 b2" in text
+    assert [w["word"] for w in words].count("Rome") == 1
+    assert [w["start"] for w in words] == sorted(w["start"] for w in words)
+
+
+@pytest.mark.asyncio
+async def test_speech_the_piece_heard_as_another_word_is_not_put_in_again():
+    # The redo hears "understanding" as "under standing", and "Rome" as "roam"
+    before = _filler("a", 0.5, 18.5) + [(" under", 19.52), ("stand", 19.68), ("ing", 19.84)]
+    after = [(" Rome", 28.0)] + _filler("b", 28.5, 39.5)
+    prepared = _one_piece(40.0, speech=_samples([(0.0, 40.0)]))
+    redo = _heard(18.16, [(" under", 19.52), (" standing", 19.76), (" the", 20.4), (" past", 24.0), (" roam", 28.08)])
+    worker = _Redo([redo])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_heard(0.0, before + after)], "parakeet-v3:fp32")
+    words = routes._stitch(prepared, results)[0].split()
+    assert words[35:40] == ["a35", "a36", "understanding", "the", "past"]
+    assert words[40:42] == ["Rome", "b0"] and len(words) == 37 + 3 + 1 + 23
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("skips", ["the start of the next piece", "the end of this piece"])
+async def test_a_word_straddling_a_cut_is_kept_once(skips):
+    # #79 review: "X" starts at 10.07 s, just past the cut, and the pieces and
+    # the redo time it either side of it.
+    prepared = _two_pieces()
+    first = [(f" a{i}", 0.5 + 0.5 * i) for i in range(19)]  # 0.5-9.5 s
+    later = [(" Y", 10.6), (" Z", 11.5)] + [(f" b{i}", 14.0 + 0.5 * i) for i in range(12)]  # to 19.5 s
+    if skips == "the start of the next piece":
+        # The first piece times X past the cut (its context); the second hears
+        # nothing from its start to 14 s, and its redo times X before the cut.
+        left = _heard(0.0, first + [(" X", 10.08), (" Y", 10.6), (" Z", 11.5)])
+        right = _heard(7.0, later[2:])
+        stretch = _heard(8.0, first[-3:] + [(" X", 9.96)] + later[:4])
+        answers, at = [_heard(10.0, later[2:]), stretch], 1  # its range alone hears nothing new
+    else:
+        # The first piece stops after 5 s and hears again from X, past the cut
+        # (its context); its redo times X right at the cut, the second piece past it.
+        left = _heard(0.0, first[:10] + [(" X", 10.06), (" Y", 10.6), (" Z", 11.5)])
+        right = _heard(7.0, [(" X", 10.08)] + later)
+        stretch = _heard(3.32, first[6:] + [(" X", 10.0), (" Y", 10.6), (" Z", 11.5)])
+        answers, at = [_heard(0.0, first[:10]), stretch], 0
+    worker = _Redo(answers)
+    results = await routes._redo_stalled(_request(worker), [prepared], [left, right], "parakeet-v3:fp32")
+    assert results[at] is not (left, right)[at]  # the stretch's words were put in
+    words = routes._stitch(prepared, results)[0].split()
+    assert words.count("X") == 1 and words.count("Y") == 1 and words.count("Z") == 1
+    assert words == [w.strip() for w, _at in first + [(" X", 10.07)] + later]
+
+
+@pytest.mark.asyncio
+async def test_a_word_the_next_piece_heard_differently_past_the_cut_is_kept_once():
+    # The first piece stops after 5 s. Its redo hears "X" as "ex", just before
+    # the cut; the second piece heard "X" just past it, in its own range.
+    prepared = _two_pieces()
+    first = [(f" a{i}", 0.5 + 0.5 * i) for i in range(19)]  # 0.5-9.5 s
+    later = [(" X", 10.06)] + [(f" b{i}", 10.5 + 0.5 * i) for i in range(19)]  # to 19.5 s
+    stretch = _heard(3.32, first[6:] + [(" ex", 9.98), (" b0", 10.5), (" b1", 11.0)])
+    worker = _Redo([_heard(0.0, first[:10]), stretch])
+    results = [_heard(0.0, first[:10]), _heard(7.0, later)]
+    results = await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:fp32")
+    assert routes._stitch(prepared, results)[0].split() == [w.strip() for w, _at in first + later]
+
+
+@pytest.mark.asyncio
+async def test_the_stretches_a_piece_skipped_count_together(caplog):
+    # One word in each of two skipped stretches: two new words in all
+    heard = _filler("a", 0.5, 19.5) + _filler("b", 24.0, 29.5) + _filler("c", 34.0, 39.5)
+    prepared = _one_piece(40.0, speech=_samples([(0.0, 40.0)]))
+    worker = _Redo([_heard(17.82, [(" Yes", 22.0)]), _heard(27.82, [(" Right", 32.0)])])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_heard(0.0, heard)], "parakeet-v3:fp32")
+    assert _decoded_spans(worker) == [(17.82, 26.0), (27.82, 36.0)]
+    text = routes._stitch(prepared, results)[0]
+    assert "a38 Yes b0" in text and "b11 Right c0" in text
+    assert "19.8-24.0 s, 29.8-34.0 s: 2 words" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_stretches_whose_redos_overlap_are_decoded_together():
+    heard = _filler("a", 0.5, 9.5) + _filler("b", 14.0, 15.5) + _filler("c", 19.0, 29.5)
+    prepared = _one_piece(30.0, speech=_samples([(0.0, 30.0)]))
+    worker = _Redo([_heard(7.82, [(" x", 11.0), (" y", 17.5)])])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_heard(0.0, heard)], "parakeet-v3:fp32")
+    assert _decoded_spans(worker) == [(7.82, 21.0)]  # 9.82-14 s and 15.82-19 s, with 2 s either side
+    assert "a18 x b0" in routes._stitch(prepared, results)[0]
 
 
 @pytest.mark.asyncio
@@ -515,19 +662,25 @@ async def test_a_one_piece_clip_that_skips_its_opening_has_it_decoded_again(monk
     worker = _Redo([again])
     results = await routes._redo_stalled(_request(worker), [prepared], [heard], "parakeet-v3:int8")
     assert vad == [70 * TARGET_SR]  # on the clip, once it had 3 s or more with no token
-    assert [piece.size for piece in worker.pieces] == [int(12.4 * TARGET_SR)]  # 0-10.4 s and 2 s after
+    assert _decoded_spans(worker) == [(0.0, 12.4)]  # 0-10.4 s and 2 s after
     text, _segments, words = routes._stitch(prepared, results)
     assert text.startswith("Nineteen eighty-four, by George Orwell. Read by Stephen Fry. Part one. w0 w1")
     assert [(w["word"], w["start"]) for w in words[:2]] == [("Nineteen", 0.5), ("eighty-four,", 1.2)]
     assert sum(w["word"] == "Part" for w in words) == 1
 
 
+class _NoPool:
+    def submit(self, *_args, **_kwargs):
+        pytest.fail("waited on the audio pool")
+
+
 @pytest.mark.asyncio
-async def test_vad_runs_on_a_one_piece_clip_only_once_it_has_a_long_stretch_without_words(monkeypatch):
+async def test_a_one_piece_clip_with_no_long_stretch_without_words_is_left_as_it_is(monkeypatch):
+    # No VAD, and no wait on the audio pool behind other requests' audio
     monkeypatch.setattr(routes, "speech_segments", lambda _wav: pytest.fail("VAD ran"))
     results = [_words(30, 0.5)]  # a word a second throughout
     worker = _Redo([])
-    assert await routes._redo_stalled(_request(worker), [_one_piece(30.0)], results, "parakeet-v3:fp32") == results
+    assert await routes._redo_stalled(_request(worker, _NoPool()), [_one_piece(30.0)], results, "parakeet-v3:fp32") == results
     assert worker.pieces == []
 
 
@@ -548,20 +701,43 @@ async def test_a_stretch_by_the_window_s_edges_is_decoded_again_without_the_marg
     worker = _Redo([_result([" a", " b", " c"], [1.0, 4.0, 8.9])])
     prepared = _one_piece(10.0, speech=_samples([(0.0, 10.0)]))
     results = await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:fp32")
-    assert [piece.size for piece in worker.pieces] == [9 * TARGET_SR]
+    assert _decoded_spans(worker) == [(0.0, 9.0)]
     assert results[0].text == "a b end"  # "c" is the redo's "end", a frame early
 
 
 @pytest.mark.asyncio
-async def test_each_stretch_is_decoded_again_and_judged_on_its_own(caplog):
-    # 0-5 s and 8.32-20 s with no word; again, the first hears two, the second one
-    heard = _result([f" w{i}" for i in range(24)], [5.0, 6.0, 7.0, 8.0] + [20.0 + i for i in range(20)])
-    worker = _Redo([_result([" a", " b"], [1.0, 2.0]), _result([" w3", " uh"], [1.68, 5.0])])
-    prepared = _one_piece(40.0, speech=_samples([(0.0, 40.0)]))
-    results = await routes._redo_stalled(_request(worker), [prepared], [heard], "parakeet-v3:fp32")
-    assert [piece.size for piece in worker.pieces] == [7 * TARGET_SR, int(15.68 * TARGET_SR)]
-    assert results[0].text == "a b " + " ".join(f"w{i}" for i in range(24))
-    assert "0.0-5.0 s: 2 words, 8.3-20.0 s: 1 words" in caplog.text
+async def test_a_redo_never_costs_the_piece_its_own_words():
+    stopped = _result([f" w{i}" for i in range(6)], [0.3, 0.7, 1.1, 1.5, 1.9, 2.3])  # nothing after 2.3 s
+    again = _heard(0.62, [(" w4", 1.92), (" x", 8.0), (" y", 8.5)])  # two new words, four of its own lost
+    worker = _Redo([again])
+    prepared = _one_piece(10.0, speech=_samples([(0.0, 10.0)]))
+    results = await routes._redo_stalled(_request(worker), [prepared], [stopped], "parakeet-v3:fp32")
+    assert results[0].text == "w0 w1 w2 w3 w4 w5 x y"
+    assert results[0].timestamps == pytest.approx([0.3, 0.7, 1.1, 1.5, 1.9, 2.3, 8.0, 8.5])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pieces", [1, 2])
+async def test_a_redo_that_fails_keeps_what_was_heard(pieces, caplog):
+    class Failing:
+        async def submit_many(self, _pieces, _model_key):
+            raise routes.ModelLoadError("parakeet-v3:fp32 could not be loaded")
+
+    prepared = _two_pieces() if pieces == 2 else _one_piece(30.0, speech=_samples([(0.0, 30.0)]))
+    results = [_result([" One", " two"], [0.5, 1.0]), _words(10, 3.0)][:pieces]
+    assert await routes._redo_stalled(_request(Failing()), [prepared], results, "parakeet-v3:fp32") == results
+    assert "keeping what" in caplog.text
+    assert prepared.windows == (_samples([(0.0, 13.0), (7.0, 20.0)]) if pieces == 2 else _samples([(0.0, 30.0)]))
+
+
+@pytest.mark.asyncio
+async def test_the_log_names_ten_pieces_and_counts_the_rest(caplog):
+    files = [_one_piece(10.0, speech=_samples([(0.0, 10.0)])) for _file in range(12)]
+    results = [_result([" end"], [9.0]) for _file in files]
+    worker = _Redo([_result([" a", " b"], [1.0, 4.0]) for _file in files])
+    results = await routes._redo_stalled(_request(worker), files, results, "parakeet-v3:fp32")
+    assert all(result.text == "a b end" for result in results)
+    assert caplog.text.count(": 2 words") == 10 and "; 2 more" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -573,13 +749,3 @@ async def test_whisper_is_never_decoded_again(monkeypatch):
     worker = _Redo([])
     prepared = _one_piece(30.0, speech=_samples([(0.0, 30.0)]))
     assert await routes._redo_stalled(_request(worker), [prepared], results, f"{whisper}:fp32") == results
-
-
-@pytest.mark.asyncio
-async def test_no_piece_is_decoded_again_when_the_rest_is_silence():
-    prepared = _two_pieces()
-    prepared.speech = _samples([(0.0, 1.5), (10.5, 19.0)])  # quiet from 1.5 s to the cut
-    results = [_result([" One", " two"], [0.5, 1.0]), _words(9, 3.5)]
-    worker = _Redo([])
-    assert await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:fp32") == results
-    assert worker.pieces == [] and prepared.windows == _samples([(0.0, 13.0), (7.0, 20.0)])

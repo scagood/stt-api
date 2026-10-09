@@ -526,13 +526,19 @@ times to trim it back by.
 **Skipped speech.** Parakeet can still skip a stretch of speech, which one
 depending on where its input starts and ends: a narrated opening over a music
 bed was lost in most clips of 70 s or more, single chunks among them, and heard
-in every clip of 68 s or less tried. So where a chunk, or a clip short enough
-to be one, has 3 s or more of speech (to VAD) with no word, that stretch is
-decoded again on its own, with 2 s either side, and the words heard in it are
-put in among the chunk's own, if there are two or more: to VAD, music or noise
-can be speech, and one word may be made up. Each such stretch costs one more
-decode, at most 4 s longer than it. On a clip short enough to be one chunk, VAD runs
-only once it has 3 s or more with no word.
+in every clip of 68 s or less tried. Where a chunk has 3 s or more of speech
+(to VAD) with no word, a chunk with context is first decoded again as just its
+own range, without context, kept if it hears two or more words in what was
+skipped and no fewer in all. Then each stretch still skipped, in any chunk or
+a clip short enough to be one, is decoded again on its own, with 2 s either
+side (stretches that close as one decode), and the words heard where the
+chunk heard none are put in among its own, if two or more are in what it
+skipped: to VAD, music or noise can be speech, and one word may be made up.
+The chunk's words and the redo's are matched up word by word, as at a cut,
+rather than by a fixed time either side of the stretch, and every word the
+chunk heard stays. Each such stretch costs one more decode, at most 4 s longer than
+it. On a clip short enough to be one chunk, VAD runs only once it has 3 s or
+more with no word. A redo that fails keeps what was heard.
 
 **Finding pauses.** By default a pause is any stretch of 20 ms frames quieter
 than the gate, which takes under 0.3 ms of CPU per second of audio.
