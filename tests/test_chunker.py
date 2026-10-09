@@ -527,19 +527,29 @@ def test_volume_keeps_no_train_of_clicks_far_past_a_phrase(volume):
     assert [(round(a / SR), round(b / SR)) for a, b in ranges] == [(0, 45), (50, 90)]
 
 
-@pytest.mark.parametrize("min_silence_ms", [60, 3000])
-def test_volume_hears_quiet_sounds_alike_whatever_the_shortest_pause(volume, monkeypatch, min_silence_ms):
-    # PARAKEET_VAD_MIN_SILENCE_MS is where to cut, not what a sound is: joined
-    # across it, at 60 ms a quiet turn's syllables were each too short to be
-    # speech, and at 3 s two breaths were one long enough.
-    monkeypatch.setattr(chunker, "VAD_MIN_SILENCE_MS", min_silence_ms)
+def test_volume_hears_quiet_sounds_whatever_the_shortest_pause(volume, monkeypatch):
+    # Joined across PARAKEET_VAD_MIN_SILENCE_MS alone, at 60 ms a quiet turn's
+    # syllables were each a sound too short to be speech, and so were two
+    # 0.3 s words 0.3 s apart. Still 400 ms.
+    monkeypatch.setattr(chunker, "VAD_MIN_SILENCE_MS", 60)
     first, quiet, last = _turn(50, -20), _turn(10, -44), _turn(50, -20)
     plan = chunker.plan_chunks(np.concatenate([first, quiet, last]), **BOUNDS, context_sec=5.0)
     start, end = first.size, first.size + quiet.size
     assert sum(max(0, min(b, end) - max(a, start)) for a, b in plan.ranges) == quiet.size
-    wav = _pause_between_turns(10, [(3.0, 0.3, -42), (5.0, 0.3, -42)])
+    wav = _pause_between_turns(10, [(4.8, 0.3, -40), (5.4, 0.3, -40)])
     ranges = chunker.plan_chunks(wav, **BOUNDS, context_sec=5.0).ranges
-    assert [(round(a / SR), round(b / SR)) for a, b in ranges] == [(0, 40), (50, 90)]
+    assert any(a <= int(44.8 * SR) and int(45.7 * SR) <= b for a, b in ranges)
+
+
+def test_volume_joins_quiet_words_across_a_longer_shortest_pause(volume, monkeypatch):
+    # Ten 0.35 s words 0.5 s apart, alone in a pause: each under half a second,
+    # but one sound across a PARAKEET_VAD_MIN_SILENCE_MS of 1 s, decoded.
+    # Joined across 400 ms alone, they were dropped.
+    monkeypatch.setattr(chunker, "VAD_MIN_SILENCE_MS", 1000)
+    wav = _pause_between_turns(12, [(1.0 + 0.85 * k, 0.35, -42) for k in range(10)])
+    start, end = int(41.0 * SR), int(48.7 * SR)
+    ranges = chunker.plan_chunks(wav, **BOUNDS, context_sec=5.0).ranges
+    assert sum(max(0, min(b, end) - max(a, start)) for a, b in ranges) == end - start
 
 
 def test_a_fixed_gate_is_not_heard_again(volume, monkeypatch):
