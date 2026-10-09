@@ -762,10 +762,11 @@ def _stalled(prepared: _PreparedAudio, results: Sequence[Any]) -> Dict[int, List
 
 
 # A piece decoded again without context keeps the redo only if it hears at
-# least this many words in the speech the first decode skipped. What VAD calls
-# speech may be music, laughter or noise, with no words to find
-# (PARAKEET_VAD=volume above all), and without context Parakeet may make up a
-# word as its input ends (#68): one new word there is no sign of a skip.
+# least this many words in the speech the first decode skipped, and no fewer
+# words in all. What VAD calls speech may be music, laughter or noise, with no
+# words to find (PARAKEET_VAD=volume above all), and without context Parakeet
+# may make up a word as its input ends (#68): one new word there is no sign of
+# a skip.
 _REDO_MIN_WORDS = 2
 
 
@@ -781,10 +782,10 @@ async def _redo_stalled(
 ) -> List[Any]:
     """`results`, every file's pieces in order, with each piece that skipped
     speech (_stalled) decoded again as just its range, without context, and
-    the redo kept if it hears words where the first decode heard none
-    (_REDO_MIN_WORDS). A kept piece's window and piece in `files` change to
-    match. Finding and judging them run on the audio pool: for hours of audio,
-    that is a scan of every token."""
+    the redo kept if it hears words where the first decode heard none and
+    loses none overall (_REDO_MIN_WORDS). A kept piece's window and piece in
+    `files` change to match. Finding and judging them run on the audio pool:
+    for hours of audio, that is a scan of every token."""
     results = list(results)
     if all(prepared.windows == prepared.ranges for prepared in files):
         return results  # nothing decoded context: short audio, or PARAKEET_CHUNK_CONTEXT_SEC=0
@@ -811,10 +812,17 @@ async def _redo_stalled(
     again = await _infer(request, pieces, model_key)
 
     def heard() -> List[bool]:
-        return [
-            _words_in(result, prepared.ranges[index][0], skipped) >= _REDO_MIN_WORDS
-            for (_at, prepared, index, skipped), result in zip(redo, again)
-        ]
+        """Whether each redo hears new words where its piece skipped, and as many in all."""
+        tail = int(_WORD_TAIL_SEC * TARGET_SR)
+        keep = []
+        for (at, prepared, index, skipped), result in zip(redo, again):
+            (start, end), window_start = prepared.ranges[index], prepared.windows[index][0]
+            # A stretch ends at the first decode's next word, which the redo,
+            # on another 80 ms frame grid, may time a frame earlier.
+            new = _words_in(result, start, [(low, high - tail) for low, high in skipped])
+            before = _words_in(results[at], window_start, [(start, end)])
+            keep.append(new >= _REDO_MIN_WORDS and _words_in(result, start, [(start, end)]) >= before)
+        return keep
 
     kept = 0
     for (at, prepared, index, _skipped), piece, result, keep in zip(
@@ -1233,12 +1241,14 @@ async def _plain_granularities(request: Request) -> Optional[List[str]]:
 async def _no_aligner_quantization(request: Request) -> None:
     """A 400 for `aligner_quantization`, gone before 2.0.0 but in the `latest`
     images for six days: FastAPI ignores a field it doesn't know, so its
-    precision would quietly become the aligner's default."""
-    if "aligner_quantization" in await request.form():
+    precision would quietly become the aligner's default. It says what to
+    send instead."""
+    form = await request.form()
+    if "aligner_quantization" in form:
+        name = str(form.get("aligner") or "<name>").partition(":")[0].strip()
         raise HTTPException(
             status_code=400,
-            detail="aligner_quantization is gone: put the precision after a colon in aligner, "
-            "e.g. aligner=wav2vec2-base-960h:fp32",
+            detail=f"aligner_quantization is gone: send aligner={name}:{str(form['aligner_quantization']).strip()} instead",
         )
 
 
