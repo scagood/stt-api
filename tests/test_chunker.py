@@ -358,6 +358,15 @@ def test_a_cut_in_speech_lands_in_the_quietest_gap_near_it(monkeypatch):
     _assert_valid(ranges, _at(41)[0], _at(20)[0])
 
 
+def test_a_dc_offset_does_not_change_where_a_cut_lands(monkeypatch):
+    # An offset as loud as the speech adds the same power everywhere: the
+    # cuts still find the deep gaps, as without it.
+    quiet = [(11.7, 11.85), (29.3, 29.45)]
+    clean = _forced(monkeypatch, _words(41, quiet), [(0, 41)], **V2).ranges
+    ranges = _forced(monkeypatch, _words(41, quiet) + np.float32(0.1), [(0, 41)], **V2).ranges
+    assert ranges == clean
+
+
 def test_a_cut_in_speech_without_a_deep_gap_still_lands_between_words(monkeypatch):
     # gaps of 0.25 s 10 dB down every 0.6 s: each cut goes in one near the even split
     ranges = _forced(monkeypatch, _words(41, word=0.35, gap=0.25), [(0, 41)], **V2).ranges
@@ -390,6 +399,39 @@ def test_a_cut_already_in_a_gap_does_not_move_into_a_word(monkeypatch, dip, db):
     assert _at(13.9)[0] < ranges[0][1] < _at(14.0)[0]
 
 
+def _phased(seconds, word, gap, gap_at, gap_db=-26.0, word_db=-20.0):
+    """Noise like speech: `word` s words at `word_db` and `gap` s gaps at
+    `gap_db`, a gap starting at `gap_at` s."""
+    t = np.arange(int(seconds * SR)) / SR
+    level = np.where((t - gap_at) % (word + gap) < gap, 10 ** (gap_db / 20), 10 ** (word_db / 20))
+    return np.random.default_rng(0).standard_normal(t.size).astype(np.float32) * level.astype(np.float32)
+
+
+def test_a_cut_already_in_a_short_gap_by_its_edge_stays(monkeypatch):
+    # Fast speech: 0.25 s words, 60 ms gaps 6 dB down. The even cut at
+    # 13.667 s is 5 ms into a gap, so 200 ms and 80 ms around it are mostly
+    # word; a word 2 s on said 12 dB quieter is no gap.
+    even = 41 / 3
+    wav = _phased(41, 0.25, 0.06, even - 0.005)
+    quiet = _at(even + 2.0)[0]
+    quiet -= (quiet - _at(even - 0.005)[0]) % _at(0.31)[0] - _at(0.06)[0]
+    wav[quiet: quiet + _at(0.25)[0]] *= 10 ** (-12 / 20)
+    ranges = _forced(monkeypatch, wav, [(0, 41)], **V2).ranges
+    assert ranges == chunker._split_oversized(0, _at(41)[0], _at(20)[0])
+
+
+def test_a_cut_already_in_a_gap_beside_a_fricative_stays(monkeypatch):
+    # 0.35 s words ending in a 0.15 s fricative 15 dB down, 0.1 s gaps 6 dB
+    # down: the gap is louder than the fricative beside it, and quiet
+    # frames are over half the speech. The even cut is mid-gap, and stays.
+    even = 41 / 3
+    wav = _phased(41, 0.5, 0.1, even - 0.05)
+    t = np.arange(wav.size) / SR
+    wav[(t - (even - 0.05)) % 0.6 >= 0.35] *= 10 ** (-15 / 20)
+    ranges = _forced(monkeypatch, wav, [(0, 41)], **V2).ranges
+    assert ranges == chunker._split_oversized(0, _at(41)[0], _at(20)[0])
+
+
 def test_a_dip_shorter_than_a_syllable_does_not_draw_the_cut(monkeypatch):
     # 20 ms of silence mid-word at the even split, and a 150 ms gap 1 s off
     wav = _words(41, gap_db=-20.0)  # no gaps between words
@@ -410,7 +452,7 @@ def test_a_cut_in_speech_reaches_a_gap_past_the_even_split_by_giving_up_silence(
     # 38.5 s of speech spans 40 s with the margin after it: two pieces of
     # exactly 20 s, the cut fixed at 20 s. Ending the last range sooner, in
     # the margin's silence, lets the cut move to the gap at 19.6 s.
-    wav = _words(45, [(19.6, 19.75)])
+    wav = _words(45, [(19.6, 19.75)], word=0.35)  # the even cut at 20 s is mid-word
     wav[_at(38.5)[0]:] *= 1e-3
     ranges = _forced(monkeypatch, wav, [(0, 38.5)], **V2).ranges
     assert len(ranges) == 2 and ranges[0][0] == 0 and ranges[0][1] == ranges[1][0]
@@ -503,7 +545,7 @@ def test_a_cut_in_speech_may_give_the_pause_after_it_to_the_next_range(monkeypat
     # The first phrase's range is cut at 40 s, early in the pause, to stay
     # two pieces; ending it at the pause's start instead gives the next range
     # 0.4 s more, which still fits one piece, and lets its cut reach 19.7 s.
-    wav = _words(60, [(19.7, 19.85)])
+    wav = _words(60, [(19.7, 19.85)], word=0.35)  # the even cut at 20 s is mid-word
     wav[_at(39.6)[0]: _at(41)[0]] *= 1e-3
     speech = [(0, 39.6), (41, 50)]
     ranges = _forced(monkeypatch, wav, speech, **V2).ranges

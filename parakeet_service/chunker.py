@@ -284,10 +284,68 @@ def _split_oversized(
     return list(zip(cuts, cuts[1:]))
 
 
+def _span_power(wav: np.ndarray, at: np.ndarray, span: int) -> np.ndarray:
+    """Mean power of the `span` samples of `wav` around each of `at` (sorted),
+    less their mean's: a DC offset is no sound."""
+    low = max(0, int(at[0]) - span // 2)
+    part = wav[low: min(wav.size, int(at[-1]) + span // 2)].astype(np.float64)
+    sums = np.concatenate(([0.0], np.cumsum(part)))
+    squares = np.concatenate(([0.0], np.cumsum(part * part)))
+    first = np.clip(at - span // 2 - low, 0, part.size)
+    last = np.clip(at + span // 2 - low, 0, part.size)
+    count = np.maximum(last - first, 1)
+    mean = (sums[last] - sums[first]) / count
+    return np.maximum((squares[last] - squares[first]) / count - mean * mean, 0.0)
+
+
+# A cut is in a gap where it is in a stretch at least _GAP_RUN long whose
+# _GAP_SPAN spans are all _GAP_DEPTH (1.5 dB) under the loudest within
+# _GAP_SIDE on either side: also a short gap between words (50-80 ms) the
+# cut is at the edge of, which a 200 ms span doesn't see, or a gap only a
+# few dB under a quieter word, or beside a fricative (s, f, sh) quieter
+# still. A 20 ms dip inside a word is too short to be one. A syllable's dip
+# can pass for one, so a cut there stays, as the even split had it.
+_GAP_SPAN = int(0.02 * TARGET_SR)
+_GAP_SIDE = int(1.2 * TARGET_SR)
+_GAP_RUN = int(0.04 * TARGET_SR)
+_GAP_DEPTH = 0.7
+# A cut in a gap moves only to a point far quieter, over _QUIET_SPAN: 13 dB
+# under the gap and 17 dB under the speech around it, so a deep pause beats
+# a syllable's dip, but not a fricative or a quieter word.
+_DEEPER = 0.05
+_DEEP = 0.02
+
+
+def _in_gap(wav: np.ndarray, point: int) -> float | None:
+    """If `point` is in a stretch at least _GAP_RUN long whose _GAP_SPAN
+    spans, every _QUIET_STEP, are _GAP_DEPTH under the loudest within
+    _GAP_SIDE on either side, that stretch's mean power; else None."""
+    at = np.arange(max(0, point - _GAP_SIDE), min(wav.size, point + _GAP_SIDE) + 1, _QUIET_STEP)
+    if at.size < 3:
+        return None
+    level = _span_power(wav, at, _GAP_SPAN)
+    here = int(np.searchsorted(at, point))
+    if here == 0 or here >= at.size - 1:
+        return None
+    gate = _GAP_DEPTH * min(level[:here].max(), level[here + 1:].max())
+    if level[here] > gate:
+        return None
+    quiet = level <= gate
+    left = here
+    while left > 0 and quiet[left - 1]:
+        left -= 1
+    right = here
+    while right < at.size - 1 and quiet[right + 1]:
+        right += 1
+    if (right - left) * _QUIET_STEP < _GAP_RUN:
+        return None
+    return float(level[left: right + 1].mean())
+
+
 def _quiet_cuts(wav: np.ndarray, even: List[int], maximum: int, latest_start: int, earliest_end: int) -> List[int]:
     """`even` (an even split of wav[even[0]:even[-1]] into parts of half
-    `maximum` or more) with each inner cut not already in a dip (_QUIET)
-    moved, within QUIET_CUT_SEARCH_SEC (or maximum / 8) of it, to where the
+    `maximum` or more) with each inner cut not already in a dip (_QUIET) or
+    a gap (_in_gap) moved, within QUIET_CUT_SEARCH_SEC (or maximum / 8) of it, to where the
     power of the _QUIET_SPAN around it is least, if that is _QUIETER, plus
     _QUIET_CUT_COST_PER_SEC for each second moved; and the ends as late or
     early as `latest_start` and `earliest_end`, as far, where the cuts need
@@ -299,11 +357,13 @@ def _quiet_cuts(wav: np.ndarray, even: List[int], maximum: int, latest_start: in
     as each one's room depends on where its neighbours go. Scored by power,
     not decibels: a deep pause scores barely better than a gap between words,
     so the search seldom puts one cut in a word to put another in a pause.
-    Where no point near a cut is _QUIETER, it stays where the even split puts it."""
+    Where no point near a cut is _QUIETER, it stays where the even split puts
+    it. One in a gap moves only to a pause far quieter (_DEEPER, _DEEP).
+    Power is measured less its mean (_span_power), so a DC offset is no
+    sound."""
     start, end = even[0], even[-1]
     reach = min(int(QUIET_CUT_SEARCH_SEC * TARGET_SR), maximum // 8)
-    frames = frame_rms(wav[start:end]).astype(np.float64) ** 2
-    around = int(_LOCAL_SEC * TARGET_SR) // FRAME
+    around = int(_LOCAL_SEC * TARGET_SR)
 
     def candidates(point: int, low: int, high: int) -> np.ndarray:
         """`point`, and every _QUIET_STEP from it, from `low` to `high`."""
@@ -315,14 +375,9 @@ def _quiet_cuts(wav: np.ndarray, even: List[int], maximum: int, latest_start: in
     def power(at: np.ndarray, point: int, span: int) -> np.ndarray:
         """Mean power of the `span` samples around each of `at`, over the median
         20 ms frame's within _LOCAL_SEC of `point`: the speech there."""
-        frame = (point - start) // FRAME
-        local = float(np.median(frames[max(0, frame - around): frame + around + 1])) + 1e-12
-        low = max(0, int(at[0]) - span // 2)
-        part = wav[low: min(wav.size, int(at[-1]) + span // 2)].astype(np.float64)
-        sums = np.concatenate(([0.0], np.cumsum(part * part)))
-        first = np.clip(at - span // 2 - low, 0, part.size)
-        last = np.clip(at + span // 2 - low, 0, part.size)
-        return (sums[last] - sums[first]) / np.maximum(last - first, 1) / local
+        centres = np.arange(max(start, point - around), min(end, point + around) - FRAME + 1, FRAME) + FRAME // 2
+        local = float(np.median(_span_power(wav, centres, FRAME))) + 1e-12
+        return _span_power(wav, at, span) / local
 
     stages = [candidates(start, start, min(latest_start, start + reach))]
     stages += [candidates(point, point - reach, point + reach) for point in even[1:-1]]
@@ -334,9 +389,15 @@ def _quiet_cuts(wav: np.ndarray, even: List[int], maximum: int, latest_start: in
         here = level[np.searchsorted(at, point)]
         # A cut already in a dip stays, by the dip's own 80 ms too, as a short
         # gap is: it may be a gap the quieter point near it (a stop closure,
-        # a quieter word) is not. Else it moves only somewhere _QUIETER.
+        # a quieter word) is not. One in a gap (_in_gap) moves only to a far
+        # deeper pause. Else it moves only somewhere _QUIETER.
         dip = power(np.array([point]), point, _DIP_SPAN)[0]
-        moves = (at == point) | ((min(here, dip) >= _QUIET) & (level <= here * _QUIETER))
+        if min(here, dip) < _QUIET:
+            moves = at == point
+        elif (gap := _in_gap(wav, point)) is not None:
+            moves = (at == point) | ((_span_power(wav, at, _QUIET_SPAN) <= gap * _DEEPER) & (level <= _DEEP))
+        else:
+            moves = (at == point) | (level <= here * _QUIETER)
         costs[index] = np.where(moves, costs[index] + level, np.inf)
 
     # A cut's options are the previous cut's candidates no more than maximum
