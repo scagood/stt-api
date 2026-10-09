@@ -586,7 +586,7 @@ async def test_long_audio_is_never_scanned_or_joined_on_the_event_loop(stitched,
         state.audio_pool.shutdown()
         state.align_pool.shutdown()
     assert text == "hello world"
-    assert threads == ["audio"] and stitched == ["audio"]
+    assert threads == ["audio", "audio"] and stitched == ["audio"]  # a scan for each redo
 
 
 @pytest.mark.asyncio
