@@ -694,6 +694,20 @@ async def test_a_word_timed_early_as_the_redo_meets_the_end_of_the_audio_is_not_
 
 
 @pytest.mark.asyncio
+async def test_a_word_timed_early_from_the_redo_s_last_seconds_is_not_put_in_again():
+    # The piece skips 17-25 s of a 26 s clip and hears "Rome" last, at
+    # 24.96 s. Its redo hears it as "roam" 0.56 s early: in its last 1.5 s
+    # as said, but before them as timed.
+    before = _filler("a", 0.5, 17.0)
+    middle = _filler("c", 17.5, 24.0)
+    prepared = _one_piece(26.0, speech=_samples([(0.0, 26.0)]))
+    redo = _heard(15.28, before[-3:] + middle + [(" roam", 24.4), (" uh", 25.8)])
+    worker = _Redo([redo])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_heard(0.0, before + [(" Rome", 24.96)])], "parakeet-v3:fp32")
+    assert routes._stitch(prepared, results)[0].split() == [w.strip() for w, _at in before + middle] + ["Rome"]
+
+
+@pytest.mark.asyncio
 async def test_the_second_half_of_a_word_the_redo_splits_is_not_put_in_either():
     # The piece hears one-token "today" at 9 s, then skips to 20 s; the redo
     # hears "to" at 9.16 s and "day" 0.4 s after it.
@@ -701,6 +715,30 @@ async def test_the_second_half_of_a_word_the_redo_splits_is_not_put_in_either():
     prepared = _one_piece(30.0, speech=_samples([(0.0, 30.0)]))
     middle = _filler("c", 10.0, 19.5)
     redo = _heard(7.32, [(" a14", 7.5), (" a15", 8.0), (" a16", 8.5), (" to", 9.16), (" day", 9.56)] + middle + after[:5])
+    worker = _Redo([redo])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_heard(0.0, before + after)], "parakeet-v3:fp32")
+    assert routes._stitch(prepared, results)[0].split() == [w.strip() for w, _at in before + middle + after]
+
+
+@pytest.mark.asyncio
+async def test_the_second_half_of_a_split_word_after_another_heard_differently_is_not_put_in():
+    # As above, with "the" before "today" heard by the redo as "thee".
+    before, after = _filler("a", 0.5, 8.0) + [(" the", 8.5), (" today", 9.0)], _filler("b", 20.0, 29.5)
+    prepared = _one_piece(30.0, speech=_samples([(0.0, 30.0)]))
+    middle = _filler("c", 10.0, 19.5)
+    redo = _heard(7.32, [(" a14", 7.5), (" a15", 8.0), (" thee", 8.5), (" to", 9.16), (" day", 9.56)] + middle + after[:5])
+    worker = _Redo([redo])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_heard(0.0, before + after)], "parakeet-v3:fp32")
+    assert routes._stitch(prepared, results)[0].split() == [w.strip() for w, _at in before + middle + after]
+
+
+@pytest.mark.asyncio
+async def test_a_word_the_redo_splits_and_times_sooner_is_not_put_in_again():
+    # As above, with "to" a few frames before the piece's "today".
+    before, after = _filler("a", 0.5, 8.5) + [(" today", 9.0)], _filler("b", 20.0, 29.5)
+    prepared = _one_piece(30.0, speech=_samples([(0.0, 30.0)]))
+    middle = _filler("c", 10.0, 19.5)
+    redo = _heard(7.32, [(" a14", 7.5), (" a15", 8.0), (" a16", 8.5), (" to", 8.76), (" day", 9.16)] + middle + after[:5])
     worker = _Redo([redo])
     results = await routes._redo_stalled(_request(worker), [prepared], [_heard(0.0, before + after)], "parakeet-v3:fp32")
     assert routes._stitch(prepared, results)[0].split() == [w.strip() for w, _at in before + middle + after]
@@ -752,6 +790,21 @@ async def test_a_word_said_twice_across_a_cut_is_kept_twice():
     results = await routes._redo_stalled(_request(worker), [prepared], [left, right], "parakeet-v3:fp32")
     words = routes._stitch(prepared, results)[0].split()
     assert words == [w.strip() for w, _at in first] + ["to"] + [w.strip() for w, _at in later]
+
+
+@pytest.mark.asyncio
+async def test_a_word_the_neighbour_keeps_timed_early_at_the_cut_is_not_put_in_again():
+    # The first piece times "X" 0.6 s early, before the cut, where it keeps
+    # it. The second hears nothing to 14 s; its redo times X right, past the
+    # cut: too far apart for _seam to see one word.
+    prepared = _two_pieces()
+    first, later = _filler("a", 0.5, 9.0) + [(" X", 9.44)], [(" c0", 10.6), (" c1", 11.2)] + _filler("b", 14.0, 19.5)
+    left, right = _heard(0.0, first), _heard(7.0, later[2:])
+    stretch = _heard(8.0, first[-4:-1] + [(" X", 10.04)] + later[:6])
+    worker = _Redo([_heard(10.0, later[2:]), stretch])
+    results = await routes._redo_stalled(_request(worker), [prepared], [left, right], "parakeet-v3:fp32")
+    words = routes._stitch(prepared, results)[0].split()
+    assert words == [w.strip() for w, _at in first + later]
 
 
 @pytest.mark.asyncio

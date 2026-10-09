@@ -976,12 +976,15 @@ _REDO_MARGIN_SEC = 2.0
 # that speech heard as another word, not a new one; this far past where a
 # word the redo did not hear could still be sounding, too (_merged).
 _SAME_SPEECH_SEC = 0.2
+# A word the piece heard that the redo heard another way may start this much
+# sooner in the redo: each decode can time it a frame or two off.
+_SOONER_SEC = 0.3
 
 # As its input ends, in about its last _REDO_LATE_SEC, a redo can time a word
 # up to about half a second early (#79's review: the real model timed "sign"
 # 0.48 s early there). A redo's words are matched with the piece's this far
-# apart, and one there just this far before a word the piece heard but the
-# redo did not is that word.
+# apart, and one timed there, or this far before there, just this far before
+# a word the piece heard but the redo did not is that word.
 _REDO_EARLY_SEC = 0.6
 _REDO_LATE_SEC = 1.5
 
@@ -1068,6 +1071,9 @@ def _merged(
     # way: _seam pairs those that are the same.
     beside = _aligned([(k, first / TARGET_SR, key) for k, (first, _last, key) in enumerate(taken)], highs, _REDO_EARLY_SEC)
     paired, alike = {j for _k, j, _at, _there in beside}, {k for k, _j, _at, _there in beside}
+    # One _seam cannot match, too far from the neighbour's copy, where the
+    # neighbour keeps it: that word heard again.
+    kept = {j for k, j, at, there in beside if abs(at - there) > _SEAM_MATCH_SEC and not own[0] <= taken[k][0] < own[1]}
     taken = [(first - near, held(first, last, k in alike)) for k, (first, last, _key) in enumerate(taken)]
     zone = [False] * len(others)
     for low, high in stretches:
@@ -1092,27 +1098,35 @@ def _merged(
     # half of any of those the redo split in two.
     ours = set(matched)
     unheard = [at for i, at in enumerate(firsts) if i not in both]
-    early, late = int(_REDO_EARLY_SEC * TARGET_SR), stop - int(_REDO_LATE_SEC * TARGET_SR)
-    same = [False] * len(others)
+    early, before = int(_REDO_EARLY_SEC * TARGET_SR), int(_SOONER_SEC * TARGET_SR)
+    late = stop - early - int(_REDO_LATE_SEC * TARGET_SR)
+    same: List[Any] = [None] * len(others)  # the word heard as it, if any
     for j, at in enumerate(theirs):
         if j in ours:
             continue
+        if j in kept:
+            same[j] = ("kept", j)
+            continue
         candidates = bisect.bisect_right(firsts, at + near)
+        sooner = next((i for i in range(candidates, bisect.bisect_right(firsts, at + before)) if i not in both), None)
         if candidates and reaches[candidates - 1] >= at:
-            same[j] = True
-        elif j not in paired and any(low <= at <= high for low, high in taken):
-            same[j] = True
+            same[j] = ("piece", candidates - 1)
+        elif sooner is not None:
+            same[j] = ("piece", sooner)  # a frame or so sooner than the piece timed a word it heard another way
+        elif j not in paired and (k := next((k for k, (low, high) in enumerate(taken) if low <= at <= high), None)) is not None:
+            same[j] = ("taken", k)
         elif at >= late and (k := bisect.bisect_right(unheard, at)) < len(unheard) and unheard[k] <= at + early:
             following = j + 1 < len(theirs) and zone[j + 1] and j + 1 not in ours and theirs[j + 1] < unheard[k]
-            same[j] = not following  # the nearest before it that could go in
-    halves = [  # a second half: after a first, one that follows none of those
-        j > 0 and same[j - 1] and not (j > 1 and same[j - 2]) and j not in ours and theirs[j] - theirs[j - 1] <= reach
+            same[j] = None if following else ("unheard", k)  # the nearest before it that could go in
+    halves = [  # a second half: after a first, unless that one follows another heard as the same word
+        j > 0 and same[j - 1] is not None and not (j > 1 and same[j - 2] == same[j - 1])
+        and j not in ours and theirs[j] - theirs[j - 1] <= reach
         for j in range(len(others))
     ]
     put: Dict[int, List[int]] = {}  # before which of the piece's words: the redo's words that go there
     for j, at in enumerate(theirs):
         side = bisect.bisect_left(matched, j)
-        if not zone[j] or j in ours or same[j] or halves[j]:
+        if not zone[j] or j in ours or same[j] is not None or halves[j]:
             continue  # in the redo's margins, heard by both, or heard by the piece as other words
         lowest = pairs[side - 1][0] + 1 if side else 0
         highest = pairs[side][0] if side < len(pairs) else len(spans)
