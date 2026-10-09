@@ -151,10 +151,12 @@ def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
     frames at least `relisten` long is heard again at its own level: where
     100 ms of it is louder than `ratio` x its average, and 10 dB over its
     quietest tenth, it is loud too: in a sound (joined across dips under
-    400 ms) heard for half a second or more, or within
-    `relisten` of one. Then again within each run still that long, until none
-    changes. A pause holding only room tone, clicks, or breaths stays quiet,
-    however long or many.
+    400 ms) heard for half a second or more, or in a shorter one reaching
+    within `relisten` of such a sound. Then again within each run still that
+    long, until none changes. A pause holding only room tone, clicks, or
+    breaths 400 ms or more apart stays quiet, however long or many; breaths
+    closer together (panting), footsteps or typing can join into a sound long
+    enough.
     """
     loud = rms > relative_gate(rms, ratio)
     todo = _runs_of(~loud, relisten)
