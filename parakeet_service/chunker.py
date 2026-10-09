@@ -162,6 +162,14 @@ def _split_oversized(start: int, end: int, maximum: int) -> List[Range]:
     return list(zip(cuts, cuts[1:]))
 
 
+def _furthest_end(start: int, speech_end: int, maximum: int) -> int:
+    """The latest a range from `start`, its speech ending at `speech_end`,
+    may end: any further into the silence after, and _split_oversized cuts
+    it into one more piece than its speech needs, that cut inside speech
+    too (#69). For a range that fits `maximum`, that is `maximum` long."""
+    return start + -(-(speech_end - start) // maximum) * maximum
+
+
 class Plan(NamedTuple):
     ranges: List[Range]  # where each piece's words come from
     windows: List[Range]  # the audio each piece decodes: its range and context
@@ -226,11 +234,11 @@ def plan_chunks(
             continue
 
         # Mid-way through the pause, or later in it where the next phrase then
-        # fits own_maximum, but never past own_maximum from where the range's
-        # last piece starts: _split_oversized would cut it into one more piece,
-        # inside speech.
-        last_piece = _split_oversized(current_start, current_end, own_maximum)[-1][0]
-        cut = min(max((current_end + start) // 2, min(end - own_maximum, start)), last_piece + own_maximum)
+        # fits own_maximum, but no later than _furthest_end.
+        cut = min(
+            max((current_end + start) // 2, min(end - own_maximum, start)),
+            _furthest_end(current_start, current_end, own_maximum),
+        )
         # Cut at this pause once the range is the minimum, or before then where
         # taking the next phrase too would pass own_maximum and the phrase fits
         # after the cut: _split_oversized would cut inside speech, which makes
@@ -244,9 +252,7 @@ def plan_chunks(
         else:
             current_end = end
 
-    last_end = min(total, current_end + trim_gap)
-    if current_end - current_start <= own_maximum:  # as with the first chunk's margin
-        last_end = min(last_end, current_start + own_maximum)
+    last_end = min(total, current_end + trim_gap, _furthest_end(current_start, current_end, own_maximum))
     if last_end > current_start:
         packed.append((current_start, last_end))
 

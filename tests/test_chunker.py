@@ -112,6 +112,25 @@ def test_speech_with_no_pause_is_split_evenly(monkeypatch, seconds, bounds, own_
     assert min(lengths) > 5 * SR
 
 
+@pytest.mark.parametrize(
+    ("speech", "seconds", "expected"),
+    [
+        ([(0, 38.5)], 41.5, [(0, 20), (20, 40)]),  # the margin past the speech
+        ([(0, 38.5)], 45, [(0, 20), (20, 40)]),
+        ([(0, 39.8), (40.8, 45.8)], 50, [(0, 20), (20, 40), (40, 48.8)]),  # mid-way through a pause
+    ],
+)
+def test_silence_past_the_speech_adds_no_piece(monkeypatch, speech, seconds, expected):
+    # parakeet-v2 with 5 s of context: 38.5 s of speech is two pieces of 20 s
+    # at most. The silence after it would make the range 41.5 s, three equal
+    # pieces, both cuts inside speech: it stops at 40 s instead.
+    monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: [_at(*span) for span in speech])
+    ranges = chunker.plan_chunks(
+        np.zeros(_at(seconds)[0], dtype=np.float32), target_sec=25.0, max_sec=30.0, min_sec=20.0, context_sec=5.0
+    ).ranges
+    assert ranges == [_at(*span) for span in expected]
+
+
 def test_short_audio_is_one_piece_whatever_the_context():
     waveform = np.zeros(int(MAX_SEC * chunker.TARGET_SR))
     assert _ranges(waveform, **BOUNDS, context_sec=5.0) == [(0, waveform.size)]
