@@ -464,6 +464,8 @@ def _pause_between_turns(pause_sec, sounds):
         (5, [(2.4, 0.3, -42)]),  # a breath: 13 dB over it, for 300 ms
         (15, [(3.5, 0.25, -42), (8.0, 0.25, -42), (12.5, 0.25, -42)]),  # three: 0.75 s summed, under 0.5 s each
         (10, [(4.6, 0.17, -42), (5.07, 0.17, -42)]),  # a rustle: 0.64 s from end to end, 0.34 s of it loud
+        (10, [(4.8, 0.45, -40)]),  # 450 ms 15 dB over it: as long as a breath, under half a second
+        (10, [(4.5, 0.3, -42), (5.25, 0.3, -42)]),  # two breaths 0.45 s apart: two sounds, not one of 0.6 s
     ],
 )
 def test_volume_still_cuts_out_a_long_pause_with_sounds_in_it(volume, pause_sec, sounds):
@@ -489,11 +491,18 @@ def test_volume_keeps_a_quieter_speakers_short_words_between_phrases(volume):
     assert sum(max(0, min(b, end) - max(a, start)) for a, b in plan.ranges) == quiet.size
 
 
-def test_volume_keeps_a_quiet_reply_over_half_a_second(volume):
-    # 550 ms 15 dB over the room tone, alone in a 10 s pause: decoded.
-    wav = _pause_between_turns(10, [(4.8, 0.55, -40)])
+@pytest.mark.parametrize(
+    "sounds",
+    [
+        [(4.8, 0.55, -40)],  # 550 ms 15 dB over the room tone
+        [(4.8, 0.3, -40), (5.4, 0.3, -40)],  # two 0.3 s 0.3 s apart: one sound, 0.6 s of it loud
+    ],
+)
+def test_volume_keeps_a_quiet_reply_over_half_a_second(volume, sounds):
+    # Alone in a 10 s pause: decoded.
+    wav = _pause_between_turns(10, sounds)
     ranges = chunker.plan_chunks(wav, **BOUNDS, context_sec=5.0).ranges
-    reply = (int(44.8 * SR), int(45.35 * SR))
+    reply = (int((40 + sounds[0][0]) * SR), int((40 + sum(sounds[-1][:2])) * SR))
     assert any(a <= reply[0] and reply[1] <= b for a, b in ranges)
     assert [(round(a / SR), round(b / SR)) for a, b in ranges if b < reply[0] or a > reply[1]] == [(0, 40), (50, 90)]
 
