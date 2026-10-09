@@ -166,16 +166,21 @@ def loud_frames(rms: np.ndarray, ratio: float, relisten: int) -> np.ndarray:
         # frame or two loud in a pause, never passes.
         padded = np.pad(part, _SYLLABLE // 2, mode="edge")
         heard = np.median(np.lib.stride_tricks.sliding_window_view(padded, _SYLLABLE), axis=1) > gate
-        # Speech is a sound (joined across dips under _SOUND_DIP) heard for
-        # half a second or more, so that breaths spread through one pause never
-        # add up to any; and the shorter sounds within `relisten` of one, a
-        # quiet speaker's short words, which would otherwise leave a stretch
-        # long enough to cut out between two of their phrases.
+        # Speech is a sound heard for half a second or more, so that breaths
+        # spaced through a pause don't add up to any; and the shorter sounds
+        # within `relisten` of one, a quiet speaker's short words, which would
+        # otherwise leave a stretch long enough to cut out between two of their
+        # phrases. Each is kept whole: a word reaching past `relisten` is not
+        # cut in two.
+        sounds = _joined(runs(heard), _SOUND_DIP).tolist()
         near = np.zeros_like(heard)
-        for a, b in _joined(runs(heard), _SOUND_DIP).tolist():
+        for a, b in sounds:
             if heard[a:b].sum() >= _HEARD_ENOUGH:
                 near[max(0, a - relisten): b + relisten] = True
-        kept = heard & near
+        kept = np.zeros_like(heard)
+        for a, b in sounds:
+            if near[a:b].any():
+                kept[a:b] = heard[a:b]
         if kept.any():
             loud[start:end] = kept
             todo.extend((start + a, start + b) for a, b in _runs_of(~kept, relisten))

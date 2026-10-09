@@ -498,6 +498,16 @@ def test_volume_keeps_a_quiet_reply_over_half_a_second(volume):
     assert [(round(a / SR), round(b / SR)) for a, b in ranges if b < reply[0] or a > reply[1]] == [(0, 40), (50, 90)]
 
 
+@pytest.mark.parametrize("word", [(8.5, 0.3), (8.95, 0.4)])
+def test_volume_keeps_a_quiet_word_near_a_phrase_whole(volume, word):
+    # A quiet 1 s phrase, then a word 2.5 s after it, or one reaching past the
+    # 3 s around it, then a pause: the whole word is decoded. Kept frame by
+    # frame, the second was cut at 3 s, 0.23 s of it never decoded.
+    wav = _pause_between_turns(20, [(5.0, 1.0, -40), (*word, -40)])
+    start, end = int((40 + word[0]) * SR), int((40 + sum(word)) * SR)
+    assert any(a <= start and end <= b for a, b in chunker.plan_chunks(wav, **BOUNDS).ranges)
+
+
 @pytest.mark.parametrize("min_silence_ms", [60, 3000])
 def test_volume_hears_quiet_sounds_alike_whatever_the_shortest_pause(volume, monkeypatch, min_silence_ms):
     # PARAKEET_VAD_MIN_SILENCE_MS is where to cut, not what a sound is: joined
