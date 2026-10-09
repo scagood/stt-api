@@ -1,0 +1,3 @@
+# #79 fake-decode fuzz
+
+Run from a checkout of the code under test, or set `FUZZ_HEAD=<rev>` (main `ed4be7f` and earlier head `e4deaa7` are unpacked with `git archive` into `fuzz/.versions/`; `FUZZ_BASE`/`FUZZ_OTHER` override, `FUZZ_OTHER=` skips): `python -I fuzz/fuzz.py 1500 one,two,three MISHEAR [knobs] [-v]`, with clean `0`; mid `0.07 repeat=0.03 split=0.05 madeup=0.3 drift=0.2`; harsh `0.1 repeat=0.05 split=0.1 madeup=0.5 drift=0.3`; brutal `0.15 repeat=0.08 split=0.15 madeup=0.7 drift=0.5`; `offset=N` shifts the seeds, `-v` prints each case worse than main. `seeds.py` reruns listed seeds; `dup_debug.py SEED KIND WORD`, `seam2.py SEED KIND LO HI` and `invent_debug.py SEED KIND` trace one case (harsh settings, `invent_debug` mid).
