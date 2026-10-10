@@ -248,8 +248,12 @@ def load_model(key: str, *, with_timestamps: bool = True):
             )
             # onnx-asr reads every file while it loads, so the links only need to
             # live that long; a folder per load keeps replicas sharing the models
-            # volume out of each other's way.
-            with tempfile.TemporaryDirectory(dir=MODELS_DIR, prefix=".load-") as folder:
+            # volume out of each other's way. ORT keeps external data (fp32) mapped,
+            # so on NFS its unlinked link lingers as .nfsXXXX until the model is
+            # freed and the folder can't be removed yet: best-effort cleanup.
+            with tempfile.TemporaryDirectory(
+                dir=MODELS_DIR, prefix=".load-", ignore_cleanup_errors=True
+            ) as folder:
                 _link_files(variant, Path(folder))
                 model = onnx_asr.load_model(
                     config["onnx_asr_type"],
