@@ -564,6 +564,19 @@ gate rises with the noise: at -40 dBFS it still found every pause, at -35 dBFS
 (5 dB under the speech) it missed some and 10 chunks were cut mid-speech. A
 fixed gate below the noise finds no pause at all, and the whole file is cut
 mid-speech, into the fewest chunks that fit. Music hasn't been measured.
+A DC offset is taken out before a frame's level is measured, so it sets no
+floor under the pauses: *The Adventures of Sherlock Holmes*, chapter 3,
+decodes at +0.094 (-20.5 dBFS), and counting it, volume found one span of
+speech 45 minutes long. The offset is the median frame mean over about 1 s,
+so it follows a slow drift or a step partway through. It is none under -60
+dBFS, and no frame reads louder for it, so a file without one is measured
+nearly as before. Such a file is now cut as it would be without the offset,
+so a quiet word alone in a long pause is lost as it is on a clean file, where
+before the whole file was decoded and cut by length. Known differences: on
+1-2 Hz content such as an unfiltered warped disc, pauses can be found
+differently than before; and where the offset steps just before a quiet
+passage, the step reads as a sound and the quiet passage can be lost. The
+model still hears the audio as it is.
 
 **Speech with no pause.** A stretch of speech too long for one chunk, with no
 pause in it as long as `PARAKEET_VAD_MIN_SILENCE_MS`, is still cut into the
