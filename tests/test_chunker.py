@@ -512,10 +512,9 @@ def test_a_split_first_or_last_range_keeps_its_whole_margin(monkeypatch, quiet, 
     ],
 )
 def test_a_split_first_or_last_range_keeps_a_quieter_talker_in_its_margin(monkeypatch, quiet, margin):
-    # A margin holding no room tone, only a talker 22 dB under the rest: its
-    # quietest tenth is that talker's own gaps, which its words don't clear
-    # by 10 dB. It is all sound, and the ranges keep as much of it as an
-    # even split's.
+    # A margin holding no room tone, only a talker 22 dB under the rest: the
+    # outer margin is kept whatever it holds, as much of it as an even
+    # split's.
     wav = _margin_word(quiet, None)
     span = slice(*_at(*margin))
     wav[span] = _words(45, word_db=-42.0, gap_db=-48.0, seed=7)[span]
@@ -539,8 +538,8 @@ def test_a_split_first_or_last_range_keeps_a_quieter_talker_in_its_margin(monkey
 )
 def test_a_split_first_or_last_range_keeps_a_word_under_a_bed_in_its_margin(monkeypatch, quiet, word, bed):
     # A 50 Hz hum at -40 dBFS, or a DC offset as loud, under the whole file:
-    # the margin's floor is the bed, and a -42 dBFS word VAD missed there
-    # is under it, not 10 dB over it. It is sound all the same.
+    # a -42 dBFS word VAD missed in the margin is under the bed. The outer
+    # margin is kept whatever it holds.
     wav = _margin_word(quiet, word)
     t = np.arange(wav.size) / SR
     wav += (np.sin(2 * np.pi * 50 * t) * np.sqrt(2) if bed == "hum" else np.ones_like(t)).astype(np.float32) * 0.01

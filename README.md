@@ -576,10 +576,12 @@ and moves from there only to a pause far deeper (13 dB under that gap, 17 dB
 under the speech). That second test catches a short gap the cut sits at the
 edge of, and a gap beside a quieter word or a fricative. Loudness can't always
 tell a gap from a quieter word or a fricative, so a cut that moves can still
-land in one. A split chunk may give the pause it shares with the next chunk to
-that chunk, so a cut can reach a gap, as long as the next chunk still needs no
-more pieces. The first chunk's lead and the last one's tail, which nothing else
-decodes, keep all of their margin, as before.
+land in one. A split chunk may give the pause it shares with the chunk beside
+it to that chunk, so a cut can reach a gap, as long as that chunk still needs
+no more pieces. With no context (Whisper's bounds, or
+`PARAKEET_CHUNK_CONTEXT_SEC=0`) a quiet word VAD missed in that pause can then
+be split where the moved end lands. The first chunk's lead and the last one's
+tail, which nothing else decodes, keep all of their margin, as before.
 
 How much this helps varies by recording, and by the room the cuts have.
 `scripts/quiet_cuts_real.py` measures it on a recording against word times
