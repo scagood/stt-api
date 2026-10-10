@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import ctypes
 import os
-import tempfile
 import threading
 import time
 from collections import OrderedDict
-from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from pathlib import Path, PurePosixPath
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import config before ONNX Runtime so thread-pool environment limits are active.
 from .config import (
@@ -201,25 +200,109 @@ def variant_key(model: str, quantization: str | None = None) -> str:
     return f"{name}:{quant}"
 
 
-def _link_files(variant: Dict[str, Any], folder: Path) -> None:
-    """Fetch a variant's files and link them into `folder` under the names
-    onnx-asr expects (models.yaml "files").
+def _external_tensors(graph) -> List[Any]:
+    """Every initializer in `graph` and its subgraphs (If/Loop bodies) whose
+    data lives in an external file."""
+    import onnx
 
-    Hard links, not symlinks: onnxruntime resolves a symlinked .onnx to its
-    cache blob and refuses external data that resolves anywhere else (#35).
+    found = [t for t in graph.initializer if t.data_location == onnx.TensorProto.EXTERNAL]
+    for node in graph.node:
+        for attr in node.attribute:
+            for sub in ([attr.g] if attr.HasField("g") else []) + list(attr.graphs):
+                found += _external_tensors(sub)
+    return found
+
+
+def _model_files(variant: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[str]]:
+    """A variant's files, by the names onnx-asr expects (models.yaml "files"),
+    read straight from the HF cache, and the folder ORT reads external data
+    from, if any (session.model_external_initializers_file_folder_path).
+
+    Each value is the file's cache path, except for a model with external data
+    (fp32 weights): onnxruntime refuses external data used in a subgraph when
+    it is reached through a symlink, and every snapshot file in the HF cache is
+    one. Such a model comes back as the bytes of its graph, with its weight
+    locations pointing at the real blobs instead. Nothing is linked or copied.
     """
     from huggingface_hub import hf_hub_download
 
-    for name, path in variant["files"].items():
-        blob = os.path.realpath(
-            hf_hub_download(variant["repo"], path, revision=variant["revision"])
-        )
-        try:
-            os.link(blob, folder / name)
-        except OSError:
-            # Cache on another filesystem. Per-repo blobs keep a model and its
-            # data side by side (HF_HUB_DISABLE_SHARED_BLOBS), so this still loads.
-            os.symlink(blob, folder / name)
+    files: Dict[str, Any] = {
+        name: Path(hf_hub_download(variant["repo"], path, revision=variant["revision"]))
+        for name, path in variant["files"].items()
+    }
+    # A model with external data has its data files listed beside it, under
+    # the name the .onnx refers to (models.yaml).
+    graphs = {}
+    for name in files:
+        if name.endswith(".onnx") and any(o != name and o.startswith(name) for o in files):
+            import onnx
+
+            proto = onnx.load(files[name], load_external_data=False)
+            graphs[name] = (proto, _external_tensors(proto.graph))
+    data_files = {
+        kv.value
+        for _, tensors in graphs.values()
+        for t in tensors
+        for kv in t.external_data
+        if kv.key == "location"
+    }
+    if not data_files:
+        return files, None
+    blobs = {d: os.path.realpath(files[d]) for d in data_files}
+    data_dir = os.path.commonpath([os.path.dirname(b) for b in blobs.values()])
+    for name, (proto, tensors) in graphs.items():
+        for t in tensors:
+            for kv in t.external_data:
+                if kv.key == "location":
+                    kv.value = os.path.relpath(blobs[kv.value], data_dir)
+        files[name] = proto.SerializeToString()
+    return files, data_dir
+
+
+def _build_asr(onnx_asr_type: str, files: Dict[str, Any], providers, sess_options):
+    """onnx_asr.load_model() for files that aren't in one folder: what its
+    Manager.create_asr() does, with the files handed over by role instead of
+    found by globbing a directory. Leans on onnx-asr internals (the resolver's
+    model types, Manager's factories); tests/test_onnx_asr_contract.py checks
+    them against the installed onnx-asr.
+    """
+    from onnx_asr.loader import Manager
+    from onnx_asr.onnx import update_onnx_providers
+
+    model_type = _onnx_asr_model_type(onnx_asr_type)
+    manager = Manager(sess_options, providers)
+    config = update_onnx_providers(
+        manager.default_onnx_config, excluded_providers=model_type._get_excluded_providers()
+    )
+    by_role = _files_by_role(model_type, files)
+    return manager._create_asr_adapter(model_type(by_role, manager._create_preprocessor, config))
+
+
+def _onnx_asr_model_type(onnx_asr_type: str):
+    """The onnx-asr model class for a models.yaml onnx_asr_type."""
+    from onnx_asr.loader import create_asr_resolver
+
+    # The resolver only picks the class here: a type name it knows never
+    # reaches the directory or the hub.
+    return create_asr_resolver(onnx_asr_type, MODELS_DIR, offline=True).model_type
+
+
+def _files_by_role(model_type, files: Dict[str, Any]) -> Dict[str, Any]:
+    """`files` (keyed by the names onnx-asr expects) keyed by the role the
+    model class reads each from, matched as its resolver globs a directory."""
+    patterns = model_type._get_model_files(None)
+    if "config.json" in files:
+        patterns["config"] = "config.json"
+    by_role = {}
+    for role, pattern in patterns.items():
+        matches = [n for n in files if PurePosixPath(n).full_match(pattern)]
+        if len(matches) != 1:
+            raise ValueError(
+                f"{model_type.__name__} needs exactly one file matching {pattern!r} for "
+                f"{role!r}; models.yaml gives {matches or 'none'}"
+            )
+        by_role[role] = files[matches[0]]
+    return by_role
 
 
 def load_model(key: str, *, with_timestamps: bool = True):
@@ -246,21 +329,13 @@ def load_model(key: str, *, with_timestamps: bool = True):
                 ORT_INTRA_THREADS,
                 ORT_INTER_THREADS,
             )
-            # onnx-asr reads every file while it loads, so the links only need to
-            # live that long; a folder per load keeps replicas sharing the models
-            # volume out of each other's way. ORT keeps external data (fp32) mapped,
-            # so on NFS its unlinked link lingers as .nfsXXXX until the model is
-            # freed and the folder can't be removed yet: best-effort cleanup.
-            with tempfile.TemporaryDirectory(
-                dir=MODELS_DIR, prefix=".load-", ignore_cleanup_errors=True
-            ) as folder:
-                _link_files(variant, Path(folder))
-                model = onnx_asr.load_model(
-                    config["onnx_asr_type"],
-                    folder,
-                    providers=providers,
-                    sess_options=session_options,
+            files, data_dir = _model_files(variant)
+            if data_dir is not None:
+                session_options = session_options or ort.SessionOptions()
+                session_options.add_session_config_entry(
+                    "session.model_external_initializers_file_folder_path", data_dir
                 )
+            model = _build_asr(config["onnx_asr_type"], files, providers, session_options)
             # Verified on onnx_asr 0.12.0 (whisper-tiny): .with_timestamps() works
             # for Whisper, but the standard onnx-community/whisper-* repos carry no
             # alignment heads, so it returns empty tokens/timestamps — text only.
