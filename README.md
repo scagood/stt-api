@@ -573,10 +573,11 @@ dBFS, and no frame reads louder for it, so a file without one is measured
 nearly as before. Such a file is now cut as it would be without the offset,
 so a quiet word alone in a long pause is lost as it is on a clean file, where
 before the whole file was decoded and cut by length. Known differences: on
-1-2 Hz content such as an unfiltered warped disc, pauses can be found
-differently than before; and where the offset steps just before a quiet
-passage, the step reads as a sound and the quiet passage can be lost. The
-model still hears the audio as it is.
+content under about 2 Hz, such as an unfiltered warped disc, pauses can be
+found differently than before; where the offset steps just before a quiet
+passage, the step reads as a sound and the quiet passage can be lost; and
+very quiet speech (around -55 dBFS) with an offset of about the same size
+can lose a word. The model still hears the audio as it is.
 
 **Speech with no pause.** A stretch of speech too long for one chunk, with no
 pause in it as long as `PARAKEET_VAD_MIN_SILENCE_MS`, is still cut into the
