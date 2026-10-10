@@ -142,7 +142,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(
         title="stt-api",
-        version="1.5.0",  # x-release-please-version
+        version="2.0.0",  # x-release-please-version
         description="OpenAI-compatible speech-to-text server on ONNX Runtime.",
         openapi_tags=[
             {"name": "transcription"},
