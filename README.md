@@ -497,7 +497,7 @@ images already set the CPU or GPU ones (`PARAKEET_USE_GPU`, `PARAKEET_BATCHED`,
 
 | Variable | Default | |
 |---|---|---|
-| `PARAKEET_MODELS_DIR` | `models/` in the checkout (`/app/models` in the images) | model cache; must be writable, even when fully seeded |
+| `PARAKEET_MODELS_DIR` | `models/` in the checkout (`/app/models` in the images) | model cache (the HF cache unless `HF_HOME`/`HF_HUB_CACHE` say otherwise); models load straight from it |
 | `PARAKEET_MODEL_CATALOG` | the built-in `models.yaml` | a catalog file that replaces it; see [below](#your-own-model-catalog) |
 | `PARAKEET_PRELOAD_MODELS` | empty | comma-separated `model` (fp32) or `model:quantization` to load and warm up before ready; requests must still name `model` |
 | `PARAKEET_MODEL_CACHE_SIZE` | `0` | keep at most N loaded models, and separately N loaded aligners, evicting the least recently used; `0` is no limit |

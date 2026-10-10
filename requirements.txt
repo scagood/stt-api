@@ -1,4 +1,6 @@
-onnx-asr[hub]>=0.10.0
+# Pinned: model._build_asr leans on onnx-asr internals; bump it through a PR so
+# the onnx-asr-contract CI job checks them.
+onnx-asr[hub]==0.12.0
 # Used directly by the word aligner (aligner.py), not only through onnx-asr[hub].
 huggingface-hub>=0.20.0
 fastapi>=0.115.0

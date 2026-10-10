@@ -35,3 +35,23 @@ jobs:
         run: python -m compileall -q parakeet_service server.py
       - name: Run unit tests
         run: pytest -q tests
+
+  onnx-asr-contract:
+    # The unit job stubs onnx-asr and onnxruntime. model._build_asr leans on
+    # onnx-asr internals, so check them against the real packages, at the
+    # versions requirements.txt pins.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install onnx-asr, onnx and onnxruntime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest pytest-asyncio psutil fastapi python-multipart pyyaml \
+            "$(grep '^onnx-asr' requirements.txt)" "$(grep '^onnx>=' requirements.txt)" \
+            "$(grep '^onnxruntime-gpu' requirements.txt | sed 's/-gpu\[[^]]*\]//')"
+      - name: Run onnx-asr contract tests
+        run: pytest -q tests/test_onnx_asr_contract.py tests/test_model_cache.py

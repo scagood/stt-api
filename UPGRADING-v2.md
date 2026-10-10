@@ -275,8 +275,6 @@ repos and revisions to go back to. Put them in your own catalog (next section).
   online, also send one word request naming each `aligner` (with its
   precision) your clients use. `wav2vec2-base-960h` is about
   95 MB at int8; the others are about 320 MB at int8 and 1.2–1.3 GB at fp32.
-- **The model cache must be writable** even when it is fully seeded. Each load
-  links the model's files into a temporary `.load-*` folder inside it.
 - The service sets `HF_HUB_DISABLE_SHARED_BLOBS=1` so that each model's ONNX
   file stays next to its external data. Don't override it: onnxruntime 1.30
   refuses to load the split files.

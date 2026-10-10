@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import errno
 import os
 import sys
 import types
@@ -30,14 +29,13 @@ def _stub_loader(monkeypatch, tmp_path, cache_size, calls=None):
         blob.write_text(f"{repo}@{revision[:7]}/{path}")
         return str(blob)
 
-    def load(model_type, folder, **_kwargs):
+    def build(onnx_asr_type, files, _providers, _sess_options):
         if calls is not None:
-            files = {name: open(os.path.join(folder, name)).read() for name in os.listdir(folder)}
-            calls.append((model_type, files))
+            calls.append((onnx_asr_type, {name: path.read_text() for name, path in files.items()}))
         return object()
 
     monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(hf_hub_download=download))
-    monkeypatch.setattr(m.onnx_asr, "load_model", load, raising=False)
+    monkeypatch.setattr(m, "_build_asr", build)
 
 
 def test_cache_evicts_least_recent_when_capped(monkeypatch, tmp_path):
@@ -73,8 +71,6 @@ def test_loads_exactly_the_listed_files_under_onnx_asr_names(monkeypatch, tmp_pa
             },
         )
     ]
-    # The per-load folder of links is gone once onnx-asr has read it.
-    assert not [p for p in tmp_path.iterdir() if p.name.startswith(".load-")]
 
 
 def _hf_cache_with_subgraph_weights(root):
@@ -116,9 +112,9 @@ def _hf_cache_with_subgraph_weights(root):
 
 def test_loads_subgraph_weights_from_the_hf_cache_without_links(monkeypatch, tmp_path):
     # onnxruntime refuses a symlink to external data used in a subgraph, so the
-    # staged .onnx must point at the real blob, not a link to it. Needs the real
-    # onnx and onnxruntime (CI stubs onnxruntime; the autouse fixture stubs
-    # InferenceSession).
+    # graph handed to it must point at the real blob, not a link to it. Needs
+    # the real onnx and onnxruntime (CI's unit job stubs onnxruntime; the
+    # autouse fixture stubs InferenceSession).
     import numpy as np
 
     pytest.importorskip("onnx")
@@ -128,29 +124,13 @@ def test_loads_subgraph_weights_from_the_hf_cache_without_links(monkeypatch, tmp
     download = lambda repo, path, revision: str(snapshot / path)  # noqa: E731
     monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(hf_hub_download=download))
     variant = {"repo": "r", "revision": "rev", "files": {n: n for n in ("decoder.onnx", "decoder.onnx_data")}}
-    folder = tmp_path / "load"
-    folder.mkdir()
 
-    data_dir = m._stage_files(variant, folder)
-    assert not (folder / "decoder.onnx").is_symlink()
+    files, data_dir = m._model_files(variant)
     options = pytest.importorskip("onnxruntime").SessionOptions()
     options.add_session_config_entry("session.model_external_initializers_file_folder_path", data_dir)
-    session = ort.InferenceSession(str(folder / "decoder.onnx"), options, providers=["CPUExecutionProvider"])
+    session = ort.InferenceSession(files["decoder.onnx"], options, providers=["CPUExecutionProvider"])
     out = session.run(None, {"x": np.ones((1, 4), np.float32), "c": np.array(True)})[0]
     assert out.tolist() == [[4.0, 4.0, 4.0, 4.0]]
-
-
-def test_load_survives_a_folder_nfs_will_not_remove_yet(monkeypatch, tmp_path):
-    # NFS renames an unlinked file that is still open (ORT maps fp32 external
-    # data) to .nfsXXXX, so rmdir of the load folder fails with ENOTEMPTY.
-    _stub_loader(monkeypatch, tmp_path, cache_size=0)
-
-    def rmdir(*_args, **_kwargs):
-        raise OSError(errno.ENOTEMPTY, "Directory not empty")
-
-    monkeypatch.setattr(os, "rmdir", rmdir)
-    assert m.load_model("whisper-tiny:fp32", with_timestamps=False) is not None
-
 
 class _Session:
     def __init__(self, provider):
@@ -165,10 +145,7 @@ def test_runtime_reports_a_cpu_fallback_when_cuda_was_asked_for(monkeypatch, tmp
     cuda = ("CUDAExecutionProvider", {})
     monkeypatch.setattr(m, "_resolve_providers", lambda: [cuda, "CPUExecutionProvider"])
     monkeypatch.setattr(
-        m.onnx_asr,
-        "load_model",
-        lambda *a, **k: types.SimpleNamespace(_encoder=_Session("CPUExecutionProvider")),
-        raising=False,
+        m, "_build_asr", lambda *a, **k: types.SimpleNamespace(_encoder=_Session("CPUExecutionProvider"))
     )
     m.load_model("whisper-tiny:fp32", with_timestamps=False)
     assert m.runtime_status() == {
@@ -184,10 +161,7 @@ def test_runtime_reports_cuda_and_forgets_evicted_models(monkeypatch, tmp_path):
     _stub_loader(monkeypatch, tmp_path, cache_size=1)
     monkeypatch.setattr(m, "_resolve_providers", lambda: [("CUDAExecutionProvider", {})])
     monkeypatch.setattr(
-        m.onnx_asr,
-        "load_model",
-        lambda *a, **k: types.SimpleNamespace(_encoder=_Session("CUDAExecutionProvider")),
-        raising=False,
+        m, "_build_asr", lambda *a, **k: types.SimpleNamespace(_encoder=_Session("CUDAExecutionProvider"))
     )
     m.load_model("whisper-tiny:fp32", with_timestamps=False)
     m.load_model("whisper-base:fp32", with_timestamps=False)  # evicts tiny
@@ -227,7 +201,7 @@ def test_idle_models_are_torn_down_outside_the_model_lock(monkeypatch, tmp_path)
         weakref.finalize(made, lambda: held.append(m._MODEL_LOCK._is_owned()))
         return made
 
-    monkeypatch.setattr(m.onnx_asr, "load_model", load, raising=False)
+    monkeypatch.setattr(m, "_build_asr", load)
     m.load_model("whisper-tiny:fp32", with_timestamps=False)
     assert m.evict_idle(0) == ["whisper-tiny:fp32"]
     assert held == [False]  # gone, and not while every get_model() waited on it
