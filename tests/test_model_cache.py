@@ -77,26 +77,17 @@ def test_loads_exactly_the_listed_files_under_onnx_asr_names(monkeypatch, tmp_pa
     assert not [p for p in tmp_path.iterdir() if p.name.startswith(".load-")]
 
 
-def test_copies_rather_than_symlinks_across_filesystems(monkeypatch, tmp_path):
-    # onnxruntime refuses external data that is a symlink, so when a hard link
-    # can't reach the cache the files must be real copies.
-    seen = {}
+def test_fails_rather_than_symlinks_across_filesystems(monkeypatch, tmp_path):
+    # onnxruntime refuses external data that is a symlink, so a cache a hard
+    # link can't reach fails the load, naming the setting to fix.
     _stub_loader(monkeypatch, tmp_path, cache_size=0)
 
     def link(*_args, **_kwargs):
         raise OSError(errno.EXDEV, "Invalid cross-device link")
 
-    def load(model_type, folder, **_kwargs):
-        for name in os.listdir(folder):
-            path = os.path.join(folder, name)
-            seen[name] = (os.path.islink(path), open(path).read())
-        return object()
-
     monkeypatch.setattr(os, "link", link)
-    monkeypatch.setattr(m.onnx_asr, "load_model", load, raising=False)
-    m.load_model("parakeet-v3:fp32", with_timestamps=False)
-    assert seen and not any(islink for islink, _ in seen.values())
-    assert seen["encoder-model.onnx.data.000"][1].endswith("fp32/encoder-model.onnx.data.000")
+    with pytest.raises(m.ModelLoadError, match="PARAKEET_MODELS_DIR must be on the same filesystem"):
+        m.load_model("parakeet-v3:fp32", with_timestamps=False)
 
 
 def test_load_survives_a_folder_nfs_will_not_remove_yet(monkeypatch, tmp_path):

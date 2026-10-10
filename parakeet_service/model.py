@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import ctypes
 import os
-import shutil
 import tempfile
 import threading
 import time
@@ -206,29 +205,22 @@ def _link_files(variant: Dict[str, Any], folder: Path) -> None:
     """Fetch a variant's files and link them into `folder` under the names
     onnx-asr expects (models.yaml "files").
 
-    Hard links, or copies where the cache is on another filesystem; never
-    symlinks: onnxruntime refuses external data (fp32) that is a symlink.
+    Hard links only: onnxruntime refuses external data (fp32) that is a
+    symlink, so PARAKEET_MODELS_DIR must be on the HF cache's filesystem.
     """
     from huggingface_hub import hf_hub_download
 
-    copied = 0
     for name, path in variant["files"].items():
         blob = os.path.realpath(
             hf_hub_download(variant["repo"], path, revision=variant["revision"])
         )
         try:
             os.link(blob, folder / name)
-        except OSError:
-            shutil.copyfile(blob, folder / name)
-            copied += os.path.getsize(blob)
-    if copied:
-        logger.warning(
-            "Copied %.1f MB of %s to load it: %s is on another filesystem from the "
-            "HF cache, so hard links fail. Keep PARAKEET_MODELS_DIR and the HF cache on one volume.",
-            copied / 1e6,
-            variant["repo"],
-            folder.parent,
-        )
+        except OSError as exc:
+            raise OSError(
+                f"can't hard-link {blob} into {folder}: PARAKEET_MODELS_DIR must be on "
+                f"the same filesystem (and mount) as the HF cache ({exc})"
+            ) from exc
 
 
 def load_model(key: str, *, with_timestamps: bool = True):
