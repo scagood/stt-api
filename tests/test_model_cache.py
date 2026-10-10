@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import os
 import sys
 import types
@@ -74,6 +75,18 @@ def test_loads_exactly_the_listed_files_under_onnx_asr_names(monkeypatch, tmp_pa
     ]
     # The per-load folder of links is gone once onnx-asr has read it.
     assert not [p for p in tmp_path.iterdir() if p.name.startswith(".load-")]
+
+
+def test_load_survives_a_folder_nfs_will_not_remove_yet(monkeypatch, tmp_path):
+    # NFS renames an unlinked file that is still open (ORT maps fp32 external
+    # data) to .nfsXXXX, so rmdir of the load folder fails with ENOTEMPTY.
+    _stub_loader(monkeypatch, tmp_path, cache_size=0)
+
+    def rmdir(*_args, **_kwargs):
+        raise OSError(errno.ENOTEMPTY, "Directory not empty")
+
+    monkeypatch.setattr(os, "rmdir", rmdir)
+    assert m.load_model("whisper-tiny:fp32", with_timestamps=False) is not None
 
 
 class _Session:
