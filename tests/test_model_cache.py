@@ -77,17 +77,67 @@ def test_loads_exactly_the_listed_files_under_onnx_asr_names(monkeypatch, tmp_pa
     assert not [p for p in tmp_path.iterdir() if p.name.startswith(".load-")]
 
 
-def test_fails_rather_than_symlinks_across_filesystems(monkeypatch, tmp_path):
-    # onnxruntime refuses external data that is a symlink, so a cache a hard
-    # link can't reach fails the load, naming the setting to fix.
-    _stub_loader(monkeypatch, tmp_path, cache_size=0)
+def _hf_cache_with_subgraph_weights(root):
+    """A model whose weights sit in an external file, inside an If subgraph (as
+    in Whisper's merged decoder), laid out like the HF cache: hash-named blobs,
+    reached through snapshot symlinks."""
+    import numpy as np
+    import onnx
+    from onnx import TensorProto, helper, numpy_helper
 
-    def link(*_args, **_kwargs):
-        raise OSError(errno.EXDEV, "Invalid cross-device link")
+    def branch(name, k):
+        w = numpy_helper.from_array(np.full((4, 4), k, dtype=np.float32), f"w{name}")
+        return helper.make_graph(
+            [helper.make_node("MatMul", ["x", f"w{name}"], [f"y{name}"])], name, [],
+            [helper.make_tensor_value_info(f"y{name}", TensorProto.FLOAT, [1, 4])], [w],
+        )
 
-    monkeypatch.setattr(os, "link", link)
-    with pytest.raises(m.ModelLoadError, match="PARAKEET_MODELS_DIR must be on the same filesystem"):
-        m.load_model("parakeet-v3:fp32", with_timestamps=False)
+    graph = helper.make_graph(
+        [helper.make_node("If", ["c"], ["y"], then_branch=branch("t", 1.0), else_branch=branch("e", 2.0))],
+        "g",
+        [helper.make_tensor_value_info("x", TensorProto.FLOAT, [1, 4]),
+         helper.make_tensor_value_info("c", TensorProto.BOOL, [])],
+        [helper.make_tensor_value_info("y", TensorProto.FLOAT, [1, 4])],
+    )
+    build = root / "build"
+    build.mkdir(parents=True)
+    onnx.save_model(
+        helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=10),
+        build / "decoder.onnx", save_as_external_data=True, location="decoder.onnx_data", size_threshold=0,
+    )
+    blobs, snapshot = root / "blobs", root / "snapshots" / "rev"
+    blobs.mkdir()
+    snapshot.mkdir(parents=True)
+    for name, blob in (("decoder.onnx", "aaa"), ("decoder.onnx_data", "bbb")):
+        (build / name).rename(blobs / blob)
+        (snapshot / name).symlink_to(os.path.relpath(blobs / blob, snapshot))
+    return snapshot
+
+
+def test_loads_subgraph_weights_from_the_hf_cache_without_links(monkeypatch, tmp_path):
+    # onnxruntime refuses a symlink to external data used in a subgraph, so the
+    # staged .onnx must point at the real blob, not a link to it. Needs the real
+    # onnx and onnxruntime (CI stubs onnxruntime; the autouse fixture stubs
+    # InferenceSession).
+    import numpy as np
+
+    pytest.importorskip("onnx")
+    ort = pytest.importorskip("onnxruntime.capi.onnxruntime_inference_collection")
+
+    snapshot = _hf_cache_with_subgraph_weights(tmp_path / "cache")
+    download = lambda repo, path, revision: str(snapshot / path)  # noqa: E731
+    monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(hf_hub_download=download))
+    variant = {"repo": "r", "revision": "rev", "files": {n: n for n in ("decoder.onnx", "decoder.onnx_data")}}
+    folder = tmp_path / "load"
+    folder.mkdir()
+
+    data_dir = m._stage_files(variant, folder)
+    assert not (folder / "decoder.onnx").is_symlink()
+    options = pytest.importorskip("onnxruntime").SessionOptions()
+    options.add_session_config_entry("session.model_external_initializers_file_folder_path", data_dir)
+    session = ort.InferenceSession(str(folder / "decoder.onnx"), options, providers=["CPUExecutionProvider"])
+    out = session.run(None, {"x": np.ones((1, 4), np.float32), "c": np.array(True)})[0]
+    assert out.tolist() == [[4.0, 4.0, 4.0, 4.0]]
 
 
 def test_load_survives_a_folder_nfs_will_not_remove_yet(monkeypatch, tmp_path):

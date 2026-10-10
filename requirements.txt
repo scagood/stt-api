@@ -9,6 +9,8 @@ psutil>=5.0.0
 # Reads the model catalog (parakeet_service/models.yaml or PARAKEET_MODEL_CATALOG).
 pyyaml>=6.0
 requests>=2.0.0
+# Rewrites where an fp32 model's external data lives, to load it from the HF cache.
+onnx>=1.17.0
 onnxruntime-gpu[cuda,cudnn]==1.30.0
 numpy<3
 

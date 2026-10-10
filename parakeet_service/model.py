@@ -8,7 +8,7 @@ import threading
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import config before ONNX Runtime so thread-pool environment limits are active.
 from .config import (
@@ -201,26 +201,69 @@ def variant_key(model: str, quantization: str | None = None) -> str:
     return f"{name}:{quant}"
 
 
-def _link_files(variant: Dict[str, Any], folder: Path) -> None:
-    """Fetch a variant's files and link them into `folder` under the names
-    onnx-asr expects (models.yaml "files").
+def _external_tensors(graph) -> List[Any]:
+    """Every initializer in `graph` and its subgraphs (If/Loop bodies) whose
+    data lives in an external file."""
+    import onnx
 
-    Hard links only: onnxruntime refuses external data (fp32) that is a
-    symlink, so PARAKEET_MODELS_DIR must be on the HF cache's filesystem.
+    found = [t for t in graph.initializer if t.data_location == onnx.TensorProto.EXTERNAL]
+    for node in graph.node:
+        for attr in node.attribute:
+            for sub in ([attr.g] if attr.HasField("g") else []) + list(attr.graphs):
+                found += _external_tensors(sub)
+    return found
+
+
+def _stage_files(variant: Dict[str, Any], folder: Path) -> Optional[str]:
+    """Fetch a variant's files and lay them out in `folder` under the names
+    onnx-asr expects (models.yaml "files"), reading everything from the HF cache.
+
+    onnxruntime refuses external data (fp32 weights) reached through a symlink
+    inside a subgraph, and every file in the HF cache's snapshots is one. So a
+    model with external data gets a graph-only copy whose weight locations
+    point at the real blobs; return the folder they're relative to, for
+    session.model_external_initializers_file_folder_path. Everything else is a
+    symlink into the cache. Nothing is hard-linked or copied, so `folder` can
+    be on any filesystem.
     """
     from huggingface_hub import hf_hub_download
 
-    for name, path in variant["files"].items():
-        blob = os.path.realpath(
-            hf_hub_download(variant["repo"], path, revision=variant["revision"])
-        )
-        try:
-            os.link(blob, folder / name)
-        except OSError as exc:
-            raise OSError(
-                f"can't hard-link {blob} into {folder}: PARAKEET_MODELS_DIR must be on "
-                f"the same filesystem (and mount) as the HF cache ({exc})"
-            ) from exc
+    files = {
+        name: hf_hub_download(variant["repo"], path, revision=variant["revision"])
+        for name, path in variant["files"].items()
+    }
+    # A model with external data has its data files listed beside it, under
+    # the name the .onnx refers to (models.yaml).
+    graphs = {}
+    for name in files:
+        if name.endswith(".onnx") and any(o != name and o.startswith(name) for o in files):
+            import onnx
+
+            proto = onnx.load(files[name], load_external_data=False)
+            graphs[name] = (proto, _external_tensors(proto.graph))
+    data_files = {
+        kv.value
+        for _, tensors in graphs.values()
+        for t in tensors
+        for kv in t.external_data
+        if kv.key == "location"
+    }
+    data_dir = (
+        os.path.commonpath([os.path.dirname(os.path.realpath(files[d])) for d in data_files])
+        if data_files
+        else None
+    )
+    for name, cached in files.items():
+        if name not in graphs:
+            os.symlink(cached, folder / name)
+            continue
+        proto, tensors = graphs[name]
+        for t in tensors:
+            for kv in t.external_data:
+                if kv.key == "location":
+                    kv.value = os.path.relpath(os.path.realpath(files[kv.value]), data_dir)
+        (folder / name).write_bytes(proto.SerializeToString())
+    return data_dir
 
 
 def load_model(key: str, *, with_timestamps: bool = True):
@@ -247,15 +290,19 @@ def load_model(key: str, *, with_timestamps: bool = True):
                 ORT_INTRA_THREADS,
                 ORT_INTER_THREADS,
             )
-            # onnx-asr reads every file while it loads, so the links only need to
+            # onnx-asr reads every file while it loads, so the folder only needs to
             # live that long; a folder per load keeps replicas sharing the models
-            # volume out of each other's way. ORT keeps external data (fp32) mapped,
-            # so on NFS its unlinked link lingers as .nfsXXXX until the model is
-            # freed and the folder can't be removed yet: best-effort cleanup.
+            # volume out of each other's way. Best-effort cleanup: on NFS a file
+            # still open lingers as .nfsXXXX and blocks the rmdir.
             with tempfile.TemporaryDirectory(
                 dir=MODELS_DIR, prefix=".load-", ignore_cleanup_errors=True
             ) as folder:
-                _link_files(variant, Path(folder))
+                data_dir = _stage_files(variant, Path(folder))
+                if data_dir is not None:
+                    session_options = session_options or ort.SessionOptions()
+                    session_options.add_session_config_entry(
+                        "session.model_external_initializers_file_folder_path", data_dir
+                    )
                 model = onnx_asr.load_model(
                     config["onnx_asr_type"],
                     folder,
