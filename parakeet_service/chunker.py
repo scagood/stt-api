@@ -273,8 +273,9 @@ def _split_oversized(
     With `wav`, a cut that falls in a word moves to a quieter point near it
     (_quiet_cuts): a gap between words, where a cut at an arbitrary point
     likely splits one. The range may then start as late as `latest_start`
-    and end as early as `earliest_end` (silence it can give up) where that
-    lets a cut reach a quieter point."""
+    and end as early as `earliest_end` (a pause it shares with the range
+    beside it, which it can give up) where that lets a cut reach a quieter
+    point."""
     if end <= start:
         return []
     count = -(-(end - start) // maximum)
@@ -427,7 +428,7 @@ def _quiet_cuts(wav: np.ndarray, even: List[int], maximum: int, latest_start: in
 def _split_all(wav: np.ndarray, packed: List[Range], speech: List[Range], maximum: int) -> List[Range]:
     """Each of the `packed` ranges, split where it passes `maximum`
     (_split_oversized) at the quietest points. A range so split may give up
-    silence at its ends, so a cut can reach a quieter point: the pause it
+    a pause at its ends, so a cut can reach a quieter point: the pause it
     shares with the range beside it, to that range, as long as that needs no
     more pieces. An end with no range beside it (the first range's lead,
     the last's tail) gives up nothing: nothing else decodes that margin,
