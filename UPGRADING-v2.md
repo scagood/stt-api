@@ -166,10 +166,17 @@ so switch those when the server upgrades.
   for about 0.1 s per hour of audio. An aligner does it better, at several
   times the transcription time.
 
-See [Word timestamps](README.md#word-timestamps) and
-[Spoken numbers](README.md#spoken-numbers) for how each works and what it
-costs. Your server admin can switch spoken numbers on for every request. If
-they do, send `spoken_numbers=false` to opt out.
+- **`vad_filter=true`** returns an empty transcript for audio with no speech
+  in it. Without it, audio short enough to go to the model whole (75 s for
+  `parakeet-v3`) always does, and silence comes back as made-up words: two
+  seconds of digital silence as "Thank you.". Longer audio already skipped
+  stretches without speech, and still does. It can drop very quiet speech.
+
+See [Word timestamps](README.md#word-timestamps),
+[Spoken numbers](README.md#spoken-numbers) and [Silence](README.md#silence)
+for how each works and what it costs. Your server admin can switch spoken
+numbers and `vad_filter` on for every request. If they do, send
+`spoken_numbers=false` or `vad_filter=false` to opt out.
 
 ## For server admins
 
@@ -211,6 +218,7 @@ ran it.
 | — | `PARAKEET_MODEL_CACHE_SIZE`: keep at most N loaded models, and separately at most N loaded aligners, evicting the least recently used. `0` (the default) means no limit. |
 | — | `PARAKEET_MODEL_IDLE_TIMEOUT_SEC` (`21600`, 6 hours): a model or aligner, preloaded or not, that no request has used for this long is unloaded, and the next request that names it loads it again, without a warm-up. 1.5.0 kept its model loaded until it exited; `-1` does that. |
 | — | `PARAKEET_SPOKEN_NUMBERS`: the answer for requests that don't send `spoken_numbers`. Defaults to `false`. There is no server-wide switch for alignment: a request names its `aligner`. |
+| — | `PARAKEET_VAD_FILTER`: the answer for requests that don't send `vad_filter`. Defaults to `false`. `PARAKEET_VAD_FILTER_MIN_SPEECH_MS` (`0`) is the shortest speech it counts. See [Silence](README.md#silence). |
 | — | `PARAKEET_RETIME_WORDS`: the answer for requests that don't send `retime_words`. Defaults to `false`. See [Word timestamps](README.md#word-timestamps). |
 | — | `PARAKEET_VAD`: how long audio finds its pauses. **The default is now `volume`**, frames quieter than a gate, 30x faster or more than Silero-VAD, which 1.5.0 always used; long audio is cut in slightly different places, so transcripts can differ a little. `PARAKEET_VAD=silero` brings Silero back. `PARAKEET_VAD_GATE_DB` fixes `volume`'s gate in dBFS. See [Configuration](README.md#configuration). |
 | — | `PARAKEET_CHUNK_CONTEXT_SEC` (`5`): how much of its neighbours' audio each chunk of long Parakeet audio decodes either side; `0` cuts with no overlap, as 1.5.0 did. See [Configuration](README.md#configuration). |

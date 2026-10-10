@@ -374,6 +374,21 @@ VAD = _env_choice("PARAKEET_VAD", "volume", {"silero", "volume"})
 # (chunker.loud_frames). A fixed gate is not: all under it is silence.
 VAD_GATE_DB = _env_dbfs("PARAKEET_VAD_GATE_DB")
 
+# Long audio is cut at pauses, and stretches with no speech never reach the
+# model. Audio short enough to decode whole (chunk_max_sec) skips VAD, and given
+# no speech Parakeet makes some up: "Thank you." for 2 s of digital silence,
+# "Yeah." or "Okay." for three in four pauses cut out of an audiobook (#64). On,
+# Silero first decides whether a short clip has speech (whatever PARAKEET_VAD
+# says), and one without comes back empty; one with speech is still decoded
+# whole. A request opts in or out with `vad_filter=true|false`; this is the
+# answer for requests that don't say.
+VAD_FILTER = _env_bool("PARAKEET_VAD_FILTER", False)
+# The shortest speech vad_filter counts. Silero's own 250 ms drops one-word
+# clips such as "up" or "go" that it is sure of; 0 counts any 32 ms window it
+# hears as speech, and in our tests lost the fewest words for a few more noise
+# clips decoded (README, Silence).
+VAD_FILTER_MIN_SPEECH_MS = _env_int("PARAKEET_VAD_FILTER_MIN_SPEECH_MS", 0, minimum=0)
+
 # Any number of models and aligners stay loaded by default (0 = unbounded). Set
 # a small N to LRU-evict all but the N most-recent models, and likewise aligners,
 # when clients can ask for more than fits in RAM.

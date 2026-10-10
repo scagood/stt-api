@@ -34,6 +34,7 @@ from .config import (
     MODEL_CONFIGS,
     RETIME_WORDS,
     SPOKEN_NUMBERS,
+    VAD_FILTER,
     TARGET_SR,
     UPLOAD_READ_CHUNK_BYTES,
     logger,
@@ -249,6 +250,7 @@ def _prepare_audio(
     max_sec: float,
     min_sec: float,
     context_sec: float = 0.0,
+    vad_filter: bool = False,
 ) -> _PreparedAudio:
     waveform = load_audio(raw)
     duration = float(waveform.size) / TARGET_SR
@@ -259,7 +261,12 @@ def _prepare_audio(
             f"audio duration {duration:.1f}s exceeds limit {MAX_AUDIO_SECONDS:.1f}s"
         )
     plan = plan_chunks(
-        waveform, target_sec=target_sec, max_sec=max_sec, min_sec=min_sec, context_sec=context_sec
+        waveform,
+        target_sec=target_sec,
+        max_sec=max_sec,
+        min_sec=min_sec,
+        context_sec=context_sec,
+        vad_filter=vad_filter,
     )
     pieces = slice_chunks(waveform, plan.windows)
     if len(pieces) > MAX_REQUEST_CHUNKS:
@@ -283,6 +290,7 @@ async def _prepare_in_pool(
     max_sec: float,
     min_sec: float,
     context_sec: float = 0.0,
+    vad_filter: bool = False,
 ) -> _PreparedAudio:
     loop = asyncio.get_running_loop()
     try:
@@ -294,6 +302,7 @@ async def _prepare_in_pool(
             max_sec,
             min_sec,
             context_sec,
+            vad_filter,
         )
     except _AudioTooLong as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
@@ -1462,6 +1471,12 @@ _SPOKEN_NUMBERS_DOC = (
     "Write numbers, money and units in words, the way they were said (English "
     "only). Defaults to the server's `PARAKEET_SPOKEN_NUMBERS`."
 )
+_VAD_FILTER_DOC = (
+    "Return nothing for audio with no speech in it, instead of the words the model "
+    "makes up for silence or noise. Audio short enough to decode whole is decoded "
+    "only if Silero hears speech in it, and then whole. Defaults to the server's "
+    "`PARAKEET_VAD_FILTER`."
+)
 _MODEL_ERRORS = {
     503: _error(
         "The service is still starting, or the model could not be loaded "
@@ -1772,6 +1787,12 @@ def _retimes(retime_words: Optional[bool]) -> bool:
     return RETIME_WORDS if retime_words is None else retime_words
 
 
+def _filters(vad_filter: Optional[bool]) -> bool:
+    """Ask Silero whether a short clip has speech before decoding it: the
+    request's `vad_filter`, else the server's PARAKEET_VAD_FILTER."""
+    return VAD_FILTER if vad_filter is None else vad_filter
+
+
 def _speaks(spoken_numbers: Optional[bool], language: Optional[str]) -> bool:
     """Say numbers in words: the request's `spoken_numbers`, else the server's
     PARAKEET_SPOKEN_NUMBERS; English only."""
@@ -1844,6 +1865,7 @@ async def transcribe(
         None, description="Accepted for OpenAI clients, and ignored.", json_schema_extra=_form_doc()
     ),
     spoken_numbers: Optional[bool] = Form(None, description=_SPOKEN_NUMBERS_DOC, json_schema_extra=_form_doc()),
+    vad_filter: Optional[bool] = Form(None, description=_VAD_FILTER_DOC, json_schema_extra=_form_doc()),
     aligner_name: Optional[str] = Form(
         None,
         alias="aligner",
@@ -1899,7 +1921,9 @@ async def transcribe(
     raw = await _read_upload_limited(file)
 
     started = time.perf_counter()
-    prepared = await _prepare_in_pool(request, raw, target_sec, max_sec, min_sec, context_sec)
+    prepared = await _prepare_in_pool(
+        request, raw, target_sec, max_sec, min_sec, context_sec, _filters(vad_filter)
+    )
     decode_ms = (time.perf_counter() - started) * 1000
 
     infer_started = time.perf_counter()
@@ -1964,6 +1988,7 @@ async def transcribe_batch(
     model: str = Form(..., description=_MODEL_DOC, examples=[_EXAMPLE_MODEL]),
     quantization: Optional[str] = Form(None, description=_QUANTIZATION_DOC, json_schema_extra=_form_doc()),
     spoken_numbers: Optional[bool] = Form(None, description=_SPOKEN_NUMBERS_DOC, json_schema_extra=_form_doc()),
+    vad_filter: Optional[bool] = Form(None, description=_VAD_FILTER_DOC, json_schema_extra=_form_doc()),
     aligner_name: Optional[str] = Form(
         None,
         alias="aligner",
@@ -1999,6 +2024,7 @@ async def transcribe_batch(
             )
         raws.append(raw)
 
+    filters = _filters(vad_filter)
     loop = asyncio.get_running_loop()
     futures = [
         loop.run_in_executor(
@@ -2009,6 +2035,7 @@ async def transcribe_batch(
             max_sec,
             min_sec,
             context_sec,
+            filters,
         )
         for raw in raws
     ]
