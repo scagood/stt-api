@@ -900,9 +900,12 @@ def test_vad_filter_hears_the_start_first(monkeypatch, speech_at, heard):
     sr = chunker.TARGET_SR
     lengths = []
 
+    lead = int(chunker._SPEECH_LEAD_SEC * sr)
+
     def segments(wav, _min_speech_ms=250):
-        lengths.append(wav.size / sr)
-        return [] if speech_at is None or wav.size <= speech_at * sr else [(speech_at * sr, wav.size)]
+        heard = wav.size - 2 * lead  # without the silence either side
+        lengths.append(heard / sr)
+        return [] if speech_at is None or heard <= speech_at * sr else [(lead + speech_at * sr, lead + heard)]
 
     monkeypatch.setattr(chunker, "_silero_speech_segments", segments)
     ranges = _ranges(np.ones(10 * sr, dtype=np.float32), **BOUNDS, vad_filter=True)
@@ -936,3 +939,21 @@ def test_vad_filter_without_silero_falls_back_to_volume(monkeypatch):
     tone = (0.1 * np.sin(2 * np.pi * 220 * np.arange(2 * sr) / sr)).astype(np.float32)
     assert _ranges(silence, **BOUNDS, vad_filter=True) == []
     assert _ranges(tone, **BOUNDS, vad_filter=True) == [(0, tone.size)]
+
+
+def test_vad_filter_hears_a_word_at_the_clip_s_first_sample(monkeypatch):
+    # Silero misses speech with no lead-in: a clip cut at the word's onset was
+    # dropped. A fake Silero that, like the real one, needs silence before it.
+    sr = chunker.TARGET_SR
+    heard = []
+
+    def silero(wav, _min_speech_ms=250):
+        heard.append(wav)
+        onset = int(np.argmax(np.abs(wav) > 0))
+        return [(onset, wav.size)] if onset >= int(0.2 * sr) else []
+
+    monkeypatch.setattr(chunker, "_silero_speech_segments", silero)
+    word = (0.1 * np.sin(2 * np.pi * 220 * np.arange(sr // 2) / sr)).astype(np.float32)
+    assert _ranges(word, **BOUNDS, vad_filter=True) == [(0, word.size)]
+    lead = int(chunker._SPEECH_LEAD_SEC * sr)
+    assert np.array_equal(heard[0][lead:-lead], word) and not heard[0][:lead].any() and not heard[0][-lead:].any()

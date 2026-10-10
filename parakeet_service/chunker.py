@@ -87,6 +87,10 @@ def _silero_speech_segments(wav: np.ndarray, min_speech_ms: int = 250) -> List[R
 # How much of a short clip vad_filter hears first: speech nearly always starts
 # within it, so a clip with speech costs this much VAD, not a pass over all of it.
 _SPEECH_PROBE_SEC = 2.0
+# Silence vad_filter puts either side of what Silero hears. Silero misses a
+# word that starts at the clip's first sample: of 300 one-word recordings cut
+# at the word, it dropped 16 heard as they are, and none with this lead-in.
+_SPEECH_LEAD_SEC = 0.25
 
 
 def has_speech(wav: np.ndarray) -> bool:
@@ -95,12 +99,16 @@ def has_speech(wav: np.ndarray) -> bool:
 
     The first _SPEECH_PROBE_SEC is heard first; only a clip without speech
     there pays for a pass over all of it, and that one is then usually spared
-    its inference.
+    its inference. Each is heard with _SPEECH_LEAD_SEC of silence either side.
     """
+    lead = np.zeros(int(_SPEECH_LEAD_SEC * TARGET_SR), dtype=np.float32)
+
+    def heard(part: np.ndarray) -> bool:
+        padded = np.concatenate([lead, part.astype(np.float32, copy=False), lead])
+        return bool(_silero_speech_segments(padded, VAD_FILTER_MIN_SPEECH_MS))
+
     probe = int(_SPEECH_PROBE_SEC * TARGET_SR)
-    if wav.size > probe and _silero_speech_segments(wav[:probe], VAD_FILTER_MIN_SPEECH_MS):
-        return True
-    return bool(_silero_speech_segments(wav, VAD_FILTER_MIN_SPEECH_MS))
+    return (wav.size > probe and heard(wav[:probe])) or heard(wav)
 
 
 FRAME = int(0.02 * TARGET_SR)  # loudness is measured in 20 ms frames

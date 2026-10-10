@@ -401,22 +401,29 @@ back to `volume`, which drops digital silence but lets most noise through.
 
 **What it catches, and what it costs.** It can drop real speech, which is why
 it is off by default. Measured with Silero on CPU, with Parakeet's output
-inferred from #64 rather than run here:
+inferred from #64 rather than run here. The speech is 300 one-word recordings
+(spoken digits, 6 speakers, median 0.42 s, median peak -11 dBFS):
 
 | Clips | Kept (sent to the model) |
 |---|---|
-| 300 one-word recordings (digits, 6 speakers), padded to 1.5 s | 300 |
-| the same, with background noise at 5 dB SNR | 300 |
-| the same, 20 dB quieter (median peak -31 dBFS) | 240 |
-| 352 non-speech sound clips (ESC-50: rain, engines, dogs, ...), 2 and 5 s | 30 |
-| digital silence, dither, white and pink noise at -80 to -20 dBFS, hum, clicks | 0 |
+| the words cut tight, starting at the first sample | 300 of 300 |
+| the words padded to 1.5 s | 299 of 300 |
+| the same, with background noise at 5 / 0 dB SNR | 299 / 278 of 300 |
+| the words 10 dB quieter, tight / padded | 295 / 297 of 300 |
+| the words 20 dB quieter, tight / padded | 235 / 245 of 300 |
+| non-speech sounds (ESC-50: rain, engines, dogs, ...), up to 5 s | 19 of 176 |
+| coughs, laughs, cries, sneezes, snores, breathing (ESC-50) | 56 of 120 |
+| digital silence, dither, white and pink noise at -80 to -20 dBFS, hum, clicks | none |
 
-Silero only counts speech it hears for at least
-`PARAKEET_VAD_FILTER_MIN_SPEECH_MS` (default `0`: any 32 ms window). Its own
-default, 250 ms, drops short words it is sure of, such as "up", "go" or "no":
-on the clips above, 250 ms kept 283 of the 300 words and 200 of the quiet ones,
-for 10 noise clips instead of 30. `PARAKEET_VAD_THRESHOLD` applies too: at
-`0.2`, 289 of the quiet words were kept, and 102 noise clips.
+Silero misses a word at a clip's very first sample (16 of the tight words
+above), so it hears each clip with 0.25 s of silence either side. It only
+counts speech it hears for at least `PARAKEET_VAD_FILTER_MIN_SPEECH_MS`
+(default `0`: any 32 ms window). Its own default, 250 ms, drops short words it
+is sure of, such as "up", "go" or "no": at 250 ms, 281 of the padded words were
+kept, 249 at 0 dB SNR and 200 at 20 dB quieter, for 2 non-speech sounds and 27
+coughs and the like. `PARAKEET_VAD_THRESHOLD` applies too: at `0.2`, 289 of the
+padded words 20 dB quieter were kept, and 294 at 0 dB SNR, but 80 non-speech
+sounds and 93 coughs and the like.
 
 It hears the first 2 s first, so audio with speech there costs about 25 ms of
 one CPU core; only audio without pays for the rest (about 12 ms per second of
