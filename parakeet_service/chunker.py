@@ -20,6 +20,7 @@ from .config import (
 )
 
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 
 Range = Tuple[int, int]
 # Silero carries state from one window to the next, so threads sharing a model
@@ -115,16 +116,52 @@ FRAME = int(0.02 * TARGET_SR)  # loudness is measured in 20 ms frames
 # Frames squared at a time: 1000 s of audio, so the scratch copy stays ~64 MB
 # however long the file (a 17-hour book is ~3.9 GB of float32 samples).
 _RMS_BLOCK = 50_000
+_OFFSET_FRAMES = 51  # frames: ~1 s, centred, over which a DC offset is measured
+_OFFSET_SMOOTH = 12  # frames: 240 ms, whole periods of 12.5, 16.7, 25 and 75 Hz
 
 
 def frame_rms(wav: np.ndarray) -> np.ndarray:
-    """RMS of each whole 20 ms frame of `wav`."""
+    """RMS of each whole 20 ms frame of `wav`, less any DC offset under it.
+
+    A DC offset is no sound, but counted, it sets a floor no pause is quieter
+    than: a LibriVox chapter decoded at +0.094 (-20.5 dBFS) read -20.7 to
+    -18.7 dBFS in every frame, and was one span of speech 45 minutes long. The
+    offset is the median of the frame means, each first averaged over 240 ms,
+    over _OFFSET_FRAMES, so it follows a slow drift or an offset that steps
+    partway. It is none under -60 dBFS (all of it from -54), and no frame
+    reads louder than its RMS, so a file without an offset reads nearly as it
+    always did. Each frame's own mean is not taken out: that is a high-pass,
+    and cost a low voice's onsets and mic pops several dB, so quiet words were
+    lost on files with no offset at all. Only loudness is measured so; the
+    models hear `wav` as it is."""
     count = wav.size // FRAME
     framed = wav[: count * FRAME].reshape(count, FRAME)
     blocks = [framed[i: i + _RMS_BLOCK] for i in range(0, count, _RMS_BLOCK)]
     if not blocks:
         return np.empty(0, dtype=wav.dtype)
-    return np.concatenate([np.sqrt((b * b).mean(axis=1) + 1e-12) for b in blocks])
+    var = np.concatenate([b.var(axis=1) for b in blocks])
+    mean = np.concatenate([b.mean(axis=1) for b in blocks])
+    # Frame means over _OFFSET_SMOOTH first, so a tone locked to the frame
+    # (12.5, 16.7, 25 or 75 Hz, whose frame means alternate) cancels before
+    # the median rather than pulling it off zero.
+    sums = np.concatenate(([0.0], np.cumsum(mean, dtype=np.float64)))
+    lo = np.clip(np.arange(count) - _OFFSET_SMOOTH // 2, 0, max(0, count - _OFFSET_SMOOTH))
+    hi = np.minimum(lo + _OFFSET_SMOOTH, count)
+    smooth = ((sums[hi] - sums[lo]) / (hi - lo)).astype(mean.dtype)
+    half = _OFFSET_FRAMES // 2
+    padded = np.pad(smooth, half, mode="symmetric")
+    offset = np.concatenate([
+        np.median(sliding_window_view(padded[i: i + _RMS_BLOCK + 2 * half], _OFFSET_FRAMES), axis=1)
+        for i in range(0, count, _RMS_BLOCK)
+    ])
+    # None under -60 dBFS, ramped in to all of it at -54: a hard cut-off
+    # flickered on an offset near it, taken out of some stretches and not
+    # others. Under -60, where offset-free noise's own medians fall, it stays.
+    offset *= np.clip(np.abs(offset) / 1e-3 - 1, 0, 1)
+    # An offset only adds to a frame's power, so taking it out never makes a
+    # frame louder: where the median follows 1-2 Hz content (a warped disc, a
+    # slow swell) rather than an offset, a frame reads no more than its RMS.
+    return np.sqrt(var + np.minimum(mean * mean, (mean - offset) ** 2) + 1e-12)
 
 
 # A quiet stretch heard again at its own level (loud_frames) is speech where it

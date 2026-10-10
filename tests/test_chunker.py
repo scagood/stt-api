@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pytest
+from numpy.lib.stride_tricks import sliding_window_view
 
 from parakeet_service import chunker, routes
 
@@ -838,6 +839,58 @@ def test_a_fixed_gate_is_not_heard_again(volume, monkeypatch):
     assert sum(max(0, min(b, end) - max(a, start)) for a, b in plan.ranges) < quiet.size
 
 
+@pytest.mark.parametrize(
+    "offset",
+    [
+        lambda t: 0.1 + 0 * t,  # a constant 0.1 (-20 dBFS)
+        lambda t: -0.02 + 0 * t,
+        lambda t: 0.1 * np.sin(2 * np.pi * 0.05 * t),  # a drift, 20 s round
+    ],
+)
+def test_volume_hears_through_a_dc_offset(volume, offset):
+    # An offset under it all: counted as loudness, no frame was quieter than
+    # it, and the whole file was one span of speech.
+    wav = _pause_between_turns(10, [(4.8, 0.55, -40)])
+    segments = chunker._volume_speech_segments(wav)
+    assert len(segments) > 1
+    under = offset(np.arange(wav.size) / SR).astype(np.float32)
+    assert chunker._volume_speech_segments(wav + under) == segments
+
+
+def test_frame_rms_without_an_offset_is_the_rms():
+    # Taking each frame's own mean out cost a low voice's frames a few tenths
+    # of a dB and a mic pop's several, and dropped a quiet "Yes." the file's
+    # gate kept. With no offset to take out, each frame reads its RMS.
+    t = np.arange(SR * 3) / SR
+    voice = sum(np.sin(2 * np.pi * 78 * k * t + 0.3 * k) / k for k in range(1, 12))
+    wav = 0.01 * voice * (t < 2) + 1e-4 * np.random.default_rng(1).standard_normal(t.size)
+    pop = slice(int(2.5 * SR), int(2.525 * SR))  # a 25 ms thump, 40 Hz's half cycle
+    wav[pop] += 0.05 * np.sin(np.pi * np.arange(pop.stop - pop.start) / (pop.stop - pop.start))
+    wav = wav.astype(np.float32)
+    count = wav.size // chunker.FRAME
+    framed = wav[: count * chunker.FRAME].reshape(count, chunker.FRAME).astype(np.float64)
+    rms = np.sqrt((framed * framed).mean(axis=1))
+    assert np.allclose(chunker.frame_rms(wav), rms, rtol=1e-4)
+
+
+@pytest.mark.parametrize(
+    "under",
+    [
+        lambda t: 10 ** (-40 / 20) * np.sqrt(2) * np.sin(2 * np.pi * 25 * t),  # a half period a frame
+        lambda t: 10 ** (-46 / 20) * np.sqrt(2) * np.sin(2 * np.pi * 1.4 * t),  # a warped disc's swell
+    ],
+)
+def test_frame_rms_reads_no_frame_louder_than_its_rms(under):
+    # No offset, but the median followed these, and frames read up to 5 dB
+    # over their RMS: pauses read as speech, and spans ran together.
+    t = np.arange(SR * 10) / SR
+    wav = (under(t) + 10 ** (-50 / 20) * np.random.default_rng(1).standard_normal(t.size)).astype(np.float32)
+    count = wav.size // chunker.FRAME
+    framed = wav[: count * chunker.FRAME].reshape(count, chunker.FRAME).astype(np.float64)
+    rms = np.sqrt((framed * framed).mean(axis=1))
+    assert np.all(chunker.frame_rms(wav) <= rms * (1 + 1e-4))
+
+
 def test_silero_without_the_package_falls_back_to_volume(monkeypatch):
     monkeypatch.setattr(chunker, "VAD", "silero")
     monkeypatch.setattr(chunker, "VAD_GATE_DB", None)
@@ -867,10 +920,17 @@ def test_gate_setting_rejects_nonsense(monkeypatch, raw):
 
 def test_frame_rms_in_blocks_matches_one_pass(monkeypatch):
     rng = np.random.default_rng(1)
-    wav = (0.1 * rng.standard_normal(SR * 3 + 123)).astype(np.float32)
+    t = np.arange(SR * 3 + 123) / SR
+    wav = (0.1 * rng.standard_normal(t.size) + 0.05 * np.sin(2 * np.pi * 0.5 * t)).astype(np.float32)
     count = wav.size // chunker.FRAME
     framed = wav[: count * chunker.FRAME].reshape(count, chunker.FRAME)
-    whole = np.sqrt((framed * framed).mean(axis=1) + 1e-12)
+    mean = framed.mean(axis=1)
+    k = chunker._OFFSET_SMOOTH
+    smooth = np.array([mean[i: i + k].mean() for i in np.clip(np.arange(count) - k // 2, 0, count - k)])
+    half = chunker._OFFSET_FRAMES // 2
+    offset = np.median(sliding_window_view(np.pad(smooth, half, mode="symmetric"), 2 * half + 1), axis=1)
+    offset *= np.clip(np.abs(offset) / 1e-3 - 1, 0, 1)
+    whole = np.sqrt(framed.var(axis=1) + np.minimum(mean * mean, (mean - offset) ** 2) + 1e-12)
     monkeypatch.setattr(chunker, "_RMS_BLOCK", 7)  # many blocks, one partial
     assert np.array_equal(chunker.frame_rms(wav), whole)
     assert chunker.frame_rms(np.zeros(10, dtype=np.float32)).size == 0
