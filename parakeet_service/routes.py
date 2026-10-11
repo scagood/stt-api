@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import bisect
+import difflib
 import functools
 import json
 import math
@@ -14,16 +15,18 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, Collection, Dict, List, Optional, Sequence, Tuple, Union
 
+import numpy as np
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 
 from . import aligner, retime, spoken
 from .audio import load_audio
-from .chunker import plan_chunks, slice_chunks, speech_segments
+from .chunker import FRAME, frame_rms, plan_chunks, slice_chunks, speech_segments
 from .config import (
     ALIGN_MAX_AUDIO_SECONDS,
     ALIGNER_CONFIGS,
     CHUNK_CONTEXT_SEC,
+    CHECK_ENDINGS,
     CHUNK_MIN_SEC,
     COMPARE_UI,
     CPU_INFO,
@@ -1421,6 +1424,250 @@ async def _redo_stalled(
     return await _redo_stretches(request, files, results, model_key)
 
 
+# As its input ends, Parakeet can make up a word that was never said (#110):
+# a clip ending half a second into the pause after "he muttered" comes back
+# "he muttered, and". Where the input ends decides it: the same audio a little
+# shorter, or with the pause heard a little longer, hears no "and", while a
+# word that was said is heard either way. VAD can't tell the two apart: the
+# model times a made-up word inside the speech before the pause as often as
+# after it, and times a word that was said after that speech has ended.
+# So each piece decoded up to its own range's end (the audio's end, or a long
+# silence cut out; past it, _trimmed drops the words anyway) has its last
+# words checked: the last _ENDING_SEC of its input or more (_ending) is
+# decoded twice again, _ENDING_SHORTER_SEC shorter, and with its last
+# _ENDING_LONGER_SEC played again backwards (a pause heard longer, a word
+# cut off heard out), and words neither decode hears are dropped
+# (_made_up_end).
+_ENDING_SEC = 8.0
+_ENDING_SHORTER_SEC = 0.2
+_ENDING_LONGER_SEC = 0.3
+# Only words starting this near the end of a piece's input are checked. Each
+# of about 150 made-up words on LibriVox (English, French, German, Spanish;
+# v2 and v3) started in the last 0.65 s, the decoder's last 8 frames; real
+# words both decodes missed started earlier ("¿Sí?" 0.88 s before the end,
+# "Abschnitt 1." 1.65 s; #112's review).
+_MADE_UP_SEC = 0.75
+# Only an input ending in a pause is checked: its last _PAUSE_END_SEC this far
+# under its speech (the 95th percentile of its 20 ms frames). One that ends
+# inside a word was heard to its end only as it is: both decodes lose the word
+# ("the March Hare" cut in the "e" of "Hare"), as they did on LibriVox at up
+# to 9 dB under. A made-up word mostly comes at a quieter end, 13-58 dB under.
+_PAUSE_END_SEC = 0.1
+_PAUSE_END_DB = 15.0
+# Two decodes of a word near the end of their input time it up to about half a
+# second apart (_REDO_EARLY_SEC): words this far apart can be the same one.
+_MADE_UP_MATCH_SEC = 1.0
+# A word a decode of the ending starts this near one the piece heard, but for
+# the word before it, is speech there heard another way ("bit" as "bed.",
+# "him" as "employee."), not a made-up word: it stays (#112's review).
+_SPOKEN_BEFORE_SEC = 0.1
+_SPOKEN_AFTER_SEC = 0.15
+# The context a word at the start of an ending's audio is given.
+_ENDING_LEAD_SEC = 1.0
+# Words the decodes of the ending miss stay when, after the word before them,
+# the ending holds a pause (_SAID_PAUSE_SEC this far under its speech) and then
+# a syllable of their own (_SAID_SYLLABLE_SEC within _SAID_LOUD_DB of it): a
+# short word said alone, as "patrão. 4." or "vriendje, Gij." were, 0.3-1 s
+# after a 0.3 s pause or more (#112's review). A made-up word sits on the tail
+# of the word before or on silence: none of about 150 on LibriVox had one.
+_SAID_PAUSE_SEC = 0.25
+_SAID_PAUSE_DB = 25.0
+_SAID_SYLLABLE_SEC = 0.06
+_SAID_LOUD_DB = 15.0
+
+
+def _ending(prepared: _PreparedAudio, index: int, result: Any) -> Optional[Tuple[int, Any, List[Any]]]:
+    """Where piece `index`'s ending starts (a sample in the file), its 20 ms
+    frames' loudness over its speech's (their 95th percentile), and its two
+    decodes' audio (_ENDING_SEC): None if it has no word to check, or does
+    not end in a pause."""
+    (_start, end), (window_start, window_end) = prepared.ranges[index], prepared.windows[index]
+    if window_end != end:
+        return None
+    info = _extract(result)
+    spans = _word_spans(info["tokens"])
+    if len(spans) < 2:
+        return None  # nothing heard before it to show a decode heard the same speech
+    starts = [window_start + int(info["timestamps"][first] * TARGET_SR) for _word, first, _last in spans]
+    if starts[-1] < window_end - int(_MADE_UP_SEC * TARGET_SR):
+        return None
+    # From _ENDING_SEC before the end, or sooner to hear the word before
+    # the checked ones with some lead-in.
+    checked = next(i for i, at in enumerate(starts) if at >= window_end - int(_MADE_UP_SEC * TARGET_SR))
+    anchor = starts[max(0, checked - 1)]
+    begin = max(
+        window_start,
+        window_end - int(2 * _ENDING_SEC * TARGET_SR),  # an anchor before that is no help: none is dropped
+        min(window_end - int(_ENDING_SEC * TARGET_SR), anchor - int(_ENDING_LEAD_SEC * TARGET_SR)),
+    )
+    piece = prepared.pieces[index]
+    audio = piece[begin - window_start :]
+    loudness = frame_rms(audio)
+    last = max(1, int(_PAUSE_END_SEC * TARGET_SR) // FRAME)
+    if loudness.size < last or loudness[-last:].max() > np.percentile(loudness, 95) * 10 ** (-_PAUSE_END_DB / 20):
+        return None  # it ends inside speech, not in a pause
+    if audio.size < 2 * int(_ENDING_SHORTER_SEC * TARGET_SR):
+        return None  # too short to hear again shorter: onnx-asr fails on a sample
+    shorter = audio[: audio.size - int(_ENDING_SHORTER_SEC * TARGET_SR)]
+    longer = np.concatenate([audio, audio[-int(_ENDING_LONGER_SEC * TARGET_SR) :][::-1]])
+    return begin, loudness / max(float(np.percentile(loudness, 95)), 1e-12), [shorter, longer]
+
+
+# A number, however it is written: "3", "III", "three", "3rd", "third".
+_NUMBERISH = re.compile(
+    r"\d+(?:st|nd|rd|th|s)?|[ivxlc]+|(?:"
+    + "|".join(spoken._ONES + spoken._TENS[2:] + sorted(spoken._SCALE_WORDS) + list(spoken._ORDINALS.values()))
+    + r")(?:th|s)?"
+)
+
+
+def _heard_in(words: Sequence[Tuple[str, int, int]], word: str, at: int) -> bool:
+    """Whether `words` ((word, first sample, last sample) each) hold `word`,
+    heard at sample `at`, as one of them was heard within _MADE_UP_MATCH_SEC
+    of it (from its first token to its last with a letter or digit, so a
+    word heard joined to the one before, "dot org." as "LibriVox.org.", is
+    near): the same word; for one of four letters or more, a word like it
+    ("Tail." as "TAL", "Lorry" as "Lori,"); it split in two ("rat-hole" as
+    "rat hole"); or, for a number, any number ("III" as "three")."""
+    target = _seam_key(word)
+    if not target:
+        return True  # a lone mark: nothing to tell by
+    reach = int(_MADE_UP_MATCH_SEC * TARGET_SR)
+    near = [_seam_key(other) for other, first, last in words if first - reach <= at <= last + reach]
+    numberish = _NUMBERISH.fullmatch(target) is not None
+    return target in "".join(near) or any(
+        (len(target) >= 4 and len(other) >= 2 and difflib.SequenceMatcher(None, target, other).ratio() >= 0.6)
+        or (numberish and _NUMBERISH.fullmatch(other) is not None)
+        for other in near
+    )
+
+
+def _spoken_at(words: Sequence[Tuple[str, int, int]], at: int, before: str) -> bool:
+    """Whether `words` ((word, first sample, last sample) each) hold a word
+    other than `before` starting where one was heard at sample `at`:
+    _SPOKEN_BEFORE_SEC before it to _SPOKEN_AFTER_SEC after."""
+    low, high = at - int(_SPOKEN_BEFORE_SEC * TARGET_SR), at + int(_SPOKEN_AFTER_SEC * TARGET_SR)
+    return any(low <= there <= high and _seam_key(word) != _seam_key(before) for word, there, _last in words)
+
+
+def _heard_at(info: Dict[str, Any], begin: int, span: Tuple[str, int, int]) -> Tuple[str, int, int]:
+    """A word of a decode from sample `begin` (`info`, its _extract) as
+    (word, first sample, last sample): its first token's time, and its last
+    with a letter or digit."""
+    word, first, last = span
+    lettered = [index for index in range(first, last + 1) if re.search(r"\w", info["tokens"][index])]
+    times = [begin + int(info["timestamps"][index] * TARGET_SR) for index in (first, lettered[-1] if lettered else first)]
+    return word, times[0], times[1]
+
+
+def _said_alone(loudness: Any, frame: int) -> bool:
+    """Whether the ending's frames from `frame` on (`loudness`, each over its
+    speech's) hold a pause and then a syllable: _SAID_PAUSE_SEC under
+    _SAID_PAUSE_DB, and later _SAID_SYLLABLE_SEC within _SAID_LOUD_DB."""
+    pause, syllable = int(_SAID_PAUSE_SEC * TARGET_SR) // FRAME, max(1, int(_SAID_SYLLABLE_SEC * TARGET_SR) // FRAME)
+    quiet, loud = 10 ** (-_SAID_PAUSE_DB / 20), 10 ** (-_SAID_LOUD_DB / 20)
+    still = heard = 0
+    for level in loudness[max(0, frame) :]:
+        if still >= pause:
+            heard = heard + 1 if level > loud else 0
+            if heard >= syllable:
+                return True
+        else:
+            still = still + 1 if level < quiet else 0
+    return False
+
+
+def _made_up_end(
+    result: Any, window_start: int, window_end: int, begin: int, again: Sequence[Any], loudness: Any = None
+) -> Optional[Any]:
+    """`result` (decoded from sample `window_start` to `window_end`) without
+    the words it made up as its input ended: those starting in its last
+    _MADE_UP_SEC after the last word both decodes of its ending (`again`,
+    from sample `begin`) heard too, when neither hears them (_heard_in) nor
+    any other word starting where they do (_spoken_at); and only when
+    both heard the word just before them, so a decode that lost the speech
+    (Parakeet can return nothing for a whole clip) is no sign, and the
+    ending's audio (`loudness`, its frames from `begin`) has no word said
+    alone after it (_said_alone). None if it keeps every word."""
+    info = _extract(result)
+    tokens, timestamps = info["tokens"], info["timestamps"]
+    spans = _word_spans(tokens)
+    found = [(word, window_start + int(timestamps[first] * TARGET_SR)) for word, first, _last in spans]
+    heard = []
+    for decoded in again:
+        other = _extract(decoded)
+        heard.append([_heard_at(other, begin, span) for span in _word_spans(other["tokens"])])
+    latest = window_end - int(_MADE_UP_SEC * TARGET_SR)
+    keep = len(found)
+    while (
+        keep > 1
+        and found[keep - 1][1] >= latest
+        and not any(_heard_in(words, *found[keep - 1]) for words in heard)
+        and not any(_spoken_at(words, found[keep - 1][1], found[keep - 2][0]) for words in heard)
+    ):
+        keep -= 1
+    if keep == len(found) or not all(_heard_in(words, *found[keep - 1]) for words in heard):
+        return None
+    before = window_start + int(timestamps[spans[keep - 1][2]] * TARGET_SR)  # its last token
+    if loudness is not None and _said_alone(loudness, (before - begin) // FRAME):
+        return None
+    cut = spans[keep][1]  # the first made-up word's first token, and a lone word marker opening it
+    while cut > 0 and not tokens[cut - 1].replace("\u2581", " ").strip():
+        cut -= 1
+    return SimpleNamespace(text=_decoded(tokens[:cut]), tokens=list(tokens[:cut]), timestamps=list(timestamps[:cut]))
+
+
+async def _drop_made_up_ends(
+    request: Request, files: Sequence[_PreparedAudio], results: Sequence[Any], model_key: str
+) -> List[Any]:
+    """`results`, every file's pieces in order, without the words a piece
+    made up as its input ended (_made_up_end). Finding the endings and the
+    words to drop run on the audio pool, but for a clip of one piece: for
+    hours of audio, that is a scan of every token. If decoding the endings
+    again fails, what was heard stands."""
+    results = list(results)
+    if not CHECK_ENDINGS or _family(model_key.partition(":")[0]) != "parakeet":
+        return results  # Whisper returns no token times to find the words by
+    loop, pool = asyncio.get_running_loop(), request.app.state.audio_pool
+
+    async def run(work: Callable[..., Any], *args: Any) -> Any:
+        return work(*args) if len(results) < 2 else await loop.run_in_executor(pool, work, *args)
+
+    def find() -> List[Tuple[int, Tuple[int, int], int, Any, List[Any]]]:
+        """(in results, its window, where its ending starts, its loudness, its two audios) for each piece to check."""
+        found, cursor = [], 0
+        for prepared in files:
+            for index, window in enumerate(prepared.windows):
+                ending = _ending(prepared, index, results[cursor + index])
+                if ending is not None:
+                    found.append((cursor + index, window, *ending))
+            cursor += len(prepared.pieces)
+        return found
+
+    def drop(again: Sequence[Any]) -> Tuple[List[Any], int]:
+        """The results without the made-up words, and how many went."""
+        kept, dropped = list(results), 0
+        for number, (at, (window_start, window_end), begin, loudness, _audios) in enumerate(found):
+            cut = _made_up_end(results[at], window_start, window_end, begin, again[2 * number : 2 * number + 2], loudness)
+            if cut is not None:
+                dropped += len(_word_spans(_extract(results[at])["tokens"])) - len(_word_spans(cut.tokens))
+                kept[at] = cut
+        return kept, dropped
+
+    found = await run(find)
+    if not found:
+        return results
+    try:
+        again = await _infer(request, [audio for *_found, audios in found for audio in audios], model_key)
+    except Exception:  # what was heard stands: never a failed request for a check
+        logger.exception("decoding %d pieces' endings again failed; keeping their words", len(found))
+        return results
+    kept, dropped = await run(drop, again)
+    if dropped:
+        logger.info("dropped %d words made up where the input ends, in %d of %d pieces checked", dropped, len(found), len(results))
+    return kept
+
+
 def _verbose_json(
     language: str,
     duration: float,
@@ -1987,6 +2234,7 @@ async def transcribe(
     infer_started = time.perf_counter()
     results = await _infer(request, prepared.pieces, model_key)
     results = await _redo_stalled(request, [prepared], results, model_key)
+    results = await _drop_made_up_ends(request, [prepared], results, model_key)
     infer_ms = (time.perf_counter() - infer_started) * 1000
 
     stitch_started = time.perf_counter()
@@ -2123,6 +2371,7 @@ async def transcribe_batch(
     flattened = [piece for item in prepared_files for piece in item.pieces]
     flat_results = await _infer(request, flattened, model_key)
     flat_results = await _redo_stalled(request, prepared_files, flat_results, model_key)
+    flat_results = await _drop_made_up_ends(request, prepared_files, flat_results, model_key)
 
     # The batch endpoint takes no `language`: the default decides, unless the
     # model is English-only.
