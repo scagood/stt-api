@@ -3,13 +3,15 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import threading
 import types
 import weakref
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from parakeet_service import config, main
+from parakeet_service import config, main, routes
 from parakeet_service import model as m
 
 
@@ -17,6 +19,7 @@ def _stub_loader(monkeypatch, tmp_path, cache_size, calls=None):
     monkeypatch.setattr(m, "MODEL_CACHE_SIZE", cache_size)
     monkeypatch.setattr(m, "_MODELS", OrderedDict())
     monkeypatch.setattr(m, "_RUNTIMES", {})
+    monkeypatch.setattr(m, "_LOADING", {})
     monkeypatch.setattr(m, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(m, "_resolve_providers", lambda: ["CPUExecutionProvider"])
     monkeypatch.setattr(m, "_validate_gpu_binding", lambda *a, **k: None)
@@ -205,6 +208,116 @@ def test_idle_models_are_torn_down_outside_the_model_lock(monkeypatch, tmp_path)
     m.load_model("whisper-tiny:fp32", with_timestamps=False)
     assert m.evict_idle(0) == ["whisper-tiny:fp32"]
     assert held == [False]  # gone, and not while every get_model() waited on it
+
+
+def _held_build(monkeypatch, key):
+    """Make building `key`'s model set `started`, then wait for `release`:
+    (started, release, builds), builds counting every model built."""
+    started, release, builds = threading.Event(), threading.Event(), []
+    repo = config.MODEL_CONFIGS[key.partition(":")[0]]["quantizations"][key.partition(":")[2]]["repo"]
+    build = m._build_asr
+
+    def held(onnx_asr_type, files, providers, sess_options):
+        builds.append(onnx_asr_type)
+        if any(repo in path.read_text() for path in files.values()):
+            started.set()
+            assert release.wait(5)
+        return build(onnx_asr_type, files, providers, sess_options)
+
+    monkeypatch.setattr(m, "_build_asr", held)
+    return started, release, builds
+
+
+def test_a_first_load_does_not_hold_up_loaded_models_or_health(monkeypatch, tmp_path):
+    _stub_loader(monkeypatch, tmp_path, cache_size=0)
+    tiny = m.load_model("whisper-tiny:fp32", with_timestamps=False)
+    started, release, _builds = _held_build(monkeypatch, "whisper-base:fp32")
+    request = types.SimpleNamespace(app=types.SimpleNamespace(state=types.SimpleNamespace(ready=True)))
+    with ThreadPoolExecutor(2) as pool:
+        try:
+            first = pool.submit(m.load_model, "whisper-base:fp32", with_timestamps=False)
+            assert started.wait(5)
+            # While base is still loading:
+            hit = pool.submit(m.load_model, "whisper-tiny:fp32", with_timestamps=False)
+            assert hit.result(timeout=2) is tiny
+            health = pool.submit(routes.health, request).result(timeout=2)
+            assert health["loaded"] == ["whisper-tiny:fp32"] and list(health["runtime"]) == ["whisper-tiny:fp32"]
+        finally:
+            release.set()
+        first.result(timeout=5)
+    assert m.loaded_models() == ["whisper-base:fp32", "whisper-tiny:fp32"]
+
+
+def test_a_failed_load_does_not_hold_up_loaded_models_and_is_retried(monkeypatch, tmp_path):
+    _stub_loader(monkeypatch, tmp_path, cache_size=0)
+    tiny = m.load_model("whisper-tiny:fp32", with_timestamps=False)
+    started, release, builds = _held_build(monkeypatch, "whisper-base:fp32")
+    held = m._build_asr
+    fail = [True]
+
+    def failing(*args):
+        model = held(*args)
+        if fail[0]:
+            raise OSError("no network")
+        return model
+
+    monkeypatch.setattr(m, "_build_asr", failing)
+    with ThreadPoolExecutor(2) as pool:
+        try:
+            first = pool.submit(m.load_model, "whisper-base:fp32", with_timestamps=False)
+            assert started.wait(5)
+            assert pool.submit(m.load_model, "whisper-tiny:fp32", with_timestamps=False).result(timeout=2) is tiny
+        finally:
+            release.set()
+        with pytest.raises(m.ModelLoadError, match="no network"):
+            first.result(timeout=5)
+    assert m.loaded_models() == ["whisper-tiny:fp32"]
+    fail[0] = False
+    m.load_model("whisper-base:fp32", with_timestamps=False)  # nothing cached: tried again
+    assert m.loaded_models() == ["whisper-base:fp32", "whisper-tiny:fp32"]
+    assert builds == ["whisper", "whisper"]
+
+
+def test_concurrent_first_loads_of_a_model_build_it_once(monkeypatch, tmp_path):
+    _stub_loader(monkeypatch, tmp_path, cache_size=0)
+    started, release, builds = _held_build(monkeypatch, "whisper-base:fp32")
+    reached = threading.Semaphore(0)
+
+    class Reached:
+        """The model's load lock, counting the callers that reach it."""
+
+        def __init__(self):
+            self._lock = threading.Lock()
+
+        def __enter__(self):
+            reached.release()
+            return self._lock.__enter__()
+
+        def __exit__(self, *exc):
+            return self._lock.__exit__(*exc)
+
+    monkeypatch.setitem(m._LOADING, ("whisper-base:fp32", False), Reached())
+    with ThreadPoolExecutor(2) as pool:
+        try:
+            loads = [pool.submit(m.load_model, "whisper-base:fp32", with_timestamps=False) for _ in range(2)]
+            # Both reach it before the first build ends: the second waits for it.
+            assert reached.acquire(timeout=5) and reached.acquire(timeout=5)
+        finally:
+            release.set()
+        first, second = (load.result(timeout=5) for load in loads)
+    assert first is second
+    assert builds == ["whisper"]
+
+
+def test_preloading_cuda_does_not_take_the_model_lock(monkeypatch):
+    held = []
+    monkeypatch.setattr(m, "USE_GPU", "auto")
+    monkeypatch.setattr(m, "_CUDA_PRELOADED", False)
+    monkeypatch.setattr(
+        m.ort, "preload_dlls", lambda **_k: held.append(m._MODEL_LOCK._is_owned()), raising=False
+    )
+    assert m._preload_cuda_libraries()
+    assert held == [False]
 
 
 def test_trim_heap_never_raises():

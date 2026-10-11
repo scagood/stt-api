@@ -35,7 +35,14 @@ _ModelKey = Tuple[str, bool]
 # Each loaded model and when it was last asked for (time.monotonic()), least
 # recently used first.
 _MODELS: "OrderedDict[_ModelKey, Tuple[object, float]]" = OrderedDict()
+# _MODEL_LOCK guards the cache (_MODELS, _RUNTIMES, _LOADING) and is only held
+# briefly: every inference (get_model) and /health take it. A load runs under
+# its model's own lock in _LOADING instead: a first load downloads up to a few
+# GB and builds the sessions, which should hold up only callers of that model
+# (they get its result, not a second download), not hits on loaded ones.
 _MODEL_LOCK = threading.RLock()
+_LOADING: Dict[_ModelKey, threading.Lock] = {}
+_CUDA_LOCK = threading.Lock()
 _CUDA_PRELOADED = False
 _RUNTIMES: Dict[str, dict] = {}
 
@@ -51,7 +58,7 @@ def _preload_cuda_libraries() -> bool:
         return False
     if _CUDA_PRELOADED:
         return True
-    with _MODEL_LOCK:
+    with _CUDA_LOCK:
         if _CUDA_PRELOADED:
             return True
         preload = getattr(ort, "preload_dlls", None)
@@ -310,54 +317,82 @@ def load_model(key: str, *, with_timestamps: bool = True):
     cache_key = (key, with_timestamps)
 
     with _MODEL_LOCK:
-        cached = _MODELS.pop(cache_key, None)
+        cached = _cache_hit(cache_key)
         if cached is not None:
-            _MODELS[cache_key] = (cached[0], time.monotonic())  # now the most recent
-            return cached[0]
-
-        name, _, quant = key.partition(":")
-        config = MODEL_CONFIGS[name]
-        variant = config["quantizations"][quant]
-        try:
-            providers = _resolve_providers()
-            session_options = _build_sess_options()
-            logger.info(
-                "Loading %s from %s providers=%s intra=%d inter=%d",
-                key,
-                variant["repo"],
-                providers,
-                ORT_INTRA_THREADS,
-                ORT_INTER_THREADS,
-            )
-            files, data_dir = _model_files(variant)
-            if data_dir is not None:
-                session_options = session_options or ort.SessionOptions()
-                session_options.add_session_config_entry(
-                    "session.model_external_initializers_file_folder_path", data_dir
-                )
-            model = _build_asr(config["onnx_asr_type"], files, providers, session_options)
-            # Verified on onnx_asr 0.12.0 (whisper-tiny): .with_timestamps() works
-            # for Whisper, but the standard onnx-community/whisper-* repos carry no
-            # alignment heads, so it returns empty tokens/timestamps — text only.
-            # The token/timestamp shape _stitch consumes is Parakeet TDT's anyway,
-            # so keep Whisper on the plain text adapter (its .recognize() returns the
-            # transcript string). Whisper word times would come from forced-aligning
-            # that transcript against the audio, not from the model.
-            if with_timestamps and config["family"] == "parakeet":
-                model = model.with_timestamps()
-            _validate_gpu_binding(key, model)
-        except Exception as exc:
-            error = ModelLoadError(f"Model {key!r} could not be loaded: {type(exc).__name__}: {exc}")
-            logger.exception("%s", error)
-            raise error from exc
-        _MODELS[cache_key] = (model, time.monotonic())
-        _RUNTIMES[key] = _runtime(providers, _session_provider_report(model))
-        # ponytail: LRU cap, drop least-recent so a many-model sweep fits RAM.
-        while MODEL_CACHE_SIZE and len(_MODELS) > MODEL_CACHE_SIZE:
-            evicted, _ = _MODELS.popitem(last=False)
-            logger.info("Evicted %s (cache size %d)", evicted, MODEL_CACHE_SIZE)
+            return cached
+        loading = _LOADING.setdefault(cache_key, threading.Lock())
+    # Held through the check and the load, so a caller that waited here finds
+    # the model the one before it loaded (or, after a failure, tries again).
+    with loading:
+        with _MODEL_LOCK:
+            cached = _cache_hit(cache_key)
+            if cached is not None:
+                return cached
+        model, runtime = _load(key, with_timestamps)
+        with _MODEL_LOCK:
+            _MODELS[cache_key] = (model, time.monotonic())
+            _RUNTIMES[key] = runtime
+            # ponytail: LRU cap, drop least-recent so a many-model sweep fits RAM.
+            evicted = []
+            while MODEL_CACHE_SIZE and len(_MODELS) > MODEL_CACHE_SIZE:
+                evicted.append(_MODELS.popitem(last=False))
+        # Their sessions go when `evicted` does: here, not under _MODEL_LOCK.
+        for (evicted_key, _timestamps), _entry in evicted:
+            logger.info("Evicted %s (cache size %d)", evicted_key, MODEL_CACHE_SIZE)
         logger.info("Loaded %s", key)
         return model
+
+
+def _cache_hit(cache_key: _ModelKey):
+    """The cached model for `cache_key`, now the most recently used, or None.
+    Call under _MODEL_LOCK."""
+    cached = _MODELS.pop(cache_key, None)
+    if cached is None:
+        return None
+    _MODELS[cache_key] = (cached[0], time.monotonic())
+    return cached[0]
+
+
+def _load(key: str, with_timestamps: bool):
+    """Download and build the model for `key`: (model, its _runtime()). Slow
+    on a first download, so never call it under _MODEL_LOCK. Raises
+    ModelLoadError."""
+    name, _, quant = key.partition(":")
+    config = MODEL_CONFIGS[name]
+    variant = config["quantizations"][quant]
+    try:
+        providers = _resolve_providers()
+        session_options = _build_sess_options()
+        logger.info(
+            "Loading %s from %s providers=%s intra=%d inter=%d",
+            key,
+            variant["repo"],
+            providers,
+            ORT_INTRA_THREADS,
+            ORT_INTER_THREADS,
+        )
+        files, data_dir = _model_files(variant)
+        if data_dir is not None:
+            session_options = session_options or ort.SessionOptions()
+            session_options.add_session_config_entry(
+                "session.model_external_initializers_file_folder_path", data_dir
+            )
+        model = _build_asr(config["onnx_asr_type"], files, providers, session_options)
+        # Verified on onnx_asr 0.12.0 (whisper-tiny): .with_timestamps() works
+        # for Whisper, but the standard onnx-community/whisper-* repos carry no
+        # alignment heads, so it returns empty tokens/timestamps — text only.
+        # The token/timestamp shape _stitch consumes is Parakeet TDT's anyway,
+        # so keep Whisper on the plain text adapter (its .recognize() returns the
+        # transcript string). Whisper word times would come from forced-aligning
+        # that transcript against the audio, not from the model.
+        if with_timestamps and config["family"] == "parakeet":
+            model = model.with_timestamps()
+        _validate_gpu_binding(key, model)
+    except Exception as exc:
+        error = ModelLoadError(f"Model {key!r} could not be loaded: {type(exc).__name__}: {exc}")
+        logger.exception("%s", error)
+        raise error from exc
+    return model, _runtime(providers, _session_provider_report(model))
 
 
 def get_model(key: str):
