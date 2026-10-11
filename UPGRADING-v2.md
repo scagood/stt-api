@@ -100,9 +100,11 @@ so switch those when the server upgrades.
   `whisper-*`). Each card has a new `quantizations` list and no longer has
   `aliases`. `owned_by` is now the model's author (`nvidia`, `openai`).
 - **`GET /health`** no longer has `default_model`, because there is no default.
-  It has a new `aligner` object, keyed `aligner:quantization`. `models` lists
-  the new names, and `loaded` lists `model:quantization` keys such as
-  `parakeet-v3:fp32`.
+  `models` lists the new names, and a new `aligners` lists the aligners the
+  same way. `loaded` and `runtime` use `name:quantization` keys such as
+  `parakeet-v3:fp32`, for models and aligners alike; each `runtime` entry has
+  a `kind` (`model` or `aligner`). A new `failed` lists the aligners whose last
+  load failed.
 - **`language` must be a bare ISO 639-1 code** (`en`, `fr`), or empty or
   `auto`. 1.5.0 ignored the field; 2.0.0 answers `en-US`, `en_GB`, `EN` or
   `English` with a **400** on every request, so fix clients that send them.
@@ -308,14 +310,15 @@ change it. For a Kubernetes ConfigMap example, see
 An aligner runs only for requests that name one. It always runs on the CPU,
 even on GPU hosts, and handles one request at a time on its own thread, so it
 never holds up audio decoding. If its download fails, words keep Parakeet's
-times and the load is retried every 5 minutes. `/health` reports each
-aligner's state per quantization under `aligner`.
+times and the load is retried every 5 minutes. `/health` lists a loaded
+aligner under `loaded` and `runtime`, and one that failed to load under
+`failed`.
 
 ### Monitoring and logs
 
-- `/health` has no `default_model` field. It has a new `aligner` field, and
-  `cpu.align_threads`. `GET /v1/aligners` lists the aligners, as
-  `GET /v1/models` lists the models.
+- `/health` has no `default_model` field. It has new `aligners` and `failed`
+  fields, `kind` in each `runtime` entry, and `cpu.align_threads`.
+  `GET /v1/aligners` lists the aligners, as `GET /v1/models` lists the models.
 - The per-request log line names the variant and adds a stitch time:
   `transcribe model=parakeet-v3:fp32 ... stitch=12ms total=...`. Update any
   log parsers that read `model=`.

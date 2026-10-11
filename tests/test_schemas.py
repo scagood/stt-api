@@ -42,7 +42,7 @@ def test_health_matches_its_schema(ready):
 
 def test_a_loaded_model_s_runtime_matches_its_schema():
     report = {"asr._encoder": ["CPUExecutionProvider"]}
-    schemas.ModelRuntime.model_validate(model._runtime(["CUDAExecutionProvider"], report))
+    schemas.Runtime.model_validate(model._runtime(["CUDAExecutionProvider"], report))
 
 
 def test_healthz_matches_its_schemas():

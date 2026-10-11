@@ -1690,9 +1690,11 @@ _EXAMPLE_HEALTH = {
     "status": "healthy",
     "ready": True,
     "models": list(MODEL_CONFIGS),
+    "aligners": list(ALIGNER_CONFIGS),
     "loaded": [_EXAMPLE_KEY],
     "runtime": {
         _EXAMPLE_KEY: {
+            "kind": "model",
             "backend": "cpu",
             "sessions": {
                 "asr._encoder": ["CPUExecutionProvider"],
@@ -1702,7 +1704,7 @@ _EXAMPLE_HEALTH = {
         }
     },
     "cpu": CPU_INFO,
-    "aligner": aligner.status(),
+    "failed": [],
 }
 
 
@@ -1713,18 +1715,20 @@ _EXAMPLE_HEALTH = {
     responses={200: _ok(Health, "Always 200, ready or not.", _EXAMPLE_HEALTH)},
 )
 def health(request: Request):
-    """Whether the service is ready, which models are loaded and what they
-    run on, the CPU counts it sized its thread pools from, and each aligner's
-    state. For a readiness probe, use `/healthz`."""
+    """Whether the service is ready, which models and aligners are loaded and
+    what they run on, the CPU counts it sized its thread pools from, and the
+    aligners that failed to load. For a readiness probe, use `/healthz`."""
     ready = bool(getattr(request.app.state, "ready", False))
+    aligners = aligner.status()
     return {
         "status": "healthy" if ready else "starting",
         "ready": ready,
         "models": list(MODEL_CONFIGS.keys()),
-        "loaded": loaded_models(),
-        "runtime": runtime_status(),
+        "aligners": list(ALIGNER_CONFIGS),
+        "loaded": loaded_models() + [key for key, state in aligners.items() if state == "loaded"],
+        "runtime": {**runtime_status(), **aligner.runtime_status()},
         "cpu": CPU_INFO,
-        "aligner": aligner.status(),
+        "failed": [key for key, state in aligners.items() if state == "failed"],
     }
 
 
