@@ -8,6 +8,7 @@ import functools
 import json
 import math
 import re
+import string
 import time
 from dataclasses import dataclass
 from itertools import accumulate
@@ -40,6 +41,7 @@ from .config import (
     MODEL_CONFIGS,
     RETIME_WORDS,
     SPOKEN_NUMBERS,
+    SPOKEN_NUMBERS_ALIGNER,
     TRANSCRIBE_UI,
     VAD_FILTER,
     TARGET_SR,
@@ -411,13 +413,34 @@ def _choose_readings(
         start = next((s[1] for s in reversed(spans[: phrase.start]) if s is not None), 0.0)
         end = next((s[0] for s in spans[phrase.end :] if s is not None), float("inf"))
         own = chunk.scores(phrase.options, start, end)
-        choice = phrase.options[own.index(max(own))]
+        choice = phrase.options[_heard_best(phrase.options, own)]
         if rivals and max(own) > float("-inf"):
             theirs = chunk.scores(rivals, start, end)
             if max(theirs) > max(own) + _CORRECTION_MARGIN:
                 choice = rivals[theirs.index(max(theirs))]
         chosen[index] = _each_zero(choice, chunk, start, end)
     return chosen
+
+
+# A reading that only adds a minor unit to another ("two pounds ten pence"
+# over "two pounds ten") wins only by this much: after a louder sentence the
+# star states can fit the word to quiet audio that never said it. Measured on
+# 300 TTS takes of "N pounds MM", clean and 15 dB below the sentence before:
+# it won by 6.7 once when not said, and by 10.5-58.5 in all 15 said.
+_UNIT_MARGIN = 8.0
+
+
+def _heard_best(options: Sequence[str], scores: Sequence[float]) -> int:
+    """Index of the reading in `options` that scored best, but one that only
+    adds a minor unit to another wins over it only by _UNIT_MARGIN."""
+    best = scores.index(max(scores))
+    said = [option.rstrip(string.punctuation) for option in options]
+    head, _, last = said[best].rpartition(" ")
+    if last in spoken.MINOR_UNITS and head in said:
+        shorter = said.index(head)
+        if scores[best] - scores[shorter] < _UNIT_MARGIN:
+            return shorter
+    return best
 
 
 def _each_zero(said: str, chunk: aligner.ChunkAligner, start: float, end: float) -> str:
@@ -687,7 +710,8 @@ def _stitch(
 
     `align` re-times words with the request's aligner (`aligner_choice`, its
     name and quantization); `speak` says numbers out (PARAKEET_SPOKEN_NUMBERS),
-    hearing which reading was said through that aligner if there is one. Either
+    hearing which reading was said through that aligner if there is one (the
+    request's, else PARAKEET_SPOKEN_NUMBERS_ALIGNER: _hears_with). Either
     may run the aligner's model: call it through _stitch_request, which keeps
     that off the event loop. `retime_words` moves the words of each chunk the
     aligner did not re-time out of the pauses they slipped into (retime.py).
@@ -762,13 +786,18 @@ def _stitch(
         said = None
         if speak:
             try:
-                said = _speak_numbers(chunk_words, chunk)
+                # Whisper has text only: say its numbers out from that text's words.
+                said = _speak_numbers(
+                    chunk_words or _spread(info["text"].split(), chunk_start, chunk_end), chunk
+                )
             except Exception:  # it refines a finished transcript: never a 500 for it
-                logger.exception("spoken numbers failed; keeping Parakeet's text")
+                logger.exception("spoken numbers failed; keeping the model's text")
         if said is not None:
-            # Text and words are rewritten together so they always agree.
-            chunk_words = said
-            segments[-1]["segment"] = _clean_text(" ".join(w["word"] for w in chunk_words))
+            # Text and words are rewritten together so they always agree; a
+            # text-only chunk's words come from its text below.
+            segments[-1]["segment"] = info["text"] = _clean_text(" ".join(w["word"] for w in said))
+            if chunk_words:
+                chunk_words = said
 
         # A text-only result (Whisper) has no tokens, so no word spans exist to
         # align. When alignment will run, split the transcript into words with
@@ -822,7 +851,9 @@ def _needs_aligner(
         return False  # for_chunk answers None without loading anything
     try:
         for result in results:
-            texts = [word for word, _first, _last in _group_words(_extract(result))]
+            info = _extract(result)
+            # Whisper has text only: its words are read from that text, as in _stitch.
+            texts = [word for word, _first, _last in _group_words(info)] or info["text"].split()
             if any(_undecided(texts, phrase) for phrase in _phrases(texts, most=2)):
                 return True
     except Exception:  # can't tell: _stitch will log it and keep Parakeet's text
@@ -2105,6 +2136,12 @@ def _speaks(spoken_numbers: Optional[bool], language: Optional[str]) -> bool:
     return wanted and aligner.language_code(language) == "en"
 
 
+def _hears_with(choice: Optional[Tuple[str, str]], speak: bool) -> Optional[Tuple[str, str]]:
+    """The aligner for _stitch: the request's, else, to hear how its numbers
+    were said, PARAKEET_SPOKEN_NUMBERS_ALIGNER. Only the request's times words."""
+    return choice or (SPOKEN_NUMBERS_ALIGNER if speak else None)
+
+
 async def _plain_granularities(request: Request) -> Optional[List[str]]:
     """`timestamp_granularities` without the brackets OpenAI's SDKs add. Read
     from the form rather than declared with Form(), so the docs show the
@@ -2245,7 +2282,7 @@ async def transcribe(
         align=want_words and choice is not None,
         speak=speak,
         language=heard,
-        aligner_choice=choice,
+        aligner_choice=_hears_with(choice, speak),
         retime_words=want_words and _retimes(retime_words),
     )
     stitch_ms = (time.perf_counter() - stitch_started) * 1000
@@ -2298,7 +2335,10 @@ async def transcribe_batch(
     aligner_name: Optional[str] = Form(
         None,
         alias="aligner",
-        description="Only to hear numbers for `spoken_numbers`: a batch returns no word times.",
+        description=(
+            "Only to hear numbers for `spoken_numbers`, instead of the server's "
+            "`PARAKEET_SPOKEN_NUMBERS_ALIGNER`: a batch returns no word times."
+        ),
         json_schema_extra=_form_doc(),
     ),
 ):
@@ -2384,7 +2424,7 @@ async def transcribe_batch(
         item_results = flat_results[cursor : cursor + count]
         cursor += count
         text, _segments, _words = await _stitch_request(
-            request, prepared, item_results, speak=speak, language=heard, aligner_choice=choice
+            request, prepared, item_results, speak=speak, language=heard, aligner_choice=_hears_with(choice, speak)
         )
         response_items.append(
             {"filename": filename, "text": text, "duration": prepared.duration}

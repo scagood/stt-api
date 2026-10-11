@@ -241,11 +241,14 @@ def test_after_a_or_an_the_article_is_said_once_and_the_unit_is_singular(written
     assert not any(option.startswith(("a ", "the ")) for option in _heard(written))
 
 
-def test_a_spoken_p_follows_no_and_unless_it_is_written():
-    # "eleven pounds and forty p" beat the "and forty pence" said by 0.3 on the benchmark
+def test_a_spoken_p_after_pounds_is_only_heard_where_it_is_written():
+    # "eleven pounds and forty p" beat the "and forty pence" said by 0.3 on the benchmark;
+    # "twelve pounds forty p" won with no "p" said, from a breath or the next word's "p"
     assert "eleven pounds and forty p" not in _options("£11.40")
-    assert "eleven pounds forty p" in _options("£11.40")
-    assert "eleven pounds and forty p" in _options("£11.40p")
+    assert "eleven pounds forty p" not in _options("£11.40")
+    assert "eleven pounds forty pence" in _options("£11.40")
+    assert {"eleven pounds forty p", "eleven pounds and forty p"} <= set(_options("£11.40p"))
+    assert "forty p" in _options("£0.40")
 
 
 def test_a_scale_word_the_readings_cannot_say_leaves_the_number_as_written():
@@ -674,6 +677,13 @@ def test_a_number_to_hear_needs_the_model(monkeypatch):
     assert routes._needs_aligner([_result("No numbers here.")], align=True, aligner_choice=EAR)
 
 
+def test_a_number_to_hear_in_whisper_text_needs_the_model_too(monkeypatch):
+    monkeypatch.setattr(routes.aligner, "ALIGN_DEFAULT_LANGUAGE", "en")
+    whisper = SimpleNamespace(text="That'll be £2.10 please.")  # text only, no tokens
+    assert routes._needs_aligner([whisper], speak=True, aligner_choice=EAR)
+    assert not routes._needs_aligner([SimpleNamespace(text="It opens at 6pm.")], speak=True, aligner_choice=EAR)
+
+
 @pytest.mark.parametrize(
     "written",
     ["Это стоило $5 вчера вечером.", "Αυτό κόστισε £2.10 χθες."],
@@ -707,6 +717,25 @@ def test_a_failure_keeps_parakeets_text(monkeypatch, caplog):
     assert "spoken numbers failed" in caplog.text
     # and the words are still timed, as written
     assert ear.timed[-1] == ["That'll", "be", "£2.10", "please."] and words[2]["start"] == 2.0
+
+
+class _ScoredEar(_Ear):
+    """Scores each reading in `heard` as given, every other reading -100."""
+
+    def __init__(self, **heard):
+        super().__init__()
+        self.heard = heard
+
+    def scores(self, options, start, end):
+        return [self.heard.get(option, -100.0) for option in options]
+
+
+@pytest.mark.parametrize(("lead", "said"), [(7.0, "two pounds ten"), (9.0, "two pounds ten pence")])
+def test_a_reading_that_only_adds_pence_needs_a_clear_lead(monkeypatch, lead, said):
+    # a quiet "two pounds ten" after a louder sentence: "pence" fits the star states
+    ear = _ScoredEar(**{"two pounds ten.": 0.0, "two pounds ten pence.": lead})
+    monkeypatch.setattr(routes.aligner, "for_chunk", lambda *_: ear)
+    assert routes._stitch(_prepared(), [_result("It was £2.10.")], speak=True, aligner_choice=EAR)[0] == f"It was {said}."
 
 
 class _MarginEar(_Ear):

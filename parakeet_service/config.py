@@ -444,6 +444,36 @@ if ALIGN_DEFAULT_LANGUAGE and not LANGUAGE_CODE.fullmatch(ALIGN_DEFAULT_LANGUAGE
 # the aligner to hear how each was said. A request opts in or out with
 # `spoken_numbers=true|false`; this is the answer for requests that don't say.
 SPOKEN_NUMBERS = _env_bool("PARAKEET_SPOKEN_NUMBERS", False)
+
+
+def _numbers_aligner() -> Optional[tuple[str, str]]:
+    """PARAKEET_SPOKEN_NUMBERS_ALIGNER as (name, quantization), or None when
+    empty, or when it is unset and the catalog has no wav2vec2-base-960h."""
+    value = os.getenv("PARAKEET_SPOKEN_NUMBERS_ALIGNER")
+    if value is None and "wav2vec2-base-960h" not in ALIGNER_CONFIGS:
+        return None
+    name, _, quantization = (value if value is not None else "wav2vec2-base-960h").strip().lower().partition(":")
+    if not name:
+        return None
+    if name not in ALIGNER_CONFIGS:
+        raise RuntimeError(
+            f"PARAKEET_SPOKEN_NUMBERS_ALIGNER must be an aligner in the catalog {sorted(ALIGNER_CONFIGS)}, "
+            f"or empty; got {name!r}"
+        )
+    quantization = quantization.strip() or ALIGNER_CONFIGS[name]["default_quantization"]
+    if quantization not in ALIGNER_CONFIGS[name]["quantizations"]:
+        raise RuntimeError(
+            f"PARAKEET_SPOKEN_NUMBERS_ALIGNER: {name!r} has no {quantization!r} quantization; "
+            f"it has {list(ALIGNER_CONFIGS[name]['quantizations'])}"
+        )
+    return name, quantization
+
+
+# Which way a number was said ("nine one one" or "nine eleven") is heard from
+# the audio by an aligner: the request's `aligner` when it names one, else this
+# one, "name" or "name:quantization". Empty gives each number a fixed reading
+# instead, without loading an aligner.
+SPOKEN_NUMBERS_ALIGNER = _numbers_aligner()
 # Parakeet's word times slip into pauses: the word before one starts after the
 # speech has stopped, the word after it before the speech starts. On, words
 # touching a pause (found by loudness, retime.py) move to its edge, for about

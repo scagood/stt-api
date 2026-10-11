@@ -150,6 +150,16 @@ _STAR_PENALTY = 0.5
 # alternative readings (3 voices, real Parakeet v3 transcripts): 230 right at
 # 0.5, 235 at 1.0, 236 at 2.0-5.0; 3.0 sits mid-plateau.
 _CHOICE_STAR_PENALTY = 3.0
+# wav2vec2 hears its input at one level, normalised as a whole (do_normalize),
+# so speech much quieter than the rest of its chunk (a voice that drops, a
+# browser's gain control) is barely heard: a recorded "one thousand and
+# twenty-two" 15 dB below the sentence before it scored as "ten twenty-two".
+# So readings are heard in their own stretch of audio, with this much either
+# side for context, normalised on its own. Measured on that recording: 0.5-1 s
+# lead by 15-19 log-prob, 2 s by 2. Louder speech in that context is turned
+# down to the window's level: on quiet amounts after a louder sentence, left
+# as is it lost "pounds" twice as often.
+_CHOICE_CONTEXT = TARGET_SR
 _NEG_INF = -1e30
 # A failed load (no network, no cached model) is retried after this long.
 _RETRY_SEC = 300.0
@@ -301,6 +311,11 @@ def evict_idle(timeout: float) -> list[str]:
     for key in keys:
         logger.info("Evicted word aligner %s (unused for %.0fs)", key, timeout)
     return keys
+
+
+def _rms(wav: np.ndarray) -> float:
+    """Root mean square of `wav`, 0 when it is empty."""
+    return float(np.sqrt(np.mean(np.square(wav, dtype=np.float64)))) if wav.size else 0.0
 
 
 def _emission(session: Any, wav: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -503,6 +518,7 @@ class ChunkAligner:
         self._blank = vocab[spec["blank"]]
         self._separator = None if spec["separator"] is None else vocab[spec["separator"]]
         self._frames: Optional[tuple[np.ndarray, np.ndarray]] = None
+        self._stretches: dict[tuple[int, int], tuple[np.ndarray, np.ndarray]] = {}
 
     def _normalize(self, words: Sequence[str]) -> list[str]:
         """`words` through the aligner's normaliser steps, in order."""
@@ -595,6 +611,40 @@ class ChunkAligner:
             said[index] = other if accent > default else text
         return said
 
+    def _stretch(self, start: float, end: float) -> tuple[np.ndarray, np.ndarray]:
+        """Emission and frame starts (seconds from the chunk start) for the audio
+        between `start` and `end` seconds plus _CHOICE_CONTEXT either side,
+        heard on its own at its own level; the chunk's pass when that is the
+        whole chunk, or when that pass failed. Each stretch is heard once."""
+        whole = self._emission()
+        first = max(0, int(start * TARGET_SR) - _CHOICE_CONTEXT)
+        last = self._wav.size if math.isinf(end) else min(self._wav.size, math.ceil(end * TARGET_SR) + _CHOICE_CONTEXT)
+        if (first == 0 and last == self._wav.size) or not whole[0].size:
+            return whole
+        if (first, last) not in self._stretches:
+            try:
+                emission, frame_starts = _emission(self._session, self._level_context(first, last, start, end))
+                self._stretches[first, last] = emission, frame_starts + first / TARGET_SR
+            except Exception:
+                logger.exception("wav2vec2 pass over a reading failed; keeping the default reading")
+                self._stretches[first, last] = np.empty((0, 0)), np.empty(0)
+        return self._stretches[first, last]
+
+    def _level_context(self, first: int, last: int, start: float, end: float) -> np.ndarray:
+        """The audio from sample `first` to `last`, its context either side of
+        `start`..`end` seconds turned down to that window's level where it is
+        louder, so the louder speech around a quiet reading doesn't set the
+        level it is heard at."""
+        piece = self._wav[first:last].astype(np.float32)  # a copy
+        low = max(0, int(start * TARGET_SR) - first)
+        high = piece.size if math.isinf(end) else min(piece.size, math.ceil(end * TARGET_SR) - first)
+        level = _rms(piece[low:high])
+        for side in (slice(0, low), slice(high, piece.size)):
+            around = _rms(piece[side])
+            if around > level > 0:
+                piece[side] *= level / around
+        return piece
+
     def scores(self, options: Sequence[str], start: float, end: float) -> list[float]:
         """How well each reading in `options` matches the audio between `start`
         and `end` seconds: its best path's log-prob, -inf where it does not fit
@@ -603,9 +653,10 @@ class ChunkAligner:
         Every reading is scored over the same frames, with the star states on
         either side: a reading that leaves out a spoken word pays for the audio
         it cannot explain, one that adds a word has to find letters for it.
+        The frames are heard from that stretch of audio alone (_stretch).
         """
         try:
-            emission, frame_starts = self._emission()
+            emission, frame_starts = self._stretch(start, end)
             window = emission[(frame_starts >= start) & (frame_starts < end)]
             scores = []
             for option in options:

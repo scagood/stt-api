@@ -63,6 +63,11 @@ def _frame_starts(frames):
     return np.arange(frames) * aligner._STRIDE / TARGET_SR
 
 
+def _audio(frames):
+    """Silence as long as `frames` frames, for a ChunkAligner given its frames."""
+    return np.zeros(frames * aligner._STRIDE, np.float32)
+
+
 def test_word_spans_do_not_absorb_a_missed_word():
     # "A <C C C, which the transcript lacks> B": A must not stretch over the Cs.
     runs = [(BLANK, 2), (A, 3), (BLANK, 1), (C, 2), (BLANK, 1), (C, 2), (BLANK, 1), (C, 2), (B, 3)]
@@ -329,7 +334,7 @@ def test_text_outside_the_model_alphabet_keeps_model_times(monkeypatch):
 def _chunk_hearing(runs, frames):
     """A ChunkAligner whose audio is `runs` of (letter, frames)."""
     ids = [(VOCAB[token] if token != BLANK else BLANK, count) for token, count in runs]
-    chunk = aligner.ChunkAligner(None, None, VOCAB, ENGLISH)
+    chunk = aligner.ChunkAligner(_audio(frames), None, VOCAB, ENGLISH)
     chunk._frames = (_emission(ids, frames, vocab_size=VOCAB_SIZE), _frame_starts(frames))
     return chunk
 
@@ -354,7 +359,7 @@ def test_a_lower_case_model_hears_letter_names_too():
     vocab = {"<pad>": 0, "|": 4, "'": 5, **{chr(ord("a") + i): 6 + i for i in range(26)}}
     spec = {"blank": "<pad>", "separator": "|", "normalisers": ["english", "lower"]}
     runs = [(BLANK, 2)] + [run for letter in "zed" for run in ((vocab[letter], 3), (BLANK, 1))]
-    chunk = aligner.ChunkAligner(None, None, vocab, spec)
+    chunk = aligner.ChunkAligner(_audio(14), None, vocab, spec)
     chunk._frames = (_emission(runs, 14, vocab_size=VOCAB_SIZE), _frame_starts(14))
     assert chunk._normalize(["Z"]) == ["zee"]
     assert chunk._accented(["zee"], [(0.0, 1.0)]) == ["zed"]
@@ -428,7 +433,7 @@ def test_star_penalty_decides_whether_unexplained_speech_is_cheap():
 
 
 def test_best_hears_the_whole_reading_under_the_choice_penalty():
-    chunk = aligner.ChunkAligner(None, None, VOCAB, ENGLISH)
+    chunk = aligner.ChunkAligner(_audio(12), None, VOCAB, ENGLISH)
     chunk._frames = (_ox_cat(), _frame_starts(12))
     assert chunk.best(["cat", "ox cat", "ox cap"], 0.0, 1.0) == 1
 
@@ -473,7 +478,67 @@ def test_a_failed_pass_is_not_run_again(caplog):
     assert _ask_everything(chunk) is None
     assert chunk.scores(["one", "two"], 0.0, 3.0) == [float("-inf")] * 2
     assert chunk.best(["one", "two"], 0.0, 3.0) == 0
+    assert chunk.best(["one", "two"], 2.5, 2.8) == 0  # nor over a stretch of it
     assert session.runs == 1 and caplog.text.count("wav2vec2 pass failed") == 1
+
+
+class _LevelSession:
+    """Fake wav2vec2 that hears a letter in each 20 ms frame of a square wave
+    with that letter's number of cycles, but only where the frame is loud
+    enough after the input is normalised as a whole, as the real one is."""
+
+    def __init__(self):
+        self.runs = 0
+
+    def get_inputs(self):
+        return [SimpleNamespace(name="input_values")]
+
+    def run(self, _outputs, feeds):
+        self.runs += 1
+        wav = feeds["input_values"][0]
+        frames = wav[: wav.size // aligner._STRIDE * aligner._STRIDE].reshape(-1, aligner._STRIDE)
+        out = np.zeros((1, len(frames), VOCAB_SIZE), np.float32)
+        for index, frame in enumerate(frames):
+            loud = np.sqrt((frame**2).mean()) > 0.5
+            cycles = (np.count_nonzero(np.diff(np.sign(frame))) + 1) // 2
+            out[0, index, VOCAB[chr(ord("A") + cycles - 1)] if loud and cycles else BLANK] = 8.0
+        return [out]
+
+
+def _said(letters, level):
+    """`letters` said at `level`, 5 frames each."""
+    t = np.arange(5 * aligner._STRIDE)
+    return np.concatenate([
+        level * np.sign(np.sin(2 * np.pi * (ord(letter) - ord("A") + 1) * t / aligner._STRIDE + 0.1))
+        for letter in letters
+    ])
+
+
+def test_a_quiet_reading_is_heard_at_its_own_level():
+    # "now" said loud, a pause, then "ten" 34 dB quieter (a voice that drops,
+    # a browser's gain control): normalised with the loud part, "ten" is too
+    # faint to hear and the shortest reading wins; heard in its own stretch of
+    # audio, it is clear.
+    pause = np.zeros(17 * TARGET_SR // 10)
+    wav = np.concatenate([_said("NOW", 1.0), pause, _said("TEN", 0.02), pause]).astype(np.float32)
+    session = _LevelSession()
+    chunk = aligner.ChunkAligner(wav, session, VOCAB, ENGLISH)
+    assert chunk.best(["no", "now"], 0.0, 0.3) == 1  # the loud part is heard either way
+    assert chunk.best(["t", "ten"], 2.0, 2.3) == 1
+    assert chunk.best(["t", "ten"], 2.0, 2.3) == 1
+    assert session.runs == 3  # the chunk, then each stretch once
+
+
+def test_louder_speech_next_to_a_quiet_reading_is_turned_down():
+    # "now" said loud just before "ten" 34 dB quieter: it is inside the
+    # stretch's second of context, so unless it is turned down to the
+    # window's level it still sets the level "ten" is heard at.
+    wav = np.concatenate([
+        _said("NOW", 1.0), np.zeros(TARGET_SR // 5), _said("TEN", 0.02), np.zeros(17 * TARGET_SR // 10),
+    ]).astype(np.float32)
+    chunk = aligner.ChunkAligner(wav, _LevelSession(), VOCAB, ENGLISH)
+    assert chunk.best(["t", "ten"], 0.5, 0.8) == 1
+    assert chunk.best(["no", "now"], 0.0, 0.3) == 1  # and the loud one, quieter speech around it left alone
 
 
 def test_words_time_and_score_text_the_caller_has():
