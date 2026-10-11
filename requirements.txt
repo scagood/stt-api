@@ -6,7 +6,10 @@ huggingface-hub>=0.20.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
-silero-vad>=6.0.0
+# Pinned: chunker calls load_silero_vad and get_speech_timestamps, and a load
+# that fails falls back to the volume VAD with only a warning. Bump it through a
+# PR so the onnx-asr-contract CI job runs the real model.
+silero-vad==6.2.3
 psutil>=5.0.0
 # Reads the model catalog (parakeet_service/models.yaml or PARAKEET_MODEL_CATALOG).
 pyyaml>=6.0
