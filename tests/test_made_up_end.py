@@ -169,15 +169,79 @@ async def test_a_word_heard_as_another_at_the_same_spot_stays():
 
 def test_a_word_heard_another_way_is_the_same_word():
     at = 3 * TARGET_SR
-    assert routes._heard_in([("rat", at - 1000), ("hole.", at + 2000)], "rat-hole.", at)
-    assert routes._heard_in([("Lori,", at + 4000)], "Lorry.", at)
-    assert routes._heard_in([("A", at - 8000), ("long", at - 4000), ("TAL", at)], "Tail.", at)
-    assert routes._heard_in([("Chapter", at - 8000), ("three", at)], "III", at)
-    assert routes._heard_in([("3rd", at)], "third.", at)
-    assert not routes._heard_in([("he", at)], "the", at)  # short words must match
-    assert routes._heard_in([("the", at)], "'", at)  # a lone mark: nothing to tell by
-    assert not routes._heard_in([("or", at)], "and", at)
-    assert not routes._heard_in([("and", at + 2 * TARGET_SR)], "and", at)  # another word, later
+
+    def heard(*words):
+        return [(word, there, there) for word, there in words]
+
+    assert routes._heard_in(heard(("rat", at - 1000), ("hole.", at + 2000)), "rat-hole.", at)
+    assert routes._heard_in(heard(("Lori,", at + 4000)), "Lorry.", at)
+    assert routes._heard_in(heard(("A", at - 8000), ("long", at - 4000), ("TAL", at)), "Tail.", at)
+    assert routes._heard_in(heard(("Chapter", at - 8000), ("three", at)), "III", at)
+    assert routes._heard_in(heard(("3rd", at)), "third.", at)
+    assert not routes._heard_in(heard(("he", at)), "the", at)  # short words must match
+    assert routes._heard_in(heard(("the", at)), "'", at)  # a lone mark: nothing to tell by
+    assert not routes._heard_in(heard(("or", at)), "and", at)
+    assert not routes._heard_in(heard(("and", at + 2 * TARGET_SR)), "and", at)  # another word, later
+    # Joined to a word starting long before it, but heard ending near it.
+    assert routes._heard_in([("LibriVox.org.", at - 3 * TARGET_SR // 2, at)], "org.", at)
+    assert not routes._heard_in(heard(("LibriVox.", at - 3 * TARGET_SR // 2)), "org.", at)
+
+
+def test_a_word_heard_joined_to_the_one_before_stays():
+    # "visit LibriVox dot org." whose ending both decodes hear as "visit
+    # LibriVox.org.": that word starts 1.3 s before "org", but its "org"
+    # token is where the piece heard it (#112's review, LibriVox's intro).
+    def result(tokens, times):
+        return SimpleNamespace(text=routes._decoded(tokens), tokens=tokens, timestamps=times)
+
+    heard = result([" please", " visit", " Libri", "Vox", " dot", " org", "."], [6.0, 6.5, 7.0, 7.3, 8.2, 8.5, 8.7])
+    again = result([" please", " visit", " Libri", "Vox", ".", "org", "."], [4.0, 4.5, 5.0, 5.3, 5.6, 6.4, 6.6])
+    assert routes._made_up_end(heard, 0, 10 * TARGET_SR, 2 * TARGET_SR, [again, again]) is None
+
+
+def _decode(*words):
+    """A decode hearing `words` ((token, start in s) each)."""
+    tokens = [token for token, _at in words]
+    return SimpleNamespace(text=routes._decoded(tokens), tokens=tokens, timestamps=[at for _token, at in words])
+
+
+def test_the_word_before_heard_late_is_no_sign_of_the_next():
+    # Both decodes of the ending time "the" where the piece heard "end":
+    # that is "the", not a word heard another way.
+    heard = _decode((" so", 7.0), (" the", 8.0), (" end", 8.6))
+    again = _decode((" so", 5.0), (" the", 6.6))  # from 2 s
+    cut = routes._made_up_end(heard, 0, 10 * TARGET_SR, 2 * TARGET_SR, [again, again])
+    assert cut is not None and _words(cut) == ["so", "the"]
+
+
+def test_a_word_starting_well_after_is_no_sign():
+    heard = _decode((" so", 7.0), (" the", 8.0), (" end", 8.6))
+    again = _decode((" so", 5.0), (" the", 6.0), (" wow", 7.2))  # 0.6 s after "end"
+    cut = routes._made_up_end(heard, 0, 10 * TARGET_SR, 2 * TARGET_SR, [again, again])
+    assert cut is not None and _words(cut) == ["so", "the"]
+
+
+def test_a_word_starting_long_before_the_end_stays():
+    # "then" starts 3 s before the end: no decode hears it, but it stays, and
+    # the word before it, not heard, keeps "and" too.
+    heard = _decode((" so", 6.0), (" then", 7.0), (" and", 9.5))
+    again = _decode((" so", 4.0))
+    assert routes._made_up_end(heard, 0, 10 * TARGET_SR, 2 * TARGET_SR, [again, again]) is None
+
+
+def test_a_made_up_number_goes_with_the_word_marker_before_it():
+    # Parakeet opens a number with a lone word marker (_word_spans).
+    heard = _decode((" so", 7.0), (" was", 8.0), (" ", 8.5), ("3", 8.6))
+    again = _decode((" so", 5.0), (" was", 6.0))
+    cut = routes._made_up_end(heard, 0, 10 * TARGET_SR, 2 * TARGET_SR, [again, again])
+    assert cut.tokens == [" so", " was"] and cut.timestamps == [7.0, 8.0]
+
+
+@pytest.mark.asyncio
+async def test_an_ending_too_short_to_hear_again_shorter_is_not_checked():
+    said = [("Oh,", 0.0), ("no.", 0.05)]
+    [result], worker = await _checked(_clip(0.3, speech=[(0.0, 0.1)]), made_up=(), said=said, made_up_at=0.3)
+    assert len(worker.pieces) == 1 and _words(result) == ["Oh,", "no."]
 
 
 @pytest.mark.asyncio

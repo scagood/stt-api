@@ -691,7 +691,8 @@ from 1 s before the word ahead of the checked ones): 0.2 s shorter, and with its
 last 0.3 s played again backwards. Words starting in the last 2 s that neither
 hears, after the last word both do, are dropped. Both must hear the word
 before them, as the same word, one like it ("Lori" for "Lorry"), split in two,
-or any number for a number ("three" for "III"): Parakeet sometimes returns
+joined to the word before ("dot org." as "LibriVox.org."), or any number for a
+number ("three" for "III"): Parakeet sometimes returns
 nothing at all for a clip, depending on where it ends, and that is no sign. A
 word stays, too, where either decode hears another word starting with it
 (from 0.1 s before to 0.15 s after): that is speech heard another way ("bit"

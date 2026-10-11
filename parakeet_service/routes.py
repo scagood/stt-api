@@ -1491,7 +1491,9 @@ def _ending(prepared: _PreparedAudio, index: int, result: Any) -> Optional[Tuple
     last = max(1, int(_PAUSE_END_SEC * TARGET_SR) // FRAME)
     if loudness.size < last or loudness[-last:].max() > np.percentile(loudness, 95) * 10 ** (-_PAUSE_END_DB / 20):
         return None  # it ends inside speech, not in a pause
-    shorter = audio[: max(1, audio.size - int(_ENDING_SHORTER_SEC * TARGET_SR))]
+    if audio.size < 2 * int(_ENDING_SHORTER_SEC * TARGET_SR):
+        return None  # too short to hear again shorter: onnx-asr fails on a sample
+    shorter = audio[: audio.size - int(_ENDING_SHORTER_SEC * TARGET_SR)]
     longer = np.concatenate([audio, audio[-int(_ENDING_LONGER_SEC * TARGET_SR) :][::-1]])
     return begin, [shorter, longer]
 
@@ -1504,16 +1506,19 @@ _NUMBERISH = re.compile(
 )
 
 
-def _heard_in(words: Sequence[Tuple[str, int]], word: str, at: int) -> bool:
-    """Whether `words` ((word, sample) each) hold `word`, heard at sample
-    `at`, as one of them started within _MADE_UP_MATCH_SEC: the same word;
-    for one of four letters or more, a word like it ("Tail." as "TAL",
-    "Lorry" as "Lori,"); it split in two ("rat-hole" as "rat hole"); or, for
-    a number, any number ("III" as "three")."""
+def _heard_in(words: Sequence[Tuple[str, int, int]], word: str, at: int) -> bool:
+    """Whether `words` ((word, first sample, last sample) each) hold `word`,
+    heard at sample `at`, as one of them was heard within _MADE_UP_MATCH_SEC
+    of it (from its first token to its last with a letter or digit, so a
+    word heard joined to the one before, "dot org." as "LibriVox.org.", is
+    near): the same word; for one of four letters or more, a word like it
+    ("Tail." as "TAL", "Lorry" as "Lori,"); it split in two ("rat-hole" as
+    "rat hole"); or, for a number, any number ("III" as "three")."""
     target = _seam_key(word)
     if not target:
         return True  # a lone mark: nothing to tell by
-    near = [_seam_key(other) for other, there in words if abs(there - at) <= _MADE_UP_MATCH_SEC * TARGET_SR]
+    reach = int(_MADE_UP_MATCH_SEC * TARGET_SR)
+    near = [_seam_key(other) for other, first, last in words if first - reach <= at <= last + reach]
     numberish = _NUMBERISH.fullmatch(target) is not None
     return target in "".join(near) or any(
         (len(target) >= 4 and len(other) >= 2 and difflib.SequenceMatcher(None, target, other).ratio() >= 0.6)
@@ -1522,12 +1527,22 @@ def _heard_in(words: Sequence[Tuple[str, int]], word: str, at: int) -> bool:
     )
 
 
-def _spoken_at(words: Sequence[Tuple[str, int]], at: int, before: str) -> bool:
-    """Whether `words` ((word, sample) each) hold a word other than `before`
-    starting where one was heard at sample `at`: _SPOKEN_BEFORE_SEC before it
-    to _SPOKEN_AFTER_SEC after."""
+def _spoken_at(words: Sequence[Tuple[str, int, int]], at: int, before: str) -> bool:
+    """Whether `words` ((word, first sample, last sample) each) hold a word
+    other than `before` starting where one was heard at sample `at`:
+    _SPOKEN_BEFORE_SEC before it to _SPOKEN_AFTER_SEC after."""
     low, high = at - int(_SPOKEN_BEFORE_SEC * TARGET_SR), at + int(_SPOKEN_AFTER_SEC * TARGET_SR)
-    return any(low <= there <= high and _seam_key(word) != _seam_key(before) for word, there in words)
+    return any(low <= there <= high and _seam_key(word) != _seam_key(before) for word, there, _last in words)
+
+
+def _heard_at(info: Dict[str, Any], begin: int, span: Tuple[str, int, int]) -> Tuple[str, int, int]:
+    """A word of a decode from sample `begin` (`info`, its _extract) as
+    (word, first sample, last sample): its first token's time, and its last
+    with a letter or digit."""
+    word, first, last = span
+    lettered = [index for index in range(first, last + 1) if re.search(r"\w", info["tokens"][index])]
+    times = [begin + int(info["timestamps"][index] * TARGET_SR) for index in (first, lettered[-1] if lettered else first)]
+    return word, times[0], times[1]
 
 
 def _made_up_end(result: Any, window_start: int, window_end: int, begin: int, again: Sequence[Any]) -> Optional[Any]:
@@ -1546,7 +1561,7 @@ def _made_up_end(result: Any, window_start: int, window_end: int, begin: int, ag
     heard = []
     for decoded in again:
         other = _extract(decoded)
-        heard.append([(word, begin + int(other["timestamps"][first] * TARGET_SR)) for word, first, _last in _word_spans(other["tokens"])])
+        heard.append([_heard_at(other, begin, span) for span in _word_spans(other["tokens"])])
     latest = window_end - int(_MADE_UP_SEC * TARGET_SR)
     keep = len(found)
     while (
@@ -1558,7 +1573,9 @@ def _made_up_end(result: Any, window_start: int, window_end: int, begin: int, ag
         keep -= 1
     if keep == len(found) or not all(_heard_in(words, *found[keep - 1]) for words in heard):
         return None
-    cut = spans[keep][1]  # the first made-up word's first token
+    cut = spans[keep][1]  # the first made-up word's first token, and a lone word marker opening it
+    while cut > 0 and not tokens[cut - 1].replace("\u2581", " ").strip():
+        cut -= 1
     return SimpleNamespace(text=_decoded(tokens[:cut]), tokens=list(tokens[:cut]), timestamps=list(timestamps[:cut]))
 
 
