@@ -16,130 +16,181 @@
 <style>
 :root {
   color-scheme: light;
-  --bg: #f4f6f8; --surface: #fff; --ink: #161a20; --muted: #5a6473; --line: #d9dee5;
-  --accent: #1f5fbf; --select: rgba(31, 95, 191, .12); --now: rgba(31, 95, 191, .22);
-  --warn: #8a6a00; --error: #b4361f;
+  --bg: #f4f6f8; --surface: #fff; --sunken: #f7f8fa; --ink: #161a20; --muted: #5a6473; --line: #d9dee5; --line-strong: #bcc4ce;
+  --accent: #1f5fbf; --on-accent: #fff; --select: rgba(31, 95, 191, .07); --now: rgba(31, 95, 191, .26);
+  --warn: #8a6a00; --error: #b4361f; --rec: #c42b2b;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .05);
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --bg: #0e1114; --surface: #161a1f; --ink: #e6e9ed; --muted: #9aa3af; --line: #2a3038;
-    --accent: #6ea0f0; --select: rgba(110, 160, 240, .16); --now: rgba(110, 160, 240, .28);
-    --warn: #e0c25a; --error: #f08a75;
+    --bg: #0e1114; --surface: #161a1f; --sunken: #12161a; --ink: #e6e9ed; --muted: #9aa3af; --line: #2a3038; --line-strong: #3d4550;
+    --accent: #6ea0f0; --on-accent: #0e1114; --select: rgba(110, 160, 240, .10); --now: rgba(110, 160, 240, .36);
+    --warn: #e0c25a; --error: #f08a75; --rec: #f07070;
+    --shadow: none;
   }
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
-.page { max-width: 960px; margin: 0 auto; padding: 18px 20px 40px; display: grid; gap: 12px; }
+.page { max-width: 880px; margin: 0 auto; padding: 16px 20px 48px; display: grid; gap: 12px; }
 h1, h2, p { margin: 0; }
-h1 { font-size: 22px; font-weight: 600; }
-h2 { font-size: 16px; font-weight: 600; }
-.masthead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
-.masthead nav { margin-left: auto; }
-nav { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; }
-nav a { color: var(--accent); text-underline-offset: 3px; }
-.lede, .hint { color: var(--muted); }
-.lede { font-size: 14px; }
-.hint { font-size: 13px; }
-.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 10px; min-width: 0; }
-.panel > * { min-width: 0; }
-.panel.over { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--select); }
-.fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 13px; color: var(--muted); }
-.fields > label { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.checks { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 14px; }
-.checks label { display: flex; align-items: baseline; gap: 6px; }
-.checks input { margin: 0; align-self: center; }
-input, select { font: 14px var(--sans); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; max-width: 100%; }
-input[type="checkbox"] { accent-color: var(--accent); }
-input[type="file"] { max-width: 100%; padding: 2px; }
-button:focus-visible, input:focus-visible, select:focus-visible, audio:focus-visible, [data-item]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.btn { font: 500 13px var(--sans); color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
-.btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.btn.primary, .btn.primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); color: var(--surface); }
-.btn:disabled { opacity: .5; cursor: default; }
-.row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
-audio { width: 100%; height: 40px; }
+h1 { font-size: 20px; font-weight: 650; letter-spacing: -.01em; }
+h2 { font-size: 15px; font-weight: 600; }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
+nav { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; }
+nav a { color: var(--muted); text-decoration: none; }
+nav a:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.hint { color: var(--muted); font-size: 13px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); min-width: 0; }
+
+/* the audio and options */
+#input { padding: 14px; display: grid; gap: 12px; }
+#input > * { min-width: 0; }
+.source { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 12px; border: 1.5px dashed var(--line-strong); border-radius: 8px; background: var(--sunken); }
+.over .source { border-color: var(--accent); background: var(--select); }
+.source-buttons { display: flex; gap: 8px; }
+.source-info { display: grid; min-width: 0; flex: 1 1 14em; line-height: 1.35; }
+.file-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-name.none { font-weight: 400; color: var(--muted); }
+.note { font-size: 13px; margin-top: -4px; }
+.options { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.3fr) minmax(0, .7fr); gap: 10px; }
+.field { display: grid; gap: 3px; min-width: 0; }
+.field > span { font-size: 12px; font-weight: 600; color: var(--muted); }
+select { width: 100%; font: 14px var(--sans); color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 5px 6px; }
+.checks { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; padding: 0; border: 0; font-size: 14px; }
+.checks label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+.checks input { margin: 0; width: 15px; height: 15px; accent-color: var(--accent); }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.status { font-size: 13px; color: var(--muted); min-width: 0; }
+progress { width: min(200px, 100%); height: 6px; accent-color: var(--accent); }
 .warn { color: var(--warn); }
 .error { color: var(--error); }
-progress { width: min(320px, 100%); accent-color: var(--accent); }
-.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.toolbar h2 { margin-right: auto; }
-.keys summary { cursor: pointer; color: var(--accent); }
-.keys[open] { flex-basis: 100%; }
-.segments { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
-.segments li { display: grid; grid-template-columns: 5em minmax(0, 1fr); align-items: baseline; gap: 10px; padding: 2px 6px; border-radius: 4px; }
-.segments li.now { box-shadow: inset 3px 0 var(--accent); }
-.time { font: 12.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); background: none; border: 0; padding: 2px 0; text-align: left; cursor: pointer; }
-.time:hover { color: var(--accent); }
-.text { overflow-wrap: anywhere; }
-[data-item] { cursor: pointer; border-radius: 3px; }
+
+/* buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; font: 500 13px/1.2 var(--sans); color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 6px 11px; cursor: pointer; white-space: nowrap; user-select: none; }
+.btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn.primary { font-size: 14px; font-weight: 600; padding: 7px 18px; background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover:not(:disabled) { color: var(--on-accent); filter: brightness(1.08); }
+.btn:disabled, #file:disabled + .btn { opacity: .5; cursor: default; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--rec); }
+#record.on { color: var(--rec); border-color: var(--rec); }
+#record.on .dot { border-radius: 2px; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { #record.on .dot { animation: none; } }
+button:focus-visible, select:focus-visible, audio:focus-visible, #file:focus-visible + .btn, .checks input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* the player, kept in view while reading the transcript */
+.player { position: sticky; top: 0; z-index: 1; padding: 6px 0; margin: -6px 0; background: var(--bg); }
+audio { display: block; width: 100%; height: 40px; }
+
+/* the transcript */
+#result { padding: 0 0 6px; }
+.result-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.result-title { display: grid; min-width: 0; margin-right: auto; }
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.group { display: inline-flex; }
+.group .btn { border-radius: 0; margin-left: -1px; }
+.group .btn:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.group .btn:last-child { border-radius: 0 6px 6px 0; }
+.group .btn:hover, .group .btn:focus-visible { position: relative; }
+.keys { display: flex; flex-wrap: wrap; gap: 0 10px; font-size: 13px; color: var(--muted); padding: 8px 16px 0; }
+.keys details[open] { flex-basis: 100%; }
+.keys summary { cursor: pointer; width: fit-content; color: var(--accent); }
+.keys summary:hover { color: var(--accent); }
+.keys p { margin-top: 4px; }
+kbd { font: 11.5px var(--mono); padding: 0 4px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 4px; background: var(--sunken); }
+.segments { margin: 0; padding: 6px 8px 0; list-style: none; display: grid; gap: 2px; }
+.segments li { display: grid; grid-template-columns: 3.6em minmax(0, 1fr); align-items: baseline; gap: 10px; padding: 6px 8px; border-radius: 6px; }
+.segments li.now { background: var(--select); }
+.stale .segments { opacity: .55; }
+.time { font: 12px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); background: none; border: 0; padding: 2px 0; text-align: left; cursor: pointer; }
+.time:hover, li.now .time { color: var(--accent); }
+.text { font-size: 16px; line-height: 1.65; overflow-wrap: anywhere; }
+[data-item] { cursor: pointer; border-radius: 3px; scroll-margin: 72px 0 24px; }
 [data-item]:hover { background: var(--select); }
 [data-item].now { background: var(--now); }
+/* No offset: the outline sits in the space between words, clear of the letters next to it. */
+[data-item]:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.empty { padding: 18px 16px 12px; color: var(--muted); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
 @media (max-width: 640px) {
-  .page { padding-inline: 16px; }
+  .page { padding: 12px 16px 40px; }
+  .options { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .options .field:first-child { grid-column: 1 / -1; }
+  .checks { flex-direction: column; }
+  .actions .btn.primary { flex: 1; justify-content: center; }
+  .segments { padding-inline: 4px; }
   .segments li { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .fields > label { flex: 1 1 100%; }
-  .fields select { flex: 1; min-width: 0; }
+  .text { font-size: 15.5px; }
 }
 </style>
 </head>
 <body>
 <div class="page">
-  <header class="masthead">
+  <header class="top">
     <h1>Transcribe</h1>
-    <p class="lede hint">Upload or record audio and read its transcript, from this server.</p>
     <nav aria-label="Other pages on this server" id="links" hidden></nav>
   </header>
 
-  <section class="panel" id="drop" aria-label="Audio and options">
-    <div class="row">
-      <label class="visually-hidden" for="file">Audio or video file</label>
-      <input id="file" type="file" accept="audio/*,video/*">
-      <button class="btn" type="button" id="record">Record</button>
-      <span class="hint" id="recordInfo" role="status"></span>
-      <span class="hint" id="fileInfo">or drop a file here</span>
+  <section class="card" id="input" aria-label="Audio and options">
+    <div class="source">
+      <div class="source-buttons">
+        <input class="visually-hidden" id="file" type="file" accept="audio/*,video/*">
+        <label class="btn" for="file">Choose file</label>
+        <button class="btn" type="button" id="record"><span class="dot" aria-hidden="true"></span><span id="recordLabel">Record</span></button>
+      </div>
+      <div class="source-info">
+        <span class="file-name none" id="fileName">No file yet</span>
+        <span class="hint" id="fileInfo">Drop an audio or video file here.</span>
+      </div>
     </div>
-    <p class="hint" id="limitInfo" hidden></p>
-    <audio id="player" controls preload="metadata" hidden></audio>
-    <div class="fields">
-      <label>Model <select id="model"></select></label>
-      <label>Aligner <select id="aligner"><option value="">none (the model's own word times)</option></select></label>
-      <label>Language <select id="language"><option value="">auto</option></select></label>
+    <p class="note hint" id="recordInfo" role="status" hidden></p>
+    <p class="note" id="limitInfo" hidden></p>
+    <div class="options">
+      <label class="field"><span>Model</span><select id="model"></select></label>
+      <label class="field"><span>Aligner</span><select id="aligner"><option value="">None</option></select></label>
+      <label class="field"><span>Language</span><select id="language"><option value="">Auto</option></select></label>
     </div>
-    <div class="checks">
-      <label><input type="checkbox" id="spoken_numbers"> Numbers in words, English only <span class="hint" data-default="spoken_numbers"></span></label>
-      <label><input type="checkbox" id="vad_filter"> Nothing for audio without speech <span class="hint" data-default="vad_filter"></span></label>
-      <label><input type="checkbox" id="retime_words"> Word times out of pauses <span class="hint" data-default="retime_words"></span></label>
-    </div>
-    <div class="row">
+    <fieldset class="checks">
+      <legend class="visually-hidden">Transcript options</legend>
+      <label><input type="checkbox" id="spoken_numbers"> Numbers in words (English)</label>
+      <label><input type="checkbox" id="vad_filter"> Nothing for audio without speech</label>
+      <label><input type="checkbox" id="retime_words"> Word times out of pauses</label>
+    </fieldset>
+    <div class="actions">
       <button class="btn primary" type="button" id="go" disabled>Transcribe</button>
       <button class="btn" type="button" id="cancel" hidden>Stop waiting</button>
       <progress id="progress" max="1" hidden></progress>
-      <span class="hint" id="status" role="status" aria-live="polite">Pick an audio file.</span>
+      <span class="status" id="status" role="status" aria-live="polite">Pick an audio file.</span>
     </div>
   </section>
 
-  <section class="panel" id="result" aria-labelledby="resultTitle" hidden>
-    <div class="toolbar">
-      <h2 id="resultTitle">Transcript</h2>
-      <button class="btn" type="button" id="copy">Copy text</button>
-      <span class="toolbar" role="group" aria-label="Download">
-        <span class="hint">Download</span>
-        <button class="btn" type="button" data-download="txt" aria-label="Download as text">Text</button>
-        <button class="btn" type="button" data-download="srt" aria-label="Download as SRT">SRT</button>
-        <button class="btn" type="button" data-download="vtt" aria-label="Download as VTT">VTT</button>
-        <button class="btn" type="button" data-download="json" aria-label="Download as JSON">JSON</button>
-      </span>
+  <div class="player" id="playerBar" hidden><audio id="player" controls preload="metadata"></audio></div>
+
+  <section class="card" id="result" aria-labelledby="resultTitle" hidden>
+    <div class="result-head">
+      <div class="result-title">
+        <h2 id="resultTitle">Transcript</h2>
+        <span class="hint" id="resultInfo" role="status"></span>
+        <span class="hint warn" id="staleInfo" hidden></span>
+      </div>
+      <div class="tools">
+        <button class="btn" type="button" id="copy">Copy text</button>
+        <span class="group" role="group" aria-label="Download">
+          <button class="btn" type="button" data-download="txt" aria-label="Download as text">TXT</button>
+          <button class="btn" type="button" data-download="srt" aria-label="Download as SRT">SRT</button>
+          <button class="btn" type="button" data-download="vtt" aria-label="Download as VTT">VTT</button>
+          <button class="btn" type="button" data-download="json" aria-label="Download as JSON">JSON</button>
+        </span>
+      </div>
     </div>
-    <div class="row">
-      <span class="hint" id="resultInfo" role="status"></span>
-      <details class="hint keys"><summary>Keys</summary><p id="keysHelp">Click a time or a word to play it. In the transcript: left/right for words, up/down for segments, Enter plays, Shift+Enter plays the segment, Escape stops.</p></details>
-    </div>
+    <div class="keys"><span>Click a word or a time to play it.</span><details><summary>Keys</summary><p id="keysHelp"><kbd>←</kbd> <kbd>→</kbd> words, <kbd>↑</kbd> <kbd>↓</kbd> segments, <kbd>Enter</kbd> plays a word, <kbd>Shift</kbd>+<kbd>Enter</kbd> its segment, <kbd>Esc</kbd> stops.</p></details></div>
     <ol class="segments" id="segments" aria-describedby="keysHelp"></ol>
+    <p class="empty" id="noSpeech" hidden>No speech found.</p>
   </section>
 </div>
 
@@ -150,8 +201,9 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
   const server = (() => { try { return JSON.parse($("server").textContent); } catch { return {}; } })();
   const NEAR = 0.9; // warn from this share of a limit
 
-  const count = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
-  const mib = (bytes) => (bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0) + " MiB";
+  const count = (n, one) => `${n.toLocaleString("en")} ${one}${n === 1 ? "" : "s"}`;
+  const sizeText = (bytes) => bytes < 1024 * 1024 ? Math.ceil(bytes / 1024) + " KiB"
+    : (bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0) + " MiB";
   function clock(seconds, decimals = 0) { // 75.4 -> "1:15", 3725 -> "1:02:05"
     const scale = 10 ** decimals, t = Math.round(seconds * scale) / scale; // so 59.7 s is "1:00", not "0:60"
     const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60);
@@ -172,7 +224,6 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
   let items = [];       // the transcript's playable parts: { el, start, end, seg }
   let request = null;   // the XMLHttpRequest in flight
   let blocked = false;  // the file is over the upload limit
-  let canRecord = true;
 
   // ---- the file ------------------------------------------------------------------
   function useFile(chosen, knownDuration = null) {
@@ -180,27 +231,29 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
     duration = knownDuration;
     if (fileUrl) URL.revokeObjectURL(fileUrl);
     fileUrl = URL.createObjectURL(file);
-    const player = $("player");
-    player.hidden = false;
-    player.src = fileUrl;
+    $("player").src = fileUrl;
+    $("playerBar").hidden = false;
     describeFile();
-    if (result && result.file !== file) {
-      $("resultInfo").textContent = `This transcript is for ${result.file.name}, not the file now in the player, so its words don't play.`;
-    }
+    const stale = Boolean(result) && result.file !== file;
+    $("result").classList.toggle("stale", stale);
+    $("staleInfo").hidden = !stale;
+    if (stale) $("staleInfo").textContent = `Another file is in the player now, so this transcript's words don't play.`;
     update();
   }
   function describeFile() {
     if (!file) return;
-    const length = duration ? `, ${clock(duration)}` : "";
-    $("fileInfo").textContent = `${file.name}: ${mib(file.size)}${length}.`;
+    $("fileName").textContent = file.name;
+    $("fileName").title = file.name;
+    $("fileName").classList.remove("none");
+    $("fileInfo").textContent = [sizeText(file.size), duration && clock(duration)].filter(Boolean).join(" · ");
     const notes = [];
     blocked = false;
     const maxBytes = server.max_upload_bytes, maxSeconds = server.max_audio_seconds;
     if (maxBytes && file.size > maxBytes) {
-      notes.push(`This file is over the server's upload limit of ${mib(maxBytes)}, so it can't be sent.`);
+      notes.push(`This file is over the server's upload limit of ${sizeText(maxBytes)}, so it can't be sent.`);
       blocked = true;
     } else if (maxBytes && file.size >= NEAR * maxBytes) {
-      notes.push(`This file is close to the server's upload limit of ${mib(maxBytes)}.`);
+      notes.push(`This file is close to the server's upload limit of ${sizeText(maxBytes)}.`);
     }
     if (maxSeconds && duration && duration > maxSeconds) {
       notes.push(`It is longer than the server's limit of ${clock(maxSeconds)}, so the server will most likely refuse it.`);
@@ -209,15 +262,22 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
     }
     $("limitInfo").hidden = !notes.length;
     $("limitInfo").textContent = notes.join(" ");
-    $("limitInfo").className = "hint " + (blocked ? "error" : "warn");
+    $("limitInfo").className = "note " + (blocked ? "error" : "warn");
   }
   $("file").addEventListener("change", (e) => { if (e.target.files[0]) useFile(e.target.files[0]); });
-  const drop = $("drop");
-  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
-  drop.addEventListener("dragleave", (e) => { if (!drop.contains(e.relatedTarget)) drop.classList.remove("over"); });
-  drop.addEventListener("drop", (e) => {
+  // A file dropped anywhere on the page is taken; the file box shows it will be.
+  let dragTimer = null;
+  document.addEventListener("dragover", (e) => {
+    if (![...e.dataTransfer.types].includes("Files")) return;
     e.preventDefault();
-    drop.classList.remove("over");
+    $("input").classList.add("over");
+    clearTimeout(dragTimer);
+    dragTimer = setTimeout(() => $("input").classList.remove("over"), 150); // dragover repeats while over the page
+  });
+  document.addEventListener("drop", (e) => {
+    if (![...e.dataTransfer.types].includes("Files")) return;
+    e.preventDefault();
+    $("input").classList.remove("over");
     const dropped = e.dataTransfer.files[0];
     if (dropped && !request && !recorder) { $("file").value = ""; useFile(dropped); }
   });
@@ -226,19 +286,18 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
     if (Number.isFinite(d) && d > 0 && !duration) { duration = d; describeFile(); }
   });
   $("player").addEventListener("error", () => {
-    if (file) $("fileInfo").textContent += " This browser can't play it, but the server may still transcribe it.";
+    if (file) $("fileInfo").textContent += " · this browser can't play it, but the server may still transcribe it";
   });
 
   // ---- recording -------------------------------------------------------------------
   let recorder = null, recordStart = 0, recordTimer = null;
+  function recordNote(text) { $("recordInfo").textContent = text; $("recordInfo").hidden = !text; }
+  let cantRecord = ""; // why this page can't record here, said when Record is pressed
   function setUpRecording() {
-    canRecord = false;
     if (!window.isSecureContext) {
-      $("recordInfo").textContent = "Recording needs HTTPS or localhost: browsers only allow the microphone there.";
+      cantRecord = "Recording needs HTTPS or localhost: browsers only allow the microphone there.";
     } else if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
-      $("recordInfo").textContent = "This browser can't record audio.";
-    } else {
-      canRecord = true;
+      cantRecord = "This browser can't record audio.";
     }
   }
   async function startRecording() {
@@ -246,11 +305,12 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
-      $("recordInfo").textContent = err.name === "NotAllowedError"
+      recordNote(err.name === "NotAllowedError"
         ? "The microphone was blocked. Allow it in the browser's site settings to record."
-        : `Could not open the microphone: ${err.message}`;
+        : `Could not open the microphone: ${err.message}`);
       return;
     }
+    recordNote("");
     const type = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"].find((t) => MediaRecorder.isTypeSupported(t));
     recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
     const chunks = [];
@@ -263,37 +323,48 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
       const ext = mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "webm";
       const when = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
       recorder = null;
-      $("record").textContent = "Record";
-      $("recordInfo").textContent = `Recorded ${clock(seconds)}.`;
+      $("recordLabel").textContent = "Record";
+      $("record").classList.remove("on");
       $("file").value = "";
       useFile(new File(chunks, `recording-${when}.${ext}`, { type: mime.split(";")[0] }), seconds);
     });
     recorder.start(1000);
     recordStart = performance.now();
-    $("record").textContent = "Stop recording";
-    const tickRecord = () => { $("recordInfo").textContent = `Recording… ${clock((performance.now() - recordStart) / 1000)}`; };
+    $("recordLabel").textContent = "Stop";
+    $("record").classList.add("on");
+    $("fileName").classList.remove("none");
+    const tickRecord = () => {
+      $("fileName").textContent = `Recording… ${clock((performance.now() - recordStart) / 1000)}`;
+      $("fileInfo").textContent = "Press Stop to use the recording.";
+    };
     tickRecord();
     recordTimer = setInterval(tickRecord, 500);
     update();
   }
-  $("record").addEventListener("click", () => { if (recorder) recorder.stop(); else startRecording(); });
+  $("record").addEventListener("click", () => {
+    if (recorder) recorder.stop();
+    else if (cantRecord) recordNote(cantRecord);
+    else startRecording();
+  });
 
   // ---- options, from the API ---------------------------------------------------------
   const option = (value, text = value) => `<option value="${esc(value)}">${esc(text)}</option>`;
   for (const name of ["spoken_numbers", "vad_filter", "retime_words"]) {
     const on = Boolean(server[name]);
     $(name).checked = on;
-    document.querySelector(`[data-default="${name}"]`).textContent = `(default ${on ? "on" : "off"})`;
+    $(name).parentElement.title = `The server's default is ${on ? "on" : "off"}.`;
   }
   function restore(id) {
     const saved = recall(id), select = $(id);
     if (saved !== null && [...select.options].some((o) => o.value === saved)) select.value = saved;
     select.addEventListener("change", () => remember(id, select.value));
   }
-  let ready = false;
+  let ready = false, wordlessModels = new Set();
   Promise.all(["v1/models", "v1/aligners"].map((url) => fetch(url).then((r) => (r.ok ? r.json() : Promise.reject(r)))))
     .then(([models, aligners]) => {
       $("model").innerHTML = models.data.flatMap((m) => m.quantizations.map((q) => option(`${m.id}:${q}`))).join("");
+      // Whisper models give word times only through an aligner; the catalog says which models are Whisper.
+      wordlessModels = new Set(models.data.filter((m) => m.owned_by === "openai").flatMap((m) => m.quantizations.map((q) => `${m.id}:${q}`)));
       $("aligner").innerHTML += aligners.data.flatMap((a) => a.quantizations.map((q) =>
         option(`${a.id}:${q}`, q === a.default_quantization ? `${a.id}:${q} (default)` : undefined))).join("");
       const languages = [...new Set([...models.data, ...aligners.data].flatMap((x) => x.language))].sort();
@@ -304,17 +375,17 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
       ready = true;
       update();
     })
-    .catch(() => { $("status").textContent = "Could not load the models and aligners from this server."; $("status").className = "hint error"; });
+    .catch(() => { $("status").textContent = "Could not load the models and aligners from this server."; $("status").className = "status error"; });
 
   // ---- sending -------------------------------------------------------------------------
   function update() {
     const busy = Boolean(request);
     $("go").disabled = busy || !ready || !file || blocked || Boolean(recorder);
     $("file").disabled = busy || Boolean(recorder);
-    $("record").disabled = busy || !canRecord;
+    $("record").disabled = busy;
     if (!busy && ready) {
-      $("status").className = "hint";
-      const wordless = /^whisper/.test($("model").value) && !$("aligner").value;
+      $("status").className = "status";
+      const wordless = wordlessModels.has($("model").value) && !$("aligner").value;
       $("status").textContent = recorder ? "Stop recording to send it." : !file ? "Pick an audio file." : blocked ? "Pick a smaller file."
         : wordless ? "Whisper models give word times only with an aligner." : "";
     }
@@ -348,8 +419,8 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
     const progress = $("progress"), status = $("status");
     progress.hidden = false; progress.value = 0; progress.max = 1;
     $("cancel").hidden = false;
-    status.className = "hint";
-    status.textContent = `Uploading ${mib(sent.size)}…`;
+    status.className = "status";
+    status.textContent = `Uploading ${sizeText(sent.size)}…`;
     const waiting = () => {
       const length = duration ? ` ${clock(duration)} of audio;` : "";
       status.textContent = `Transcribing with ${model}…${length} ${clock((performance.now() - started) / 1000)} so far.`;
@@ -358,7 +429,7 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
     xhr.upload.addEventListener("progress", (e) => {
       if (!e.lengthComputable) return;
       progress.value = e.loaded / e.total;
-      status.textContent = `Uploading: ${Math.round((100 * e.loaded) / e.total)}% of ${mib(e.total)}…`;
+      status.textContent = `Uploading: ${Math.round((100 * e.loaded) / e.total)}% of ${sizeText(e.total)}…`;
     });
     xhr.upload.addEventListener("load", () => { uploaded = true; progress.removeAttribute("value"); waiting(); });
     const finish = () => {
@@ -373,14 +444,14 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
       const seconds = ((performance.now() - started) / 1000).toFixed(1);
       if (xhr.status < 200 || xhr.status >= 300) {
         status.textContent = errorText(xhr.status, xhr.responseText);
-        status.className = "hint error";
+        status.className = "status error";
         return;
       }
       let body;
       try { body = JSON.parse(xhr.responseText); } catch { body = null; }
       if (!body || typeof body.text !== "string") {
         status.textContent = "The server's answer was not a transcript.";
-        status.className = "hint error";
+        status.className = "status error";
         return;
       }
       status.textContent = `Done in ${seconds} s.`;
@@ -389,7 +460,7 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
     xhr.addEventListener("error", () => {
       finish();
       status.textContent = "The request failed: the server could not be reached, or closed the connection.";
-      status.className = "hint error";
+      status.className = "status error";
     });
     xhr.addEventListener("abort", () => {
       finish();
@@ -419,20 +490,28 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
       const text = own.length
         ? own.map((w) => `<span data-item tabindex="-1" data-start="${w.start}" data-end="${w.end}" data-seg="${i}">${esc(w.word)}</span>`).join(" ")
         : `<span data-item tabindex="-1" data-start="${seg.start}" data-end="${seg.end}" data-seg="${i}">${esc(seg.text.trim())}</span>`;
-      return `<li data-seg="${i}"><button class="time" type="button" tabindex="-1" data-seg="${i}" aria-label="Play from ${clock(seg.start, 1)} to ${clock(seg.end, 1)}">${clock(seg.start, 1)}</button><span class="text">${text}</span></li>`;
+      return `<li data-seg="${i}"><button class="time" type="button" tabindex="-1" data-seg="${i}" aria-label="Play from ${clock(seg.start, 1)} to ${clock(seg.end, 1)}">${clock(seg.start)}</button><span class="text">${text}</span></li>`;
     }).join("");
     items = [...$("segments").querySelectorAll("[data-item]")].map((el) => ({
       el, start: Number(el.dataset.start), end: Number(el.dataset.end), seg: Number(el.dataset.seg),
     }));
     if (items.length) items[0].el.tabIndex = 0;
-    const parts = words.length ? `${count(words.length, "word")} in ${count(segments.length, "segment")}` : `${count(segments.length, "segment")}, without word times`;
-    $("resultInfo").textContent = segments.length
-      ? `${sent.name}, ${model}: ${parts}, ${clock(body.duration || 0)} of audio.`
-      : `${sent.name}, ${model}: no speech found in ${clock(body.duration || 0)} of audio.`;
+    const parts = !segments.length ? ["no speech"]
+      : words.length ? [count(words.length, "word"), count(segments.length, "segment")]
+      : [count(segments.length, "segment"), "no word times"];
+    $("resultInfo").textContent = [sent.name, model, ...parts, clock(body.duration || 0)].join(" · ");
+    $("noSpeech").hidden = segments.length > 0;
+    $("result").classList.remove("stale");
+    $("staleInfo").hidden = true;
+    nowItem = nowSeg = lastItem = null; // they were in the transcript this one replaces
     $("result").hidden = false;
   }
 
-  let stopAt = null, nowItem = null, nowSeg = null;
+  let stopAt = null, nowItem = null, nowSeg = null, lastItem = null;
+  function onScreen(el) { // in the window and not under the player
+    const box = el.getBoundingClientRect();
+    return box.top >= $("playerBar").getBoundingClientRect().bottom && box.bottom <= window.innerHeight;
+  }
   function playSpan(start, end) {
     const player = $("player");
     if (!result || result.file !== file) return;
@@ -458,7 +537,13 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
     if (item !== nowItem) {
       if (nowItem) nowItem.el.classList.remove("now");
       if (item) item.el.classList.add("now");
+      // Keep the playing word in view, but only while the reader is following it:
+      // once they scroll away from it, leave the page where they put it.
+      if (item && lastItem && !$("player").paused && onScreen(lastItem.el) && !onScreen(item.el)) {
+        item.el.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+      }
       nowItem = item;
+      if (item) lastItem = item;
     }
     const seg = found !== null ? $("segments").children[items[found].seg] : null;
     if (seg !== nowSeg) {
@@ -532,6 +617,7 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
     link.remove();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   }));
+  let copyTimer = null;
   $("copy").addEventListener("click", async () => {
     const text = result.body.text;
     let copied = false;
@@ -546,7 +632,11 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
       area.remove();
       $("copy").focus();
     }
-    $("resultInfo").textContent = copied ? "Copied the text." : "Could not copy: select the text and copy it instead.";
+    // Said on the button for a moment, so the transcript's details stay put.
+    $("copy").textContent = copied ? "Copied" : "Could not copy";
+    $("copy").title = copied ? "" : "Select the text and copy it instead.";
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => { $("copy").textContent = "Copy text"; }, copied ? 1500 : 4000);
   });
 
   // ---- links to the other pages this server shows ------------------------------------------
