@@ -63,6 +63,7 @@ docker run -d --name parakeet-gpu -p 5092:5092 --gpus all \
 | `http://localhost:5092/v1/models`, `/v1/aligners` | What the catalog serves |
 | `http://localhost:5092/docs` | Swagger documentation |
 | `http://localhost:5092/compare` | Compare models and aligners by ear, with `PARAKEET_COMPARE_UI=true` |
+| `http://localhost:5092/` (or `/transcribe`) | Transcribe a file or a recording in the browser, with `PARAKEET_TRANSCRIBE_UI=true` |
 
 ## Configuration
 
