@@ -4,22 +4,29 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  # Every pull request: the smoke test below is the one check that starts the
+  # service on real models, and what it covers (config, lifespan, warm-up,
+  # /healthz, the batch worker, the load paths) is spread across the package.
   pull_request:
-    paths:
-      - "Dockerfile.*"
-      - "requirements.txt"
-      - ".github/workflows/docker.yml"
-      # What the smoke test below loads, and the code that loads it.
-      - "parakeet_service/models.yaml"
-      - "parakeet_service/model.py"
+    paths-ignore:
+      - "**.md"
 
 permissions:
   contents: read
   packages: write
 
 jobs:
+  # A push publishes images, so it first runs the unit tests again on what was
+  # pushed. A pull request already gets them from the CI workflow.
+  ci:
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: build (${{ matrix.flavor }})
+    needs: ci
+    # ci is skipped on a pull request; build still runs then.
+    if: ${{ !cancelled() && (needs.ci.result == 'success' || needs.ci.result == 'skipped') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -28,9 +35,14 @@ jobs:
           # Emulated arm64 costs ~11 minutes, so only published images build it.
           - flavor: cpu
             platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-          # onnxruntime-gpu has no aarch64 wheels on PyPI
+            use_gpu: "false"
+          # onnxruntime-gpu has no aarch64 wheels on PyPI. The runner has no
+          # GPU, so the smoke test starts this image with
+          # PARAKEET_USE_GPU=auto: it preloads the CUDA wheels, then runs on
+          # the CPU provider of the onnxruntime-gpu build it ships.
           - flavor: gpu
             platforms: linux/amd64
+            use_gpu: auto
     steps:
       - uses: actions/checkout@v7
 
@@ -42,6 +54,74 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
 
+      # Build the amd64 image into the runner's Docker first, so the smoke test
+      # runs before anything is published.
+      - uses: docker/build-push-action@v7
+        id: build
+        with:
+          context: .
+          file: Dockerfile.${{ matrix.flavor }}
+          platforms: linux/amd64
+          load: true
+          cache-from: type=gha,scope=${{ matrix.flavor }}
+
+      # Start the image as a replica starts: it answers /healthz only once
+      # PARAKEET_PRELOAD_MODELS has loaded and run a warm-up inference through
+      # ONNX Runtime, and exits if either fails. CI otherwise stubs ONNX
+      # Runtime, so this is the one check that a change still runs a real
+      # model. parakeet-v3 (fp32, the default) loads from external-data files,
+      # the path that broke in #35, #87 and #89; int8 has none and runs 8-bit
+      # kernels. One transcription request then goes through the API and
+      # ffmpeg (a 22.05 kHz tone, so it is resampled rather than read as-is).
+      - name: Smoke test (load parakeet-v3 fp32 and int8, transcribe once)
+        env:
+          IMAGE: ${{ steps.build.outputs.imageid }}
+          USE_GPU: ${{ matrix.use_gpu }}
+        run: |
+          docker run -d --name smoke -p 5092:5092 \
+            -e PARAKEET_USE_GPU="$USE_GPU" \
+            -e PARAKEET_PRELOAD_MODELS=parakeet-v3,parakeet-v3:int8 "$IMAGE"
+          # Up to 15 minutes: ~3 GB of downloads, two loads, and up to the
+          # 120 s warm-up bound for each.
+          healthy=false
+          for _ in $(seq 180); do
+            if curl -fs http://127.0.0.1:5092/healthz; then
+              healthy=true
+              break
+            fi
+            [ "$(docker inspect -f '{{.State.Running}}' smoke)" = true ] || break
+            sleep 5
+          done
+          echo
+          if [ "$healthy" != true ]; then
+            docker logs smoke
+            echo "::error::the image never answered /healthz; its logs are above"
+            exit 1
+          fi
+          python3 -c '
+          import math, struct, wave
+          with wave.open("tone.wav", "wb") as w:
+              w.setnchannels(1)
+              w.setsampwidth(2)
+              w.setframerate(22050)
+              w.writeframes(b"".join(
+                  struct.pack("<h", int(8000 * math.sin(2 * math.pi * 440 * i / 22050)))
+                  for i in range(2 * 22050)
+              ))
+          '
+          if ! curl -fsS --max-time 120 http://127.0.0.1:5092/v1/audio/transcriptions \
+              -F file=@tone.wav -F model=parakeet-v3; then
+            docker logs smoke
+            echo "::error::the transcription request failed; the image's logs are above"
+            exit 1
+          fi
+          echo
+          docker logs smoke
+
+      - name: Remove the smoke test container
+        if: always()
+        run: docker rm -f smoke || true
+
       - uses: docker/login-action@v4
         if: github.event_name != 'pull_request'
         with:
@@ -51,54 +131,26 @@ jobs:
 
       - uses: docker/metadata-action@v6
         id: meta
+        if: github.event_name != 'pull_request'
         with:
           images: ghcr.io/${{ github.repository }}
           flavor: |
             suffix=-${{ matrix.flavor }},onlatest=true
           tags: |
             type=ref,event=branch
-            type=ref,event=pr
             type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
 
+      # Publish only what passed the smoke test. The amd64 build above is in
+      # this builder's cache, so only arm64 (CPU) builds again.
       - uses: docker/build-push-action@v7
-        id: build
+        if: github.event_name != 'pull_request'
         with:
           context: .
           file: Dockerfile.${{ matrix.flavor }}
           platforms: ${{ matrix.platforms }}
-          push: ${{ github.event_name != 'pull_request' }}
-          # A pull request builds the CPU image for one platform, so it can be
-          # loaded into the runner's Docker for the smoke test.
-          load: ${{ github.event_name == 'pull_request' && matrix.flavor == 'cpu' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.flavor }}
-          # A pull request cannot restore another's cache, so it only reads.
-          cache-to: ${{ github.event_name != 'pull_request' && format('type=gha,mode=max,scope={0}', matrix.flavor) || '' }}
-
-      # Start the image as a replica starts: it answers /healthz only once
-      # PARAKEET_PRELOAD_MODELS has loaded and run a warm-up inference through
-      # ONNX Runtime, and exits if either fails. CI otherwise stubs ONNX
-      # Runtime, so this is the one check that a dependency bump still runs a
-      # real model. int8 is parakeet-v3's smallest download (~670 MB). The
-      # runner has no GPU, so the GPU image is only built.
-      - name: Smoke test (load parakeet-v3 int8, run one inference)
-        if: github.event_name == 'pull_request' && matrix.flavor == 'cpu'
-        env:
-          IMAGE: ${{ steps.build.outputs.imageid }}
-        run: |
-          docker run -d --name smoke -p 5092:5092 \
-            -e PARAKEET_PRELOAD_MODELS=parakeet-v3:int8 "$IMAGE"
-          # Up to 10 minutes: download, load, and the 120 s warm-up bound.
-          for _ in $(seq 120); do
-            if curl -fs http://127.0.0.1:5092/healthz; then
-              docker logs smoke
-              exit 0
-            fi
-            [ "$(docker inspect -f '{{.State.Running}}' smoke)" = true ] || break
-            sleep 5
-          done
-          docker logs smoke
-          echo "::error::the image never answered /healthz; its logs are above"
-          exit 1
+          cache-to: type=gha,mode=max,scope=${{ matrix.flavor }}

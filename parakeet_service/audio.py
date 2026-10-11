@@ -46,11 +46,14 @@ def _pcm_to_float(pcm: bytes, sample_width: int) -> np.ndarray:
     return samples.astype(np.float32) / float(1 << (8 * sample_width - 1))
 
 
-def _decode_pcm_wav(data: bytes, info: dict) -> Optional[np.ndarray]:
+def _decode_pcm_wav(
+    data: bytes, info: dict, max_seconds: Optional[float] = None
+) -> Optional[np.ndarray]:
     """Decode an uncompressed 16 kHz PCM WAV without leaving the process.
 
     Returns None for anything needing a sample-rate conversion, which
     `_ffmpeg_decode` does faster than numpy can. See OPTIMIZATION.md.
+    With `max_seconds`, stops one second past it (see `load_audio`).
     """
     if info["compression"] != "NONE" or info["sample_rate"] != TARGET_SR:
         return None
@@ -62,7 +65,10 @@ def _decode_pcm_wav(data: bytes, info: dict) -> Optional[np.ndarray]:
         return None  # ffmpeg downmixes 5.1 and up with per-channel weights
     try:
         with wave.open(BytesIO(data), "rb") as wav_file:
-            pcm = wav_file.readframes(wav_file.getnframes())
+            frames = wav_file.getnframes()
+            if max_seconds is not None:
+                frames = min(frames, _past(max_seconds))
+            pcm = wav_file.readframes(frames)
         samples = _pcm_to_float(pcm, sample_width)
     except (wave.Error, EOFError, OSError, ValueError):
         return None
@@ -72,8 +78,26 @@ def _decode_pcm_wav(data: bytes, info: dict) -> Optional[np.ndarray]:
     return np.ascontiguousarray(samples, dtype=np.float32)
 
 
-def _run_ffmpeg(source: str, data: Optional[bytes]) -> bytes:
-    """Run one ffmpeg decode of `source` to mono 16 kHz s16le and return it."""
+def _past(max_seconds: float) -> int:
+    """Samples to decode for a `max_seconds` limit: one second over it, so
+    audio longer than the limit still decodes to longer than the limit."""
+    return int((max_seconds + 1.0) * TARGET_SR)
+
+
+def _run_ffmpeg(
+    source: str, data: Optional[bytes], max_seconds: Optional[float]
+) -> bytes:
+    """Run one ffmpeg decode of `source` to mono 16 kHz s16le and return it.
+
+    With `max_seconds`, ffmpeg stops one second past it (see `load_audio`).
+    The cap counts decoded samples, not timestamps (`-t`): audio that starts
+    after a video, or jumps ahead mid-stream, still decodes in full.
+    """
+    limit = (
+        []
+        if max_seconds is None
+        else ["-af", f"aresample={TARGET_SR},atrim=end_sample={_past(max_seconds)}"]
+    )
     command = [
         "ffmpeg",
         "-hide_banner",
@@ -91,6 +115,7 @@ def _run_ffmpeg(source: str, data: Optional[bytes]) -> bytes:
         "1",
         "-ar",
         str(TARGET_SR),
+        *limit,
         "-f",
         "s16le",
         "pipe:1",
@@ -116,35 +141,42 @@ def _run_ffmpeg(source: str, data: Optional[bytes]) -> bytes:
     return process.stdout
 
 
-def _ffmpeg_decode(data: bytes) -> np.ndarray:
+def _ffmpeg_decode(data: bytes, max_seconds: Optional[float] = None) -> np.ndarray:
     """Decode a container/codec to mono 16 kHz float32 with ffmpeg.
 
     The upload goes in on a pipe. Some containers can't be read from one:
     an MP4/M4A/MOV/3GP with its `moov` index after the audio (ffmpeg's
     default layout, and common from phone and browser recorders) needs a
     seek back, so on a pipe ffmpeg exits 0 with no samples. When the pipe
-    gives nothing, decode again from a seekable temp file.
+    gives nothing, decode again from a seekable temp file. Both runs stop
+    one second past `max_seconds`.
     """
-    pcm = _run_ffmpeg("pipe:0", data)
+    pcm = _run_ffmpeg("pipe:0", data, max_seconds)
     if not pcm:
         with tempfile.NamedTemporaryFile(prefix="stt-upload-") as upload:
             upload.write(data)
             upload.flush()
-            pcm = _run_ffmpeg(f"file:{upload.name}", None)
+            pcm = _run_ffmpeg(f"file:{upload.name}", None, max_seconds)
     if not pcm:
         return np.empty(0, dtype=np.float32)
-    result = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
-    return np.ascontiguousarray(result, dtype=np.float32)
+    result = np.frombuffer(pcm, dtype="<i2").astype(np.float32)
+    result *= 1.0 / 32768.0  # in place: no second float32 copy
+    return result
 
 
-def load_audio(data: bytes) -> np.ndarray:
-    """Return a finite mono float32 waveform at 16 kHz."""
+def load_audio(data: bytes, max_seconds: Optional[float] = None) -> np.ndarray:
+    """Return a finite mono float32 waveform at 16 kHz.
+
+    With `max_seconds`, decoding stops one second past it, so a small upload
+    of very long audio is refused without ever being decoded in full: a
+    result longer than `max_seconds` means the audio is too long.
+    """
     if not data:
         return np.empty(0, dtype=np.float32)
     info = _wav_info(data)
-    waveform = _decode_pcm_wav(data, info) if info is not None else None
+    waveform = _decode_pcm_wav(data, info, max_seconds) if info is not None else None
     if waveform is None:
-        waveform = _ffmpeg_decode(data)
+        waveform = _ffmpeg_decode(data, max_seconds)
     if waveform.ndim != 1:
         waveform = np.ravel(waveform)
     if not np.isfinite(waveform).all():

@@ -953,6 +953,25 @@ async def test_a_one_piece_clip_heard_as_nothing_is_not_decoded_again_as_it_was(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("heard_to", "later"), [(30.0, 28.12), (31.0, 29.12)])
+async def test_a_one_piece_clip_heard_only_mid_way_has_each_stretch_decoded_again(heard_to, later):
+    # #96: the piece hears only from 28.3 s of 60. The stretches either side
+    # and 2 s around each are all of it, as are the stretches alone: each is
+    # decoded again on its own, and its words are put in. The last redo makes
+    # up "uh" as its input ends, where the audio does.
+    words = [(f" w{i}", 0.3 + 0.5 * i) for i in range(120)]  # to 59.8 s
+    prepared = _one_piece(60.0, speech=_samples([(0.0, 60.0)]))
+    first = _heard(0.0, [(word, at) for word, at in words if 28.0 <= at < heard_to])
+    worker = _Redo([
+        _heard(0.0, [(word, at) for word, at in words if at < 30.3]),
+        _heard(later, [(word, at) for word, at in words if at >= later] + [(" uh", 59.9)]),
+    ])
+    results = await routes._redo_stalled(_request(worker), [prepared], [first], "parakeet-v3:fp32")
+    assert _decoded_spans(worker) == [(0.0, 30.3), (later, 60.0)]  # 0-28.3 s, and from the last word heard on, 2 s either side
+    assert routes._stitch(prepared, results)[0].split() == [word.strip() for word, _at in words]
+
+
+@pytest.mark.asyncio
 async def test_a_stretch_by_the_window_s_edges_is_decoded_again_without_the_margin():
     # 0-8.68 s of a 10 s clip and 2 s either side is all of it: just the stretch, then
     results = [_result([" end"], [9.0])]
