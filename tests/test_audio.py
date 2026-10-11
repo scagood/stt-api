@@ -219,3 +219,52 @@ def test_ffmpeg_decode_handles_a_non_wav_container():
     assert audio._wav_info(flac) is None  # not a WAV, so the fast path declines it
     result = audio.load_audio(flac)
     assert result.ndim == 1 and result.size > 0 and np.isfinite(result).all()
+
+
+def encode_aac(source: bytes, muxer: str, *extra: str) -> bytes:
+    """Encode WAV bytes to AAC in `muxer`; the muxer needs a seekable output."""
+    import subprocess
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as folder:
+        out = f"{folder}/out"
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", "pipe:0",
+             "-c:a", "aac", *extra, "-f", muxer, out],
+            input=source, capture_output=True, check=True,
+        )
+        with open(out, "rb") as handle:
+            return handle.read()
+
+
+@requires_ffmpeg
+@pytest.mark.parametrize("muxer", ["ipod", "mp4", "mov", "3gp"])
+def test_ffmpeg_decodes_mp4_family_with_the_index_at_the_end(muxer):
+    # ffmpeg writes `moov` after the audio by default, as phone and browser
+    # recorders often do. Read from a pipe, ffmpeg can't seek back to the
+    # audio and returns nothing once the file outgrows its probe buffer.
+    seconds = 12.0
+    rate = 16_000 if muxer == "3gp" else 44_100
+    m4a = encode_aac(tone_wav(seconds, rate=rate, channels=1), muxer)
+    assert m4a[4:8] == b"ftyp" and m4a.find(b"moov") > m4a.find(b"mdat")
+    result = audio.load_audio(m4a)
+    assert abs(result.size - seconds * TARGET_SR) < TARGET_SR // 10  # ±0.1 s
+    assert 0.2 < float(np.abs(result).max()) <= 1.0
+
+
+@requires_ffmpeg
+def test_ffmpeg_decodes_faststart_mp4_from_the_pipe(monkeypatch):
+    # With `moov` up front the pipe works, so no temp file is written.
+    import tempfile
+
+    seconds = 12.0
+    m4a = encode_aac(tone_wav(seconds, rate=44_100, channels=1), "ipod",
+                     "-movflags", "+faststart")
+    assert m4a.find(b"moov") < m4a.find(b"mdat")
+
+    def no_temp_file(*args, **kwargs):
+        raise AssertionError("pipe decode should have been enough")
+
+    monkeypatch.setattr(tempfile, "NamedTemporaryFile", no_temp_file)
+    result = audio.load_audio(m4a)
+    assert abs(result.size - seconds * TARGET_SR) < TARGET_SR // 10
