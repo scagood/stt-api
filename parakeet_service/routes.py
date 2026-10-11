@@ -1441,8 +1441,12 @@ async def _redo_stalled(
 _ENDING_SEC = 8.0
 _ENDING_SHORTER_SEC = 0.2
 _ENDING_LONGER_SEC = 0.3
-# Only words starting this near the end of a piece's input are checked.
-_MADE_UP_SEC = 2.0
+# Only words starting this near the end of a piece's input are checked. Each
+# of about 150 made-up words on LibriVox (English, French, German, Spanish;
+# v2 and v3) started in the last 0.65 s, the decoder's last 8 frames; real
+# words both decodes missed started earlier ("¿Sí?" 0.88 s before the end,
+# "Abschnitt 1." 1.65 s; #112's review).
+_MADE_UP_SEC = 0.75
 # Only an input ending in a pause is checked: its last _PAUSE_END_SEC this far
 # under its speech (the 95th percentile of its 20 ms frames). One that ends
 # inside a word was heard to its end only as it is: both decodes lose the word

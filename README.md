@@ -688,7 +688,7 @@ model times a made-up word inside the speech before the pause as often as
 after it. So the end of a clip, and of each chunk that ends at the end of the
 audio or at a long silence cut out, is decoded twice more (its last 8 s, or
 from 1 s before the word ahead of the checked ones): 0.2 s shorter, and with its
-last 0.3 s played again backwards. Words starting in the last 2 s that neither
+last 0.3 s played again backwards. Words starting in the last 0.75 s that neither
 hears, after the last word both do, are dropped. Both must hear the word
 before them, as the same word, one like it ("Lori" for "Lorry"), split in two,
 joined to the word before ("dot org." as "LibriVox.org."), or any number for a
@@ -698,7 +698,12 @@ word stays, too, where either decode hears another word starting with it
 (from 0.1 s before to 0.15 s after): that is speech heard another way ("bit"
 as "bed."), not a made-up word.
 Audio that ends inside speech, its last 100 ms within 15 dB of its speech, is
-not checked: cut in its last word, both decodes lose that word too.
+not checked: cut in its last word, both decodes lose that word too. A word
+starting more than 0.75 s before the end is never dropped: every made-up word
+seen started in the decoder's last 8 frames (0.65 s), and real words both
+decodes missed started earlier ("¿Sí?", "Abschnitt 1."). A clip that ends within
+about 0.1 s of the next word's onset can lose that word ("Pretty, madam, said"
+becomes "Pretty, madam,"), which the model guessed from its first sound.
 
 Of 1,697 clips of 3.5-12 s from LibriVox's *Alice* and *Sherlock Holmes*, each
 ending between 0.2 s before and 1.5 s after the speech before a pause, the
@@ -706,8 +711,8 @@ check dropped 49 words from 39 clips (`and`, `but`, `that`, `for`, once "and
 the wrong way."), each one never said, and no word that was. Main had made up a
 word at the end of 13 more of them, which the check keeps. It
 costs two decodes of up to 8 s per clip, or per such chunk, and none where the
-last word starts more than 2 s before the end or the audio ends in speech. On
-4 CPU cores with `parakeet-v3:int8`, 200 of those clips took a median 1.37 s
+last word starts more than 0.75 s before the end or the audio ends in speech. On
+4 CPU cores with `parakeet-v3:int8`, 200 of those clips took a median 0.82 s
 each instead of 0.55 s; whole chapters took as long as before.
 `PARAKEET_CHECK_ENDINGS=false` turns it off. If they fail, every word stays.
 

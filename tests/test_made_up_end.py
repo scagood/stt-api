@@ -205,20 +205,40 @@ def _decode(*words):
     return SimpleNamespace(text=routes._decoded(tokens), tokens=tokens, timestamps=[at for _token, at in words])
 
 
+def test_a_late_full_stop_does_not_bring_its_word_near():
+    # The decodes time "band"'s full stop 2 s after it, where the piece made
+    # up "and": "band" is no sign "and" was said.
+    heard = _decode((" the", 7.0), (" band", 7.3), (" and", 9.5))
+    again = _decode((" the", 5.0), (" band", 5.3), (".", 7.3))  # from 2 s
+    assert _words(routes._made_up_end(heard, 0, 10 * TARGET_SR, 2 * TARGET_SR, [again, again])) == ["the", "band"]
+
+
 def test_the_word_before_heard_late_is_no_sign_of_the_next():
     # Both decodes of the ending time "the" where the piece heard "end":
     # that is "the", not a word heard another way.
-    heard = _decode((" so", 7.0), (" the", 8.0), (" end", 8.6))
-    again = _decode((" so", 5.0), (" the", 6.6))  # from 2 s
+    heard = _decode((" so", 8.0), (" the", 9.0), (" end", 9.4))
+    again = _decode((" so", 6.0), (" the", 7.4))  # from 2 s
     cut = routes._made_up_end(heard, 0, 10 * TARGET_SR, 2 * TARGET_SR, [again, again])
     assert cut is not None and _words(cut) == ["so", "the"]
 
 
 def test_a_word_starting_well_after_is_no_sign():
-    heard = _decode((" so", 7.0), (" the", 8.0), (" end", 8.6))
-    again = _decode((" so", 5.0), (" the", 6.0), (" wow", 7.2))  # 0.6 s after "end"
+    heard = _decode((" so", 8.0), (" the", 9.0), (" end", 9.4))
+    again = _decode((" so", 6.0), (" the", 7.0), (" wow", 8.0))  # 0.6 s after "end"
     cut = routes._made_up_end(heard, 0, 10 * TARGET_SR, 2 * TARGET_SR, [again, again])
     assert cut is not None and _words(cut) == ["so", "the"]
+
+
+def test_a_word_both_decodes_miss_stays_unless_it_starts_at_the_very_end():
+    # "Abschnitt eins" read 1.4 s before a silent end: both decodes of the
+    # ending heard "Abschnitt." alone. A made-up word starts in the decoder's
+    # last frames, at most 0.65 s before the end on LibriVox (#112's review).
+    again = _decode((" so", 6.0), (" Abschnitt.", 6.6))  # from 2 s
+    for at in (9.1, 8.7, 8.4):
+        heard = _decode((" so", 8.0), (" Abschnitt", 8.6), (" 1.", at))
+        assert routes._made_up_end(heard, 0, 10 * TARGET_SR, 2 * TARGET_SR, [again, again]) is None
+    heard = _decode((" so", 8.0), (" Abschnitt", 8.6), (" and", 9.4))
+    assert _words(routes._made_up_end(heard, 0, 10 * TARGET_SR, 2 * TARGET_SR, [again, again])) == ["so", "Abschnitt"]
 
 
 def test_a_word_starting_long_before_the_end_stays():
@@ -231,10 +251,10 @@ def test_a_word_starting_long_before_the_end_stays():
 
 def test_a_made_up_number_goes_with_the_word_marker_before_it():
     # Parakeet opens a number with a lone word marker (_word_spans).
-    heard = _decode((" so", 7.0), (" was", 8.0), (" ", 8.5), ("3", 8.6))
-    again = _decode((" so", 5.0), (" was", 6.0))
+    heard = _decode((" so", 8.0), (" was", 9.0), (" ", 9.5), ("3", 9.6))
+    again = _decode((" so", 6.0), (" was", 7.0))
     cut = routes._made_up_end(heard, 0, 10 * TARGET_SR, 2 * TARGET_SR, [again, again])
-    assert cut.tokens == [" so", " was"] and cut.timestamps == [7.0, 8.0]
+    assert cut.tokens == [" so", " was"] and cut.timestamps == [8.0, 9.0]
 
 
 @pytest.mark.asyncio
