@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import bisect
 import functools
+import json
 import math
 import re
 import time
@@ -14,7 +15,7 @@ from types import SimpleNamespace
 from typing import Any, Callable, Collection, Dict, List, Optional, Sequence, Tuple, Union
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 
 from . import aligner, retime, spoken
 from .audio import load_audio
@@ -35,6 +36,7 @@ from .config import (
     MODEL_CONFIGS,
     RETIME_WORDS,
     SPOKEN_NUMBERS,
+    TRANSCRIBE_UI,
     VAD_FILTER,
     TARGET_SR,
     UPLOAD_READ_CHUNK_BYTES,
@@ -1735,6 +1737,25 @@ def compare_page():
     if not COMPARE_UI:
         raise HTTPException(status_code=404, detail="Not Found")
     return FileResponse(Path(__file__).with_name("compare.html"), media_type="text/html")
+
+
+@router.get("/transcribe", include_in_schema=False)
+def transcribe_page():
+    """The page for transcribing one file in the browser (PARAKEET_TRANSCRIBE_UI):
+    a client of the routes here, which sends the file as is to
+    /v1/audio/transcriptions. It is given the server's limits, to warn before
+    sending a file they would refuse, and its defaults, to start its options there."""
+    if not TRANSCRIBE_UI:
+        raise HTTPException(status_code=404, detail="Not Found")
+    settings = {
+        "max_upload_bytes": MAX_UPLOAD_BYTES,
+        "max_audio_seconds": MAX_AUDIO_SECONDS,
+        "spoken_numbers": SPOKEN_NUMBERS,
+        "vad_filter": VAD_FILTER,
+        "retime_words": RETIME_WORDS,
+    }
+    page = Path(__file__).with_name("transcribe.html").read_text(encoding="utf-8")
+    return HTMLResponse(page.replace("__SERVER_SETTINGS__", json.dumps(settings)))
 
 
 @router.get(

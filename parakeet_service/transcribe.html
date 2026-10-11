@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Transcribe</title>
+<!--
+  Served at GET /transcribe when PARAKEET_TRANSCRIBE_UI=true. A client of the
+  API only: the pickers come from /v1/models and /v1/aligners, and a transcript
+  is one POST /v1/audio/transcriptions of the file as it is, so the server's own
+  decoding and limits apply. The server fills in #server with its limits and
+  defaults when it serves the page.
+-->
+<script id="server" type="application/json">__SERVER_SETTINGS__</script>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f6f8; --surface: #fff; --ink: #161a20; --muted: #5a6473; --line: #d9dee5;
+  --accent: #1f5fbf; --select: rgba(31, 95, 191, .12); --now: rgba(31, 95, 191, .22);
+  --warn: #8a6a00; --error: #b4361f;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0e1114; --surface: #161a1f; --ink: #e6e9ed; --muted: #9aa3af; --line: #2a3038;
+    --accent: #6ea0f0; --select: rgba(110, 160, 240, .16); --now: rgba(110, 160, 240, .28);
+    --warn: #e0c25a; --error: #f08a75;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
+.page { max-width: 960px; margin: 0 auto; padding: 28px 20px 48px; display: grid; gap: 22px; }
+h1, h2, p { margin: 0; }
+h1 { font-size: 26px; font-weight: 600; }
+h2 { font-size: 18px; font-weight: 600; }
+.lede, .hint { color: var(--muted); }
+.lede { max-width: 72ch; }
+.hint { font-size: 13px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.fields { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 18px; font-size: 13px; color: var(--muted); }
+.fields > label { display: grid; gap: 4px; }
+.checks { display: grid; gap: 6px; font-size: 14px; }
+.checks label { display: flex; align-items: baseline; gap: 8px; }
+.checks .hint { margin-left: 2px; }
+input, select { font: 14px var(--sans); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; max-width: 100%; }
+input[type="checkbox"] { accent-color: var(--accent); }
+button:focus-visible, input:focus-visible, select:focus-visible, audio:focus-visible, [data-item]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn { font: 500 13px var(--sans); color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+.btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn.primary, .btn.primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.btn:disabled { opacity: .5; cursor: default; }
+.drop { display: grid; gap: 6px; justify-items: start; padding: 18px; border: 2px dashed var(--line); border-radius: 8px; }
+.drop.over { border-color: var(--accent); background: var(--select); }
+.drop:focus-within { border-color: var(--accent); }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+audio { width: 100%; }
+.warn { color: var(--warn); }
+.error { color: var(--error); }
+progress { width: min(320px, 100%); accent-color: var(--accent); }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.toolbar h2 { margin-right: auto; }
+.segments { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.segments li { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); align-items: baseline; gap: 12px; padding: 4px 6px; border-radius: 6px; }
+.segments li.now { background: var(--select); }
+.time { font: 12.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); background: none; border: 0; padding: 2px 0; text-align: left; cursor: pointer; }
+.time:hover { color: var(--accent); }
+.text { overflow-wrap: anywhere; }
+[data-item] { cursor: pointer; border-radius: 3px; }
+[data-item]:hover { background: var(--select); }
+[data-item].now { background: var(--now); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 640px) {
+  .page { padding-inline: 16px; }
+  h1 { font-size: 22px; }
+  .segments li { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header style="display:grid;gap:8px">
+    <h1>Transcribe</h1>
+    <p class="lede">Pick or record an audio file, choose a model, and read its transcript. The file is sent to this server as it is; a model or aligner loads on the first request that names it.</p>
+  </header>
+
+  <section class="panel" aria-labelledby="audioTitle">
+    <h2 id="audioTitle">Audio</h2>
+    <div class="drop" id="drop">
+      <label class="fields" style="display:grid;gap:4px">Audio or video file <input id="file" type="file" accept="audio/*,video/*"></label>
+      <span class="hint">or drop a file here</span>
+    </div>
+    <div class="row">
+      <button class="btn" type="button" id="record">Record</button>
+      <span class="hint" id="recordInfo" role="status"></span>
+    </div>
+    <p class="hint" id="fileInfo">No file yet.</p>
+    <p class="hint" id="limitInfo" hidden></p>
+    <audio id="player" controls preload="metadata" hidden></audio>
+  </section>
+
+  <section class="panel" aria-labelledby="optionsTitle">
+    <h2 id="optionsTitle">Options</h2>
+    <div class="fields">
+      <label>Model <select id="model"></select></label>
+      <label>Aligner <select id="aligner"><option value="">none: the model's own word times</option></select></label>
+      <label>Language <select id="language"><option value="">auto</option></select></label>
+    </div>
+    <div class="checks">
+      <label><input type="checkbox" id="spoken_numbers"> Say numbers in words <span class="hint" data-default="spoken_numbers"></span></label>
+      <label><input type="checkbox" id="vad_filter"> Return nothing for audio without speech <span class="hint" data-default="vad_filter"></span></label>
+      <label><input type="checkbox" id="retime_words"> Move word times out of pauses <span class="hint" data-default="retime_words"></span></label>
+    </div>
+    <p class="hint">Numbers in words is English only. An aligner times words from the audio, and needs a language it knows (or the server's default); Whisper models have word times only with one.</p>
+    <div class="row">
+      <button class="btn primary" type="button" id="go" disabled>Transcribe</button>
+      <button class="btn" type="button" id="cancel" hidden>Stop waiting</button>
+      <progress id="progress" max="1" hidden></progress>
+      <span class="hint" id="status" role="status" aria-live="polite">Pick an audio file.</span>
+    </div>
+  </section>
+
+  <section class="panel" id="result" aria-labelledby="resultTitle" hidden>
+    <div class="toolbar">
+      <h2 id="resultTitle">Transcript</h2>
+      <button class="btn" type="button" id="copy">Copy text</button>
+      <span class="hint">Download</span>
+      <button class="btn" type="button" data-download="txt" aria-label="Download as text">Text</button>
+      <button class="btn" type="button" data-download="srt" aria-label="Download as SRT">SRT</button>
+      <button class="btn" type="button" data-download="vtt" aria-label="Download as VTT">VTT</button>
+      <button class="btn" type="button" data-download="json" aria-label="Download as JSON">JSON</button>
+    </div>
+    <p class="hint" id="resultInfo" role="status"></p>
+    <p class="hint" id="keysHelp">Click a time to play its segment, or a word to play that word. From the keyboard: Tab into the transcript, then left and right step through it, up and down move between segments, Enter plays, Shift+Enter plays the whole segment, Escape stops.</p>
+    <ol class="segments" id="segments" aria-describedby="keysHelp"></ol>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (text) => String(text).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+  const server = (() => { try { return JSON.parse($("server").textContent); } catch { return {}; } })();
+  const NEAR = 0.9; // warn from this share of a limit
+
+  const count = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  const mb = (bytes) => (bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0) + " MB";
+  function clock(seconds, decimals = 0) { // 75.5 -> "1:15", 3725 -> "1:02:05"
+    const whole = Math.floor(seconds), h = Math.floor(whole / 3600), m = Math.floor((whole % 3600) / 60);
+    const s = (seconds % 60).toFixed(decimals).padStart(decimals ? 3 + decimals : 2, "0");
+    return (h ? `${h}:${String(m).padStart(2, "0")}` : `${m}`) + `:${s}`;
+  }
+  function stamp(seconds, sep) { // SRT / VTT cue time, as the server writes them
+    const total = Math.max(0, Math.round(seconds * 1000)), pad = (n, w = 2) => String(n).padStart(w, "0");
+    return `${pad(Math.floor(total / 3600000))}:${pad(Math.floor(total / 60000) % 60)}:${pad(Math.floor(total / 1000) % 60)}${sep}${pad(total % 1000, 3)}`;
+  }
+  const remember = (key, value) => { try { localStorage.setItem("transcribe." + key, value); } catch {} };
+  const recall = (key) => { try { return localStorage.getItem("transcribe." + key); } catch { return null; } };
+
+  let file = null;      // the File (or recording) to send
+  let fileUrl = null;   // its object URL, for the player
+  let duration = null;  // its length in seconds, when the browser can tell
+  let result = null;    // the last verbose_json response, and the file it is for
+  let items = [];       // the transcript's playable parts: { el, start, end, seg }
+  let request = null;   // the XMLHttpRequest in flight
+  let blocked = false;  // the file is over the upload limit
+  let canRecord = true;
+
+  // ---- the file ------------------------------------------------------------------
+  function useFile(chosen, knownDuration = null) {
+    file = chosen;
+    duration = knownDuration;
+    if (fileUrl) URL.revokeObjectURL(fileUrl);
+    fileUrl = URL.createObjectURL(file);
+    const player = $("player");
+    player.hidden = false;
+    player.src = fileUrl;
+    describeFile();
+    if (result && result.file !== file) {
+      $("resultInfo").textContent = `This transcript is for ${result.file.name}, not the file now in the player, so its words don't play.`;
+    }
+    update();
+  }
+  function describeFile() {
+    if (!file) return;
+    const length = duration ? `, ${clock(duration)}` : "";
+    $("fileInfo").textContent = `${file.name}: ${mb(file.size)}${length}.`;
+    const notes = [];
+    blocked = false;
+    const maxBytes = server.max_upload_bytes, maxSeconds = server.max_audio_seconds;
+    if (maxBytes && file.size > maxBytes) {
+      notes.push(`This file is over the server's upload limit of ${mb(maxBytes)}, so it can't be sent.`);
+      blocked = true;
+    } else if (maxBytes && file.size >= NEAR * maxBytes) {
+      notes.push(`This file is close to the server's upload limit of ${mb(maxBytes)}.`);
+    }
+    if (maxSeconds && duration && duration > maxSeconds) {
+      notes.push(`It is longer than the server's limit of ${clock(maxSeconds)}, so the server will most likely refuse it.`);
+    } else if (maxSeconds && duration && duration >= NEAR * maxSeconds) {
+      notes.push(`It is close to the server's length limit of ${clock(maxSeconds)}.`);
+    }
+    $("limitInfo").hidden = !notes.length;
+    $("limitInfo").textContent = notes.join(" ");
+    $("limitInfo").className = "hint " + (blocked ? "error" : "warn");
+  }
+  $("file").addEventListener("change", (e) => { if (e.target.files[0]) useFile(e.target.files[0]); });
+  const drop = $("drop");
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault();
+    drop.classList.remove("over");
+    const dropped = e.dataTransfer.files[0];
+    if (dropped && !request && !recorder) { $("file").value = ""; useFile(dropped); }
+  });
+  $("player").addEventListener("loadedmetadata", () => {
+    const d = $("player").duration;
+    if (Number.isFinite(d) && d > 0 && !duration) { duration = d; describeFile(); }
+  });
+  $("player").addEventListener("error", () => {
+    if (file) $("fileInfo").textContent += " This browser can't play it, but the server may still transcribe it.";
+  });
+
+  // ---- recording -------------------------------------------------------------------
+  let recorder = null, recordStart = 0, recordTimer = null;
+  function setUpRecording() {
+    canRecord = false;
+    if (!window.isSecureContext) {
+      $("recordInfo").textContent = "Recording needs HTTPS or localhost: browsers only allow the microphone there.";
+    } else if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+      $("recordInfo").textContent = "This browser can't record audio.";
+    } else {
+      canRecord = true;
+    }
+  }
+  async function startRecording() {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      $("recordInfo").textContent = err.name === "NotAllowedError"
+        ? "The microphone was blocked. Allow it in the browser's site settings to record."
+        : `Could not open the microphone: ${err.message}`;
+      return;
+    }
+    const type = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"].find((t) => MediaRecorder.isTypeSupported(t));
+    recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    const chunks = [];
+    recorder.addEventListener("dataavailable", (e) => { if (e.data.size) chunks.push(e.data); });
+    recorder.addEventListener("stop", () => {
+      stream.getTracks().forEach((track) => track.stop());
+      clearInterval(recordTimer);
+      const seconds = (performance.now() - recordStart) / 1000;
+      const mime = recorder.mimeType || type || "audio/webm";
+      const ext = mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "webm";
+      const when = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
+      recorder = null;
+      $("record").textContent = "Record";
+      $("recordInfo").textContent = `Recorded ${clock(seconds)}.`;
+      $("file").value = "";
+      useFile(new File(chunks, `recording-${when}.${ext}`, { type: mime.split(";")[0] }), seconds);
+    });
+    recorder.start(1000);
+    recordStart = performance.now();
+    $("record").textContent = "Stop recording";
+    const tickRecord = () => { $("recordInfo").textContent = `Recording… ${clock((performance.now() - recordStart) / 1000)}`; };
+    tickRecord();
+    recordTimer = setInterval(tickRecord, 500);
+    update();
+  }
+  $("record").addEventListener("click", () => { if (recorder) recorder.stop(); else startRecording(); });
+
+  // ---- options, from the API ---------------------------------------------------------
+  const option = (value, text = value) => `<option value="${esc(value)}">${esc(text)}</option>`;
+  for (const name of ["spoken_numbers", "vad_filter", "retime_words"]) {
+    const on = Boolean(server[name]);
+    $(name).checked = on;
+    document.querySelector(`[data-default="${name}"]`).textContent = `(server default: ${on ? "on" : "off"})`;
+  }
+  function restore(id) {
+    const saved = recall(id), select = $(id);
+    if (saved !== null && [...select.options].some((o) => o.value === saved)) select.value = saved;
+    select.addEventListener("change", () => remember(id, select.value));
+  }
+  let ready = false;
+  Promise.all(["v1/models", "v1/aligners"].map((url) => fetch(url).then((r) => (r.ok ? r.json() : Promise.reject(r)))))
+    .then(([models, aligners]) => {
+      $("model").innerHTML = models.data.flatMap((m) => m.quantizations.map((q) => option(`${m.id}:${q}`))).join("");
+      $("aligner").innerHTML += aligners.data.flatMap((a) => a.quantizations.map((q) =>
+        option(`${a.id}:${q}`, q === a.default_quantization ? `${a.id}:${q} (default)` : undefined))).join("");
+      const languages = [...new Set([...models.data, ...aligners.data].flatMap((x) => x.language))].sort();
+      $("language").innerHTML += languages.map((code) => option(code)).join("");
+      ["model", "aligner", "language"].forEach(restore);
+      ready = true;
+      update();
+    })
+    .catch(() => { $("status").textContent = "Could not load the models and aligners from this server."; $("status").className = "hint error"; });
+
+  // ---- sending -------------------------------------------------------------------------
+  function update() {
+    const busy = Boolean(request);
+    $("go").disabled = busy || !ready || !file || blocked || Boolean(recorder);
+    $("file").disabled = busy || Boolean(recorder);
+    $("record").disabled = busy || !canRecord;
+    if (!busy && ready) {
+      $("status").className = "hint";
+      $("status").textContent = recorder ? "Stop recording to send it." : !file ? "Pick an audio file." : blocked ? "Pick a smaller file." : "";
+    }
+  }
+  function errorText(status, body) {
+    let detail = "";
+    try {
+      const parsed = JSON.parse(body);
+      detail = typeof parsed.detail === "string" ? parsed.detail
+        : Array.isArray(parsed.detail) ? parsed.detail.map((d) => d.msg || JSON.stringify(d)).join("; ") : "";
+    } catch {}
+    const what = { 400: "The server refused the request", 413: "Too big or too long for this server",
+      415: "The server could not decode this file", 503: "The model is not ready" }[status] || `The server answered ${status}`;
+    return detail ? `${what}: ${detail}` : what + ".";
+  }
+  function send() {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    form.append("model", $("model").value);
+    form.append("response_format", "verbose_json");
+    form.append("timestamp_granularities[]", "word");
+    if ($("language").value) form.append("language", $("language").value);
+    if ($("aligner").value) form.append("aligner", $("aligner").value);
+    form.append("spoken_numbers", String($("spoken_numbers").checked));
+    form.append("vad_filter", String($("vad_filter").checked));
+    form.append("retime_words", String($("retime_words").checked));
+
+    const sent = file, model = $("model").value, xhr = new XMLHttpRequest(), started = performance.now();
+    request = xhr;
+    let uploaded = false;
+    const progress = $("progress"), status = $("status");
+    progress.hidden = false; progress.value = 0; progress.max = 1;
+    $("cancel").hidden = false;
+    status.className = "hint";
+    status.textContent = `Uploading ${mb(sent.size)}…`;
+    const waiting = () => {
+      const length = duration ? ` ${clock(duration)} of audio;` : "";
+      status.textContent = `Transcribing with ${model}…${length} ${clock((performance.now() - started) / 1000)} so far.`;
+    };
+    const timer = setInterval(() => { if (uploaded) waiting(); }, 1000);
+    xhr.upload.addEventListener("progress", (e) => {
+      if (!e.lengthComputable) return;
+      progress.value = e.loaded / e.total;
+      status.textContent = `Uploading: ${Math.round((100 * e.loaded) / e.total)}% of ${mb(e.total)}…`;
+    });
+    xhr.upload.addEventListener("load", () => { uploaded = true; progress.removeAttribute("value"); waiting(); });
+    const finish = () => {
+      clearInterval(timer);
+      request = null;
+      progress.hidden = true;
+      $("cancel").hidden = true;
+      update();
+    };
+    xhr.addEventListener("load", () => {
+      finish();
+      const seconds = ((performance.now() - started) / 1000).toFixed(1);
+      if (xhr.status < 200 || xhr.status >= 300) {
+        status.textContent = errorText(xhr.status, xhr.responseText);
+        status.className = "hint error";
+        return;
+      }
+      let body;
+      try { body = JSON.parse(xhr.responseText); } catch { body = null; }
+      if (!body || typeof body.text !== "string") {
+        status.textContent = "The server's answer was not a transcript.";
+        status.className = "hint error";
+        return;
+      }
+      status.textContent = `Done in ${seconds} s.`;
+      show(body, sent, model);
+    });
+    xhr.addEventListener("error", () => {
+      finish();
+      status.textContent = "The request failed: the server could not be reached, or closed the connection.";
+      status.className = "hint error";
+    });
+    xhr.addEventListener("abort", () => {
+      finish();
+      status.textContent = "Stopped waiting. The server may still finish the work.";
+    });
+    xhr.open("POST", "v1/audio/transcriptions");
+    xhr.send(form);
+    update();
+  }
+  $("go").addEventListener("click", send);
+  $("cancel").addEventListener("click", () => request && request.abort());
+
+  // ---- the transcript --------------------------------------------------------------------
+  function show(body, sent, model) {
+    result = { body, file: sent };
+    const segments = body.segments || [], words = body.words || [];
+    // Each word goes with the segment its middle falls in.
+    const bySegment = segments.map(() => []);
+    let s = 0;
+    for (const w of words) {
+      const middle = (w.start + w.end) / 2;
+      while (s < segments.length - 1 && middle >= segments[s + 1].start) s++;
+      if (segments.length) bySegment[s].push(w);
+    }
+    $("segments").innerHTML = segments.map((seg, i) => {
+      const own = bySegment[i];
+      const text = own.length
+        ? own.map((w) => `<span data-item tabindex="-1" data-start="${w.start}" data-end="${w.end}" data-seg="${i}">${esc(w.word)}</span>`).join(" ")
+        : `<span data-item tabindex="-1" data-start="${seg.start}" data-end="${seg.end}" data-seg="${i}">${esc(seg.text.trim())}</span>`;
+      return `<li data-seg="${i}"><button class="time" type="button" tabindex="-1" data-seg="${i}" aria-label="Play from ${clock(seg.start, 1)} to ${clock(seg.end, 1)}">${clock(seg.start, 1)}</button><span class="text">${text}</span></li>`;
+    }).join("");
+    items = [...$("segments").querySelectorAll("[data-item]")].map((el) => ({
+      el, start: Number(el.dataset.start), end: Number(el.dataset.end), seg: Number(el.dataset.seg),
+    }));
+    if (items.length) items[0].el.tabIndex = 0;
+    const parts = words.length ? `${count(words.length, "word")} in ${count(segments.length, "segment")}` : `${count(segments.length, "segment")}, without word times`;
+    $("resultInfo").textContent = segments.length
+      ? `${sent.name}, ${model}: ${parts}, ${clock(body.duration || 0)} of audio.`
+      : `${sent.name}, ${model}: no speech found in ${clock(body.duration || 0)} of audio.`;
+    $("result").hidden = false;
+  }
+
+  let stopAt = null, nowItem = null, nowSeg = null;
+  function playSpan(start, end) {
+    const player = $("player");
+    if (!result || result.file !== file) return;
+    stopAt = null;
+    player.currentTime = start;
+    stopAt = end;
+    player.play().catch(() => {});
+    requestAnimationFrame(follow);
+  }
+  function follow() { // stop at a span's end, and mark what is playing
+    const player = $("player"), t = player.currentTime;
+    if (stopAt !== null && t >= stopAt) player.pause();
+    mark(t);
+    if (!player.paused) requestAnimationFrame(follow);
+  }
+  function mark(t) {
+    let lo = 0, hi = items.length - 1, found = null;
+    while (lo <= hi) { // the last item starting at or before t
+      const mid = (lo + hi) >> 1;
+      if (items[mid].start <= t) { found = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    const item = found !== null && t <= items[found].end ? items[found] : null;
+    if (item !== nowItem) {
+      if (nowItem) nowItem.el.classList.remove("now");
+      if (item) item.el.classList.add("now");
+      nowItem = item;
+    }
+    const seg = found !== null ? $("segments").children[items[found].seg] : null;
+    if (seg !== nowSeg) {
+      if (nowSeg) nowSeg.classList.remove("now");
+      if (seg) seg.classList.add("now");
+      nowSeg = seg;
+    }
+  }
+  $("player").addEventListener("play", () => requestAnimationFrame(follow));
+  $("player").addEventListener("pause", () => { stopAt = null; });
+  $("player").addEventListener("seeked", () => mark($("player").currentTime));
+
+  function segmentSpan(i) { const seg = result.body.segments[i]; return [seg.start, seg.end]; }
+  function focusItem(index) {
+    const item = items[index];
+    if (!item) return;
+    items.forEach((x) => { x.el.tabIndex = -1; });
+    item.el.tabIndex = 0;
+    item.el.focus();
+  }
+  $("segments").addEventListener("click", (e) => {
+    const time = e.target.closest("button.time");
+    if (time) return playSpan(...segmentSpan(Number(time.dataset.seg)));
+    const el = e.target.closest("[data-item]");
+    if (!el) return;
+    const index = items.findIndex((x) => x.el === el);
+    focusItem(index);
+    playSpan(items[index].start, items[index].end);
+  });
+  $("segments").addEventListener("keydown", (e) => {
+    const index = items.findIndex((x) => x.el === document.activeElement);
+    if (index < 0) return;
+    const item = items[index];
+    const firstOf = (seg) => items.findIndex((x) => x.seg === seg);
+    let next = null;
+    switch (e.key) {
+      case "ArrowRight": next = Math.min(items.length - 1, index + 1); break;
+      case "ArrowLeft": next = Math.max(0, index - 1); break;
+      case "ArrowDown": next = item.seg + 1 < result.body.segments.length ? firstOf(item.seg + 1) : index; break;
+      case "ArrowUp": next = item.seg > 0 ? firstOf(item.seg - 1) : index; break;
+      case "Home": next = 0; break;
+      case "End": next = items.length - 1; break;
+      case "Enter": case " ":
+        e.preventDefault();
+        if (e.shiftKey) playSpan(...segmentSpan(item.seg)); else playSpan(item.start, item.end);
+        return;
+      case "Escape": $("player").pause(); return;
+      default: return;
+    }
+    e.preventDefault();
+    if (next >= 0) focusItem(next);
+  });
+
+  // ---- keeping it ------------------------------------------------------------------------
+  function exported(kind) {
+    const body = result.body, segments = (body.segments || []).filter((s) => s.text.trim());
+    if (kind === "txt") return [body.text + "\n", "text/plain"];
+    if (kind === "json") return [JSON.stringify(body, null, 2) + "\n", "application/json"];
+    if (kind === "srt") {
+      return [segments.map((s, i) => `${i + 1}\n${stamp(s.start, ",")} --> ${stamp(s.end, ",")}\n${s.text.trim()}\n`).join("\n"), "application/x-subrip"];
+    }
+    return ["WEBVTT\n\n" + segments.map((s) => `${stamp(s.start, ".")} --> ${stamp(s.end, ".")}\n${s.text.trim()}\n`).join("\n"), "text/vtt"];
+  }
+  document.querySelectorAll("[data-download]").forEach((button) => button.addEventListener("click", () => {
+    const kind = button.dataset.download, [text, type] = exported(kind);
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([text], { type }));
+    link.download = result.file.name.replace(/\.[^.]*$/, "") + "." + kind;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  }));
+  $("copy").addEventListener("click", async () => {
+    const text = result.body.text;
+    let copied = false;
+    try { await navigator.clipboard.writeText(text); copied = true; } catch {}
+    if (!copied) { // no clipboard API outside a secure context
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.className = "visually-hidden";
+      document.body.append(area);
+      area.select();
+      try { copied = document.execCommand("copy"); } catch {}
+      area.remove();
+      $("copy").focus();
+    }
+    $("resultInfo").textContent = copied ? "Copied the text." : "Could not copy: select the text and copy it instead.";
+  });
+
+  setUpRecording();
+  update();
+})();
+</script>
+</body>
+</html>

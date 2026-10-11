@@ -460,6 +460,10 @@ RETIME_WORDS = _env_bool("PARAKEET_RETIME_WORDS", False)
 # every word. Off unless an operator turns it on: each row it runs is a full
 # transcription, and loads the model or aligner it names.
 COMPARE_UI = _env_bool("PARAKEET_COMPARE_UI", False)
+# The /transcribe page: upload or record a file and read its transcript. Off
+# unless an operator turns it on, separately from /compare: it loads any model or
+# aligner it names, as an API request would.
+TRANSCRIBE_UI = _env_bool("PARAKEET_TRANSCRIBE_UI", False)
 
 MAX_UPLOAD_BYTES = _env_int(
     "PARAKEET_MAX_UPLOAD_BYTES", 256 * 1024 * 1024, minimum=1
