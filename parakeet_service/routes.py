@@ -1464,12 +1464,23 @@ _SPOKEN_BEFORE_SEC = 0.1
 _SPOKEN_AFTER_SEC = 0.15
 # The context a word at the start of an ending's audio is given.
 _ENDING_LEAD_SEC = 1.0
+# Words the decodes of the ending miss stay when, after the word before them,
+# the ending holds a pause (_SAID_PAUSE_SEC this far under its speech) and then
+# a syllable of their own (_SAID_SYLLABLE_SEC within _SAID_LOUD_DB of it): a
+# short word said alone, as "patrão. 4." or "vriendje, Gij." were, 0.3-1 s
+# after a 0.3 s pause or more (#112's review). A made-up word sits on the tail
+# of the word before or on silence: none of about 150 on LibriVox had one.
+_SAID_PAUSE_SEC = 0.25
+_SAID_PAUSE_DB = 25.0
+_SAID_SYLLABLE_SEC = 0.06
+_SAID_LOUD_DB = 15.0
 
 
-def _ending(prepared: _PreparedAudio, index: int, result: Any) -> Optional[Tuple[int, List[Any]]]:
-    """Where piece `index`'s ending starts (a sample in the file), and its
-    two decodes' audio (_ENDING_SEC): None if it has no word to check, or
-    does not end in a pause."""
+def _ending(prepared: _PreparedAudio, index: int, result: Any) -> Optional[Tuple[int, Any, List[Any]]]:
+    """Where piece `index`'s ending starts (a sample in the file), its 20 ms
+    frames' loudness over its speech's (their 95th percentile), and its two
+    decodes' audio (_ENDING_SEC): None if it has no word to check, or does
+    not end in a pause."""
     (_start, end), (window_start, window_end) = prepared.ranges[index], prepared.windows[index]
     if window_end != end:
         return None
@@ -1499,7 +1510,7 @@ def _ending(prepared: _PreparedAudio, index: int, result: Any) -> Optional[Tuple
         return None  # too short to hear again shorter: onnx-asr fails on a sample
     shorter = audio[: audio.size - int(_ENDING_SHORTER_SEC * TARGET_SR)]
     longer = np.concatenate([audio, audio[-int(_ENDING_LONGER_SEC * TARGET_SR) :][::-1]])
-    return begin, [shorter, longer]
+    return begin, loudness / max(float(np.percentile(loudness, 95)), 1e-12), [shorter, longer]
 
 
 # A number, however it is written: "3", "III", "three", "3rd", "third".
@@ -1549,15 +1560,35 @@ def _heard_at(info: Dict[str, Any], begin: int, span: Tuple[str, int, int]) -> T
     return word, times[0], times[1]
 
 
-def _made_up_end(result: Any, window_start: int, window_end: int, begin: int, again: Sequence[Any]) -> Optional[Any]:
+def _said_alone(loudness: Any, frame: int) -> bool:
+    """Whether the ending's frames from `frame` on (`loudness`, each over its
+    speech's) hold a pause and then a syllable: _SAID_PAUSE_SEC under
+    _SAID_PAUSE_DB, and later _SAID_SYLLABLE_SEC within _SAID_LOUD_DB."""
+    pause, syllable = int(_SAID_PAUSE_SEC * TARGET_SR) // FRAME, max(1, int(_SAID_SYLLABLE_SEC * TARGET_SR) // FRAME)
+    quiet, loud = 10 ** (-_SAID_PAUSE_DB / 20), 10 ** (-_SAID_LOUD_DB / 20)
+    still = heard = 0
+    for level in loudness[max(0, frame) :]:
+        if still >= pause:
+            heard = heard + 1 if level > loud else 0
+            if heard >= syllable:
+                return True
+        else:
+            still = still + 1 if level < quiet else 0
+    return False
+
+
+def _made_up_end(
+    result: Any, window_start: int, window_end: int, begin: int, again: Sequence[Any], loudness: Any = None
+) -> Optional[Any]:
     """`result` (decoded from sample `window_start` to `window_end`) without
     the words it made up as its input ended: those starting in its last
     _MADE_UP_SEC after the last word both decodes of its ending (`again`,
     from sample `begin`) heard too, when neither hears them (_heard_in) nor
     any other word starting where they do (_spoken_at); and only when
     both heard the word just before them, so a decode that lost the speech
-    (Parakeet can return nothing for a whole clip) is no sign. None if it
-    keeps every word."""
+    (Parakeet can return nothing for a whole clip) is no sign, and the
+    ending's audio (`loudness`, its frames from `begin`) has no word said
+    alone after it (_said_alone). None if it keeps every word."""
     info = _extract(result)
     tokens, timestamps = info["tokens"], info["timestamps"]
     spans = _word_spans(tokens)
@@ -1576,6 +1607,9 @@ def _made_up_end(result: Any, window_start: int, window_end: int, begin: int, ag
     ):
         keep -= 1
     if keep == len(found) or not all(_heard_in(words, *found[keep - 1]) for words in heard):
+        return None
+    before = window_start + int(timestamps[spans[keep - 1][2]] * TARGET_SR)  # its last token
+    if loudness is not None and _said_alone(loudness, (before - begin) // FRAME):
         return None
     cut = spans[keep][1]  # the first made-up word's first token, and a lone word marker opening it
     while cut > 0 and not tokens[cut - 1].replace("\u2581", " ").strip():
@@ -1599,8 +1633,8 @@ async def _drop_made_up_ends(
     async def run(work: Callable[..., Any], *args: Any) -> Any:
         return work(*args) if len(results) < 2 else await loop.run_in_executor(pool, work, *args)
 
-    def find() -> List[Tuple[int, Tuple[int, int], int, List[Any]]]:
-        """(in results, its window, where its ending starts, its two audios) for each piece to check."""
+    def find() -> List[Tuple[int, Tuple[int, int], int, Any, List[Any]]]:
+        """(in results, its window, where its ending starts, its loudness, its two audios) for each piece to check."""
         found, cursor = [], 0
         for prepared in files:
             for index, window in enumerate(prepared.windows):
@@ -1613,8 +1647,8 @@ async def _drop_made_up_ends(
     def drop(again: Sequence[Any]) -> Tuple[List[Any], int]:
         """The results without the made-up words, and how many went."""
         kept, dropped = list(results), 0
-        for number, (at, (window_start, window_end), begin, _audios) in enumerate(found):
-            cut = _made_up_end(results[at], window_start, window_end, begin, again[2 * number : 2 * number + 2])
+        for number, (at, (window_start, window_end), begin, loudness, _audios) in enumerate(found):
+            cut = _made_up_end(results[at], window_start, window_end, begin, again[2 * number : 2 * number + 2], loudness)
             if cut is not None:
                 dropped += len(_word_spans(_extract(results[at])["tokens"])) - len(_word_spans(cut.tokens))
                 kept[at] = cut

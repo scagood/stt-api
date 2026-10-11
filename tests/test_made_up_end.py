@@ -241,6 +241,54 @@ def test_a_word_both_decodes_miss_stays_unless_it_starts_at_the_very_end():
     assert _words(routes._made_up_end(heard, 0, 10 * TARGET_SR, 2 * TARGET_SR, [again, again])) == ["so", "Abschnitt"]
 
 
+def _loudness(*spans, seconds=8.0):
+    """An ending's frames from 2 s, loud in `spans` (start, stop in s, and
+    a level other than speech's) and 40 dB under elsewhere."""
+    frames = np.full(int(seconds / 0.02), 0.01)
+    for start, stop, *level in spans:
+        frames[int((start - 2) / 0.02) : int((stop - 2) / 0.02)] = level[0] if level else 1.0
+    return frames
+
+
+def test_a_word_said_alone_after_a_pause_stays_though_both_decodes_miss_it():
+    # "...finado patrão. 4.": the heading's number, read alone after a pause.
+    heard = _decode((" so", 8.0), (" patrão.", 8.4), (" 4.", 9.4))
+    again = _decode((" so", 6.0), (" patrão.", 6.4))  # from 2 s
+
+    def checked(*spans):
+        return routes._made_up_end(heard, 0, 10 * TARGET_SR, 2 * TARGET_SR, [again, again], _loudness(*spans))
+
+    assert checked((7.9, 8.8), (9.3, 9.6)) is None
+    # No sound of its own: made up.
+    assert _words(checked((7.9, 8.8))) == ["so", "patrão."]
+    # Only the tail of the word before it, however long.
+    assert _words(checked((7.9, 9.5))) == ["so", "patrão."]
+    # A pause too short to part it from the word before.
+    assert _words(checked((7.9, 8.8), (9.0, 9.6))) == ["so", "patrão."]
+    # A click, not a syllable.
+    assert _words(checked((7.9, 8.8), (9.3, 9.34))) == ["so", "patrão."]
+    # Not a pause: speech 20 dB under, trailing on.
+    assert _words(checked((7.9, 8.8), (8.8, 9.3, 0.1), (9.3, 9.6))) == ["so", "patrão."]
+
+
+@pytest.mark.asyncio
+async def test_a_transcription_keeps_a_word_said_alone_that_both_decodes_miss():
+    class _Missing(_Parakeet):
+        def hear(self, piece):
+            result = super().hear(piece)
+            if len(self.pieces) > 1:  # the decodes of its ending miss "Yes."
+                keep = [i for i, token in enumerate(result.tokens) if token != " Yes."]
+                tokens = [result.tokens[i] for i in keep]
+                result = SimpleNamespace(text=routes._decoded(tokens), tokens=tokens, timestamps=[result.timestamps[i] for i in keep])
+            return result
+
+    said = SAID + [("Yes.", 4.1)]
+    [result], worker = await _checked(_clip(speech=[(0.3, 3.7), (4.1, 4.25)]), fake=_Missing, made_up=(), said=said)
+    assert len(worker.pieces) == 3 and _words(result)[-1] == "Yes."
+    [result], worker = await _checked(_clip(speech=[(0.3, 4.25)]), fake=_Missing, made_up=(), said=said)
+    assert len(worker.pieces) == 3 and _words(result)[-1] == "muttered."  # no pause before it
+
+
 def test_a_word_starting_long_before_the_end_stays():
     # "then" starts 3 s before the end: no decode hears it, but it stays, and
     # the word before it, not heard, keeps "and" too.

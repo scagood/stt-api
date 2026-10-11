@@ -701,7 +701,10 @@ Audio that ends inside speech, its last 100 ms within 15 dB of its speech, is
 not checked: cut in its last word, both decodes lose that word too. A word
 starting more than 0.75 s before the end is never dropped: every made-up word
 seen started in the decoder's last 8 frames (0.65 s), and real words both
-decodes missed started earlier ("¿Sí?", "Abschnitt 1."). A clip that ends within
+decodes missed started earlier ("¿Sí?", "Abschnitt 1."). Nor is a word said
+on its own: where, after the word before it, the audio has a pause of 0.25 s
+(25 dB under its speech) and then 60 ms within 15 dB of it, the words stay
+("patrão. 4.", "vriendje, Gij."). A made-up word has no sound of its own. A clip that ends within
 about 0.1 s of the next word's onset can lose that word ("Pretty, madam, said"
 becomes "Pretty, madam,"), which the model guessed from its first sound.
 
