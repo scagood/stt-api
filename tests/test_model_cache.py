@@ -154,6 +154,7 @@ def test_runtime_reports_a_cpu_fallback_when_cuda_was_asked_for(monkeypatch, tmp
     m.load_model("whisper-tiny:fp32", with_timestamps=False)
     assert m.runtime_status() == {
         "whisper-tiny:fp32": {
+            "kind": "model",
             "backend": "cpu",
             "sessions": {"model._encoder": ["CPUExecutionProvider", "CPUExecutionProvider"]},
             "fallback_reason": "ONNX Runtime selected CPU instead of CUDA",

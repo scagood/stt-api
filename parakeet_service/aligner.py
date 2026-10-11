@@ -29,7 +29,7 @@ from .config import (
     TARGET_SR,
     logger,
 )
-from .model import _build_sess_options, _check_gpu_binding, _resolve_providers
+from .model import _build_sess_options, _check_gpu_binding, _resolve_providers, _runtime
 
 Span = tuple[float, float]
 Timed = tuple[float, float, float]  # start, end, score
@@ -165,6 +165,9 @@ _lock = threading.Lock()
 _loaded: "OrderedDict[str, tuple[tuple[Any, dict[str, int]], float]]" = OrderedDict()
 _failed_at: dict[str, float] = {}
 _loading: dict[str, threading.Lock] = {}
+# What each aligner loaded so far runs on (model._runtime), by key; /health
+# shows only the ones still in _loaded.
+_runtimes: dict[str, dict[str, Any]] = {}
 
 
 def language_code(language: Optional[str]) -> str:
@@ -183,6 +186,12 @@ def status() -> dict[str, str]:
     """Per-aligner, per-quantization state ("name:quant"), for /health."""
     keys = [f"{name}:{quant}" for name, spec in ALIGNER_CONFIGS.items() for quant in spec["quantizations"]]
     return {key: "loaded" if key in _loaded else "failed" if key in _failed_at else "not loaded" for key in keys}
+
+
+def runtime_status() -> dict[str, dict[str, Any]]:
+    """model._runtime() for each loaded aligner, by key, as model.runtime_status()."""
+    with _lock:
+        return {key: _runtimes[key] for key in sorted(_loaded) if key in _runtimes}
 
 
 def _read_vocab(files: dict[str, str]) -> dict[str, int]:
@@ -252,9 +261,11 @@ def _load(name: str, quant: str) -> Optional[tuple[Any, dict[str, int]]]:
         try:
             providers = _providers(variant)  # first, as for models: no GPU, no download
             loaded = _fetch(spec, variant, providers)
+            report = {"session": _CPU}
             if providers != _CPU:
+                report = {"session": loaded[0].get_providers()}
                 # Logs where it bound; PARAKEET_USE_GPU=true refuses the CPU, as for models.
-                _check_gpu_binding(f"word aligner {key}", {"session": loaded[0].get_providers()})
+                _check_gpu_binding(f"word aligner {key}", report)
         except Exception:
             with _lock:
                 _failed_at[key] = time.monotonic()
@@ -267,6 +278,7 @@ def _load(name: str, quant: str) -> Optional[tuple[Any, dict[str, int]]]:
         with _lock:
             _failed_at.pop(key, None)
             _loaded[key] = (loaded, time.monotonic())
+            _runtimes[key] = _runtime(providers, report, kind="aligner")
             # The models' LRU cap (PARAKEET_MODEL_CACHE_SIZE), counted separately.
             while MODEL_CACHE_SIZE and len(_loaded) > MODEL_CACHE_SIZE:
                 evicted, _ = _loaded.popitem(last=False)

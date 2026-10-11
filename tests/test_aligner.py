@@ -556,6 +556,7 @@ def _fake_hub(monkeypatch, download):
     monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(hf_hub_download=download))
     monkeypatch.setattr(aligner, "_loaded", OrderedDict())
     monkeypatch.setattr(aligner, "_failed_at", {})
+    monkeypatch.setattr(aligner, "_runtimes", {})
 
 
 def test_failed_load_is_retried_after_a_cooldown(monkeypatch, tmp_path):
@@ -586,6 +587,8 @@ def test_aligners_share_the_model_cache_cap(monkeypatch, tmp_path):
     aligner._load("omnilingual-ctc-300m", "int8")
     assert list(aligner._loaded) == ["omnilingual-ctc-300m:int8"]  # least recent evicted
     assert aligner.status()["wav2vec2-base-960h:int8"] == "not loaded"
+    assert list(aligner.runtime_status()) == ["omnilingual-ctc-300m:int8"]  # only what is loaded
+    assert aligner.runtime_status()["omnilingual-ctc-300m:int8"]["backend"] == "cpu"
 
 
 def test_aligners_unused_for_the_idle_timeout_are_evicted(monkeypatch, tmp_path):
@@ -768,6 +771,8 @@ def test_an_aligner_session_is_made_on_its_providers(monkeypatch, tmp_path):
     made = _gpu_loader(monkeypatch, tmp_path, ["CUDAExecutionProvider", "CPUExecutionProvider"])
     assert aligner._load("wav2vec2-base-960h", "fp16") is not None
     assert made == [[("CUDAExecutionProvider", {}), "CPUExecutionProvider"]]
+    runtime = aligner.runtime_status()["wav2vec2-base-960h:fp16"]
+    assert runtime["kind"] == "aligner" and runtime["backend"] == "cuda" and runtime["fallback_reason"] is None
 
 
 @pytest.mark.parametrize(("use_gpu", "loads"), [("true", False), ("auto", True)])
@@ -780,6 +785,10 @@ def test_an_aligner_that_fell_back_to_the_cpu_fails_only_where_cuda_is_required(
     caplog.set_level("INFO")
     assert (aligner._load("wav2vec2-base-960h", "fp16") is not None) == loads
     assert aligner.status()["wav2vec2-base-960h:fp16"] == ("loaded" if loads else "failed")
+    if loads:  # /health says where it ended up, as for a model
+        assert aligner.runtime_status()["wav2vec2-base-960h:fp16"]["fallback_reason"] is not None
+    else:
+        assert aligner.runtime_status() == {}
     assert "word aligner wav2vec2-base-960h:fp16" in caplog.text  # where it bound is logged either way
 
 

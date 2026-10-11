@@ -168,9 +168,10 @@ def _check_gpu_binding(name: str, report: Dict[str, List[str]]) -> None:
         )
 
 
-def _runtime(providers: List[Any], report: Dict[str, List[str]]) -> dict:
-    """What a loaded model actually runs on, for /health: the provider each
-    session bound to and, when CUDA was asked for but not used, why."""
+def _runtime(providers: List[Any], report: Dict[str, List[str]], kind: str = "model") -> dict:
+    """What a loaded model (or aligner, by `kind`) actually runs on, for
+    /health: the provider each session bound to and, when CUDA was asked for
+    but not used, why."""
     requested_cuda = any(
         (item[0] if isinstance(item, tuple) else item) == "CUDAExecutionProvider"
         for item in providers
@@ -185,7 +186,7 @@ def _runtime(providers: List[Any], report: Dict[str, List[str]]) -> dict:
     fallback_reason = None
     if requested_cuda and backend == "cpu":
         fallback_reason = "ONNX Runtime selected CPU instead of CUDA"
-    return {"backend": backend, "sessions": report, "fallback_reason": fallback_reason}
+    return {"kind": kind, "backend": backend, "sessions": report, "fallback_reason": fallback_reason}
 
 
 def variant_key(model: str, quantization: str | None = None) -> str:
