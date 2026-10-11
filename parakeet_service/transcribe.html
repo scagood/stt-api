@@ -160,7 +160,7 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
   const NEAR = 0.9; // warn from this share of a limit
 
   const count = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
-  const mb = (bytes) => (bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0) + " MB";
+  const mib = (bytes) => (bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0) + " MiB";
   function clock(seconds, decimals = 0) { // 75.4 -> "1:15", 3725 -> "1:02:05"
     const scale = 10 ** decimals, t = Math.round(seconds * scale) / scale; // so 59.7 s is "1:00", not "0:60"
     const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60);
@@ -201,15 +201,15 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
   function describeFile() {
     if (!file) return;
     const length = duration ? `, ${clock(duration)}` : "";
-    $("fileInfo").textContent = `${file.name}: ${mb(file.size)}${length}.`;
+    $("fileInfo").textContent = `${file.name}: ${mib(file.size)}${length}.`;
     const notes = [];
     blocked = false;
     const maxBytes = server.max_upload_bytes, maxSeconds = server.max_audio_seconds;
     if (maxBytes && file.size > maxBytes) {
-      notes.push(`This file is over the server's upload limit of ${mb(maxBytes)}, so it can't be sent.`);
+      notes.push(`This file is over the server's upload limit of ${mib(maxBytes)}, so it can't be sent.`);
       blocked = true;
     } else if (maxBytes && file.size >= NEAR * maxBytes) {
-      notes.push(`This file is close to the server's upload limit of ${mb(maxBytes)}.`);
+      notes.push(`This file is close to the server's upload limit of ${mib(maxBytes)}.`);
     }
     if (maxSeconds && duration && duration > maxSeconds) {
       notes.push(`It is longer than the server's limit of ${clock(maxSeconds)}, so the server will most likely refuse it.`);
@@ -307,7 +307,8 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
         option(`${a.id}:${q}`, q === a.default_quantization ? `${a.id}:${q} (default)` : undefined))).join("");
       const languages = [...new Set([...models.data, ...aligners.data].flatMap((x) => x.language))].sort();
       $("language").innerHTML += languages.map((code) => option(code)).join("");
-      ["model", "aligner", "language"].forEach(restore);
+      if ([...$("model").options].some((o) => o.value === server.model)) $("model").value = server.model;
+      ["model", "aligner", "language"].forEach(restore); // a remembered choice wins
       ready = true;
       update();
     })
@@ -354,7 +355,7 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
     progress.hidden = false; progress.value = 0; progress.max = 1;
     $("cancel").hidden = false;
     status.className = "hint";
-    status.textContent = `Uploading ${mb(sent.size)}…`;
+    status.textContent = `Uploading ${mib(sent.size)}…`;
     const waiting = () => {
       const length = duration ? ` ${clock(duration)} of audio;` : "";
       status.textContent = `Transcribing with ${model}…${length} ${clock((performance.now() - started) / 1000)} so far.`;
@@ -363,7 +364,7 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
     xhr.upload.addEventListener("progress", (e) => {
       if (!e.lengthComputable) return;
       progress.value = e.loaded / e.total;
-      status.textContent = `Uploading: ${Math.round((100 * e.loaded) / e.total)}% of ${mb(e.total)}…`;
+      status.textContent = `Uploading: ${Math.round((100 * e.loaded) / e.total)}% of ${mib(e.total)}…`;
     });
     xhr.upload.addEventListener("load", () => { uploaded = true; progress.removeAttribute("value"); waiting(); });
     const finish = () => {

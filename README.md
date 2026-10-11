@@ -526,9 +526,10 @@ then stays loaded until it goes unused for `PARAKEET_MODEL_IDLE_TIMEOUT_SEC`.
 With `PARAKEET_TRANSCRIBE_UI=true`, `GET /` and `GET /transcribe` serve a page
 for getting the transcript of one file without the API, with links to `/docs`
 and, when it is on, `/compare`. Pick a file (or drop it on the page, or record
-one from the microphone), choose a model, an optional aligner, a language and
-the `spoken_numbers`, `vad_filter` and `retime_words` toggles, which start at
-the server's own defaults. **Transcribe** sends the
+one from the microphone), choose a model (the first in `PARAKEET_PRELOAD_MODELS`
+to begin with), an optional aligner, a language and the `spoken_numbers`,
+`vad_filter` and `retime_words` toggles, which start at the server's own
+defaults. **Transcribe** sends the
 file as it is to `/v1/audio/transcriptions`, so the server decodes it and its
 limits apply; the page warns before sending a file near
 `PARAKEET_MAX_UPLOAD_BYTES` or `PARAKEET_MAX_AUDIO_SECONDS`, and shows the

@@ -33,6 +33,7 @@ from .config import (
     MAX_BATCH_FILES,
     MAX_REQUEST_CHUNKS,
     MAX_UPLOAD_BYTES,
+    PRELOAD_MODELS,
     MODEL_CONFIGS,
     RETIME_WORDS,
     SPOKEN_NUMBERS,
@@ -1749,12 +1750,16 @@ def transcribe_page(request: Request):
     """The page for transcribing one file in the browser (PARAKEET_TRANSCRIBE_UI),
     at the root too: a client of the routes here, which sends the file as is to
     /v1/audio/transcriptions. It is given the server's limits, to warn before
-    sending a file they would refuse, its defaults, to start its options there,
-    and the other pages this server shows, to link to them."""
+    sending a file they would refuse, its defaults and first preloaded model, to
+    start its options there, and the other pages this server shows, to link to
+    them."""
     if not TRANSCRIBE_UI:
         raise HTTPException(status_code=404, detail="Not Found")
     docs = request.app.docs_url
     settings = {
+        # The model to start on: the first preloaded one, so a first visit
+        # doesn't load another (the server has no default model).
+        "model": variant_key(*PRELOAD_MODELS[0].split(":", 1)) if PRELOAD_MODELS else None,
         "max_upload_bytes": MAX_UPLOAD_BYTES,
         "max_audio_seconds": MAX_AUDIO_SECONDS,
         "spoken_numbers": SPOKEN_NUMBERS,

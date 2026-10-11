@@ -65,8 +65,10 @@ def test_transcribe_page_is_given_the_server_limits_and_defaults(monkeypatch):
     monkeypatch.setattr(routes, "VAD_FILTER", False)
     monkeypatch.setattr(routes, "RETIME_WORDS", True)
     monkeypatch.setattr(routes, "COMPARE_UI", False)
+    monkeypatch.setattr(routes, "PRELOAD_MODELS", [])
     html = _page(monkeypatch)
     assert _settings(html) == {
+        "model": None,
         "max_upload_bytes": 12345,
         "max_audio_seconds": 678.0,
         "spoken_numbers": True,
@@ -87,3 +89,22 @@ def test_transcribe_page_links_only_the_pages_this_server_shows(monkeypatch):
 def test_transcribe_page_is_served_at_the_root_too():
     paths = {route.path for route in routes.router.routes if getattr(route, "endpoint", None) is routes.transcribe_page}
     assert paths == {"/", "/transcribe"}
+
+
+def test_transcribe_page_starts_on_the_first_preloaded_model(monkeypatch):
+    model = next(iter(routes.MODEL_CONFIGS))
+    quantization = list(routes.MODEL_CONFIGS[model]["quantizations"])[-1]
+    monkeypatch.setattr(routes, "PRELOAD_MODELS", [f"{model}:{quantization}", model])
+    assert _settings(_page(monkeypatch))["model"] == f"{model}:{quantization}"
+    # Without a quantization a preloaded model is fp32, as the server loads it.
+    monkeypatch.setattr(routes, "PRELOAD_MODELS", [model])
+    assert _settings(_page(monkeypatch))["model"] == f"{model}:fp32"
+
+
+def test_the_root_is_a_404_when_the_page_is_off(monkeypatch):
+    """With PARAKEET_TRANSCRIBE_UI off, / is as it was before the page: a 404."""
+    monkeypatch.setattr(routes, "TRANSCRIBE_UI", False)
+    root = next(route for route in routes.router.routes if route.path == "/")
+    with pytest.raises(HTTPException) as caught:
+        root.endpoint(_request())
+    assert caught.value.status_code == 404
