@@ -14,6 +14,14 @@ from fastapi import UploadFile
 from parakeet_service import routes
 from parakeet_service.config import TARGET_SR
 
+DEFAULT = routes.CHECK_ENDINGS  # as the server starts, before a test turns it on
+
+
+@pytest.fixture(autouse=True)
+def _check_endings(monkeypatch):
+    monkeypatch.setattr(routes, "CHECK_ENDINGS", True)
+
+
 # The book's line, as the full-length decode hears it (word, start in s).
 SAID = [("smelling", 0.4), ("salts?", 0.9), ("What", 2.2), ("happened?", 2.5), ("he", 3.3), ("muttered.", 3.5)]
 END = 4.5  # the clip ends half a second into the pause after "muttered"
@@ -448,7 +456,10 @@ async def test_long_audio_is_never_scanned_on_the_event_loop(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_parakeet_check_endings_false_turns_it_off(monkeypatch):
-    monkeypatch.setattr(routes, "CHECK_ENDINGS", False)
+async def test_the_check_is_off_unless_an_operator_turns_it_on(monkeypatch):
+    # PARAKEET_CHECK_ENDINGS unset: what was heard stands, made-up word too,
+    # and nothing is decoded again.
+    assert DEFAULT is False
+    monkeypatch.setattr(routes, "CHECK_ENDINGS", DEFAULT)
     [result], worker = await _checked(_clip())
     assert _words(result)[-1] == "and" and len(worker.pieces) == 1

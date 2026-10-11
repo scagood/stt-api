@@ -459,9 +459,10 @@ RETIME_WORDS = _env_bool("PARAKEET_RETIME_WORDS", False)
 # Parakeet can add a word that was never said where its input ends in a pause
 # (#110). On, the end of each clip, and of each long file's chunk that ends at
 # the audio's end or a long silence, is decoded twice more to find such words
-# and drop them (routes._drop_made_up_ends): about 2.5x the CPU for a short
-# clip. Off skips it.
-CHECK_ENDINGS = _env_bool("PARAKEET_CHECK_ENDINGS", True)
+# and drop them (routes._drop_made_up_ends): about 1.5x the time for a short
+# clip. Off unless an operator turns it on: it can still lose a real word now
+# and then (README, "Made-up last words").
+CHECK_ENDINGS = _env_bool("PARAKEET_CHECK_ENDINGS", False)
 # The /compare page: upload a clip and hear where each model and aligner puts
 # every word. Off unless an operator turns it on: each row it runs is a full
 # transcription, and loads the model or aligner it names.

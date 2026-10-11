@@ -45,13 +45,6 @@ def _prepared(raw, *_bounds):
     )
 
 
-@pytest.fixture(autouse=True)
-def _no_endings(monkeypatch):
-    """These fakes decode text, not audio, so no piece's ending is decoded
-    again (_ending): test_made_up_end.py checks that."""
-    monkeypatch.setattr(routes, "_ending", lambda *_args: None)
-
-
 @pytest.fixture
 def calls(monkeypatch):
     """Record aligner calls; the fake aligner re-times words to 0.1 s + 1.5 s each
