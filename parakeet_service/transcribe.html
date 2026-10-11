@@ -30,6 +30,7 @@
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
 .page { max-width: 960px; margin: 0 auto; padding: 28px 20px 48px; display: grid; gap: 22px; }
 h1, h2, p { margin: 0; }
@@ -39,13 +40,16 @@ h2 { font-size: 18px; font-weight: 600; }
 .lede { max-width: 72ch; }
 .hint { font-size: 13px; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.panel > * { min-width: 0; }
 .fields { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 18px; font-size: 13px; color: var(--muted); }
 .fields > label { display: grid; gap: 4px; }
 .checks { display: grid; gap: 6px; font-size: 14px; }
-.checks label { display: flex; align-items: baseline; gap: 8px; }
-.checks .hint { margin-left: 2px; }
+.checks label { display: block; }
+.checks input { margin: 0 8px 0 0; }
+.checks .hint { margin-left: 4px; }
 input, select { font: 14px var(--sans); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; max-width: 100%; }
 input[type="checkbox"] { accent-color: var(--accent); }
+input[type="file"] { width: 100%; max-width: 420px; }
 button:focus-visible, input:focus-visible, select:focus-visible, audio:focus-visible, [data-item]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn { font: 500 13px var(--sans); color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
 .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
@@ -63,7 +67,7 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
 .toolbar h2 { margin-right: auto; }
 .segments { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
 .segments li { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); align-items: baseline; gap: 12px; padding: 4px 6px; border-radius: 6px; }
-.segments li.now { background: var(--select); }
+.segments li.now { box-shadow: inset 3px 0 var(--accent); }
 .time { font: 12.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); background: none; border: 0; padding: 2px 0; text-align: left; cursor: pointer; }
 .time:hover { color: var(--accent); }
 .text { overflow-wrap: anywhere; }
@@ -75,6 +79,8 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
   .page { padding-inline: 16px; }
   h1 { font-size: 22px; }
   .segments li { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .fields > label { flex: 1 1 100%; }
+  .fields select { width: 100%; }
 }
 </style>
 </head>
@@ -125,11 +131,13 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
     <div class="toolbar">
       <h2 id="resultTitle">Transcript</h2>
       <button class="btn" type="button" id="copy">Copy text</button>
-      <span class="hint">Download</span>
-      <button class="btn" type="button" data-download="txt" aria-label="Download as text">Text</button>
-      <button class="btn" type="button" data-download="srt" aria-label="Download as SRT">SRT</button>
-      <button class="btn" type="button" data-download="vtt" aria-label="Download as VTT">VTT</button>
-      <button class="btn" type="button" data-download="json" aria-label="Download as JSON">JSON</button>
+      <span class="toolbar" role="group" aria-label="Download">
+        <span class="hint">Download</span>
+        <button class="btn" type="button" data-download="txt" aria-label="Download as text">Text</button>
+        <button class="btn" type="button" data-download="srt" aria-label="Download as SRT">SRT</button>
+        <button class="btn" type="button" data-download="vtt" aria-label="Download as VTT">VTT</button>
+        <button class="btn" type="button" data-download="json" aria-label="Download as JSON">JSON</button>
+      </span>
     </div>
     <p class="hint" id="resultInfo" role="status"></p>
     <p class="hint" id="keysHelp">Click a time to play its segment, or a word to play that word. From the keyboard: Tab into the transcript, then left and right step through it, up and down move between segments, Enter plays, Shift+Enter plays the whole segment, Escape stops.</p>
@@ -146,9 +154,10 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
 
   const count = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
   const mb = (bytes) => (bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0) + " MB";
-  function clock(seconds, decimals = 0) { // 75.5 -> "1:15", 3725 -> "1:02:05"
-    const whole = Math.floor(seconds), h = Math.floor(whole / 3600), m = Math.floor((whole % 3600) / 60);
-    const s = (seconds % 60).toFixed(decimals).padStart(decimals ? 3 + decimals : 2, "0");
+  function clock(seconds, decimals = 0) { // 75.4 -> "1:15", 3725 -> "1:02:05"
+    const scale = 10 ** decimals, t = Math.round(seconds * scale) / scale; // so 59.7 s is "1:00", not "0:60"
+    const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60);
+    const s = (t % 60).toFixed(decimals).padStart(decimals ? 3 + decimals : 2, "0");
     return (h ? `${h}:${String(m).padStart(2, "0")}` : `${m}`) + `:${s}`;
   }
   function stamp(seconds, sep) { // SRT / VTT cue time, as the server writes them
