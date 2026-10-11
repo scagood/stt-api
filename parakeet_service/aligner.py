@@ -8,6 +8,7 @@ Aligned times sit on 20 ms frames and the ends come from the audio.
 from __future__ import annotations
 
 import json
+import math
 import string
 import threading
 import time
@@ -31,6 +32,12 @@ from .config import (
 from .model import _build_sess_options, _check_gpu_binding, _resolve_providers
 
 Span = tuple[float, float]
+Timed = tuple[float, float, float]  # start, end, score
+
+
+class AlignmentError(ValueError):
+    """Why a text could not be aligned to the audio at all: no letters the
+    aligner knows, or more letters than the audio has frames for."""
 
 # --------------------------------------------------------------------------- #
 # English text -> the characters wav2vec2-base-960h was trained on (A-Z, ').
@@ -407,6 +414,51 @@ def _star_path(
     return [(owner, first - 1, last - 1) for (first, last), owner in zip(spans, owners) if owner >= 0], score
 
 
+def word_times(
+    emission: np.ndarray,
+    frame_starts: np.ndarray,
+    spoken: Sequence[tuple[int, Sequence[int]]],
+    n_words: int,
+    *,
+    blank: int,
+    separator: Optional[int],
+) -> Optional[list[Optional[Timed]]]:
+    """Force-align spoken words and return (start, end, score) per word.
+
+    `spoken` holds (word index, character ids) in order; a word may appear more
+    than once ("2026" is said as three words). Words absent from it get None.
+    Start and end are seconds. The score, 0 to 1, is how close the path is to
+    what the model hears best on the word's frames: the geometric mean, over
+    them, of the path token's probability over the likeliest token's. A word
+    the model hears scores near 1; one forced onto audio that doesn't hold it
+    has letters where the model hears others, or blank, and scores near 0.
+    """
+    path = _star_path(emission, spoken, blank=blank, separator=separator)
+    if path is None:
+        return None
+    frame_sec = _STRIDE / TARGET_SR
+    best = emission.max(axis=1)
+    chars = iter(path[0])  # one per character of `spoken`, in its order
+    bounds: list[Optional[Span]] = [None] * n_words
+    shortfall = [0.0] * n_words  # log-prob below the likeliest token, summed over frames
+    frames = [0] * n_words
+    for owner, ids in spoken:
+        part = [next(chars) for _ in ids]
+        first, last = part[0][1], part[-1][2]
+        heard = np.full(last - first, blank)  # between its letters the path is blank
+        for (_owner, start, end), token in zip(part, ids):
+            heard[start - first : end - first] = token
+        shortfall[owner] += float((best[first:last] - emission[np.arange(first, last), heard]).sum())
+        frames[owner] += last - first
+        start, end = float(frame_starts[first]), float(frame_starts[last - 1]) + frame_sec
+        current = bounds[owner]
+        bounds[owner] = (start, end) if current is None else (current[0], end)
+    return [
+        None if span is None else (span[0], span[1], math.exp(-shortfall[index] / frames[index]))
+        for index, span in enumerate(bounds)
+    ]
+
+
 def word_spans(
     emission: np.ndarray,
     frame_starts: np.ndarray,
@@ -416,21 +468,9 @@ def word_spans(
     blank: int,
     separator: Optional[int],
 ) -> Optional[list[Optional[Span]]]:
-    """Force-align spoken words and return (start, end) seconds per word.
-
-    `spoken` holds (word index, character ids) in order; a word may appear more
-    than once ("2026" is said as three words). Words absent from it get None.
-    """
-    path = _star_path(emission, spoken, blank=blank, separator=separator)
-    if path is None:
-        return None
-    frame_sec = _STRIDE / TARGET_SR
-    words: list[Optional[Span]] = [None] * n_words
-    for owner, first, last in path[0]:
-        start, end = float(frame_starts[first]), float(frame_starts[last - 1]) + frame_sec
-        current = words[owner]
-        words[owner] = (start, end) if current is None else (current[0], end)
-    return words
+    """word_times without the scores: (start, end) seconds per word."""
+    timed = word_times(emission, frame_starts, spoken, n_words, blank=blank, separator=separator)
+    return None if timed is None else [None if word is None else word[:2] for word in timed]
 
 
 class ChunkAligner:
@@ -479,6 +519,36 @@ class ChunkAligner:
                     spoken.append((index, ids))
         return spoken
 
+    def _heard(self) -> tuple[np.ndarray, np.ndarray]:
+        """As _emission, but a failed pass raises: the alignment endpoint
+        reports it rather than answering "don't know"."""
+        if self._frames is None:
+            self._frames = _emission(self._session, self._wav)
+        return self._frames
+
+    def _timed(
+        self, words: Sequence[str], frames: Callable[[], tuple[np.ndarray, np.ndarray]]
+    ) -> list[Optional[Timed]]:
+        """(start, end, score) for each of `words` (word_times), from `frames`;
+        None for a word with no characters the model knows. Raises
+        AlignmentError when none of them can be."""
+        said = self._normalize(words)
+        spoken = self._spoken(said)
+        if not spoken or _mostly_unknown(words, said, self._vocab):
+            raise AlignmentError("the text is not in the aligner's alphabet")
+        emission, frame_starts = frames()
+        timed = word_times(
+            emission, frame_starts, spoken, len(words), blank=self._blank, separator=self._separator
+        )
+        if timed and self._letter_names and (accented := self._accented(said, timed)) != said:
+            timed = word_times(
+                emission, frame_starts, self._spoken(accented), len(words),
+                blank=self._blank, separator=self._separator,
+            )
+        if timed is None:
+            raise AlignmentError("the audio is too short to hold the text")
+        return timed
+
     def spans(self, words: Sequence[str]) -> Optional[list[Optional[Span]]]:
         """(start, end) seconds from the chunk start for each of `words`.
 
@@ -486,25 +556,20 @@ class ChunkAligner:
         the text is not in the model's alphabet or the audio cannot hold it.
         """
         try:
-            said = self._normalize(words)
-            spoken = self._spoken(said)
-            if not spoken or _mostly_unknown(words, said, self._vocab):
-                return None
-            emission, frame_starts = self._emission()
-            timed = word_spans(
-                emission, frame_starts, spoken, len(words), blank=self._blank, separator=self._separator
-            )
-            if timed and self._letter_names and (accented := self._accented(said, timed)) != said:
-                timed = word_spans(
-                    emission, frame_starts, self._spoken(accented), len(words),
-                    blank=self._blank, separator=self._separator,
-                )
-            return timed
+            return [None if word is None else word[:2] for word in self._timed(words, self._emission)]
+        except AlignmentError:
+            return None
         except Exception:
             logger.exception("word alignment failed; keeping model word times")
             return None
 
-    def _accented(self, said: Sequence[str], timed: Sequence[Optional[Span]]) -> list[str]:
+    def words(self, words: Sequence[str]) -> list[Optional[Timed]]:
+        """(start, end, score) for each of `words`, as spans() times them, for
+        text the caller already has. Raises AlignmentError when the text can't
+        be aligned at all, and whatever a failed pass raised."""
+        return self._timed(words, self._heard)
+
+    def _accented(self, said: Sequence[str], timed: Sequence[Optional[Timed]]) -> list[str]:
         """`said` with each lone letter named the way the audio says it ("zee" or
         "zed"), heard between the words either side of it."""
         said = list(said)

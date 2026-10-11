@@ -92,6 +92,50 @@ def test_word_spans_return_none_for_audio_without_frames():
     ) is None
 
 
+def test_word_times_score_heard_words_high_and_forced_words_low():
+    # "A B" was said; the text says "A C B": C is forced onto audio that doesn't hold it
+    emission = _emission([(BLANK, 2), (A, 3), (BLANK, 2), (B, 3)], frames=12)
+    timed = aligner.word_times(
+        emission, _frame_starts(12), [(0, [A]), (1, [C]), (2, [B])], 3, blank=BLANK, separator=SEP
+    )
+    (*_, heard_a), (*_, forced_c), (*_, heard_b) = timed
+    assert heard_a > 0.99 and heard_b > 0.99
+    assert forced_c < 0.01
+    # the times are word_spans'
+    assert [word[:2] for word in timed] == aligner.word_spans(
+        emission, _frame_starts(12), [(0, [A]), (1, [C]), (2, [B])], 3, blank=BLANK, separator=SEP
+    )
+
+
+def test_word_times_score_a_letter_dragged_over_others_low():
+    # "A C C B" was said; the text says "AB": B can't be reached without
+    # holding A or blank over the Cs, which the model hears instead
+    emission = _emission([(A, 2), (C, 2), (BLANK, 1), (C, 2), (B, 2)], frames=10)
+    (*_, score), = aligner.word_times(
+        emission, _frame_starts(10), [(0, [A, B])], 1, blank=BLANK, separator=SEP
+    )
+    assert score < 0.1
+
+
+def test_a_word_said_in_parts_is_scored_without_the_pause_between_them():
+    # word 0 is said as two parts ("2026" as "twenty twenty six"); the Cs between
+    # them are speech the text lacks, which the star takes: not the word's
+    emission = _emission([(A, 2), (C, 2), (BLANK, 1), (C, 2), (B, 2)], frames=10)
+    (start, end, score), = aligner.word_times(
+        emission, _frame_starts(10), [(0, [A]), (0, [B])], 1, blank=BLANK, separator=SEP
+    )
+    frame = aligner._STRIDE / TARGET_SR
+    assert (start, end) == pytest.approx((0.0, 9 * frame))
+    assert score > 0.99
+
+
+def test_word_times_leave_unspoken_words_unscored():
+    emission = _emission([(A, 2)], frames=4)
+    assert aligner.word_times(
+        emission, _frame_starts(4), [(1, [A])], 2, blank=BLANK, separator=SEP
+    )[0] is None
+
+
 @pytest.mark.parametrize(
     ("word", "spoken"),
     [
@@ -430,6 +474,32 @@ def test_a_failed_pass_is_not_run_again(caplog):
     assert chunk.scores(["one", "two"], 0.0, 3.0) == [float("-inf")] * 2
     assert chunk.best(["one", "two"], 0.0, 3.0) == 0
     assert session.runs == 1 and caplog.text.count("wav2vec2 pass failed") == 1
+
+
+def test_words_time_and_score_text_the_caller_has():
+    chunk = _chunk_hearing([(BLANK, 2), ("T", 3), (BLANK, 1), ("E", 3), (BLANK, 1), ("N", 3)], frames=16)
+    (start, end, score), = chunk.words(["ten"])
+    frame = aligner._STRIDE / TARGET_SR
+    assert (start, end) == pytest.approx((2 * frame, 13 * frame))
+    assert score > 0.99
+    assert chunk.words(["ten", "—"])[1] is None  # no letters to time
+
+
+def test_words_say_why_text_cannot_be_aligned():
+    chunk = _chunk_hearing([(BLANK, 2), ("T", 3)], frames=6)
+    with pytest.raises(aligner.AlignmentError, match="alphabet"):
+        chunk.words(["привет", "мир"])
+    with pytest.raises(aligner.AlignmentError, match="too short"):
+        chunk.words(["a", "much", "longer", "text", "than", "this"])
+    assert chunk.spans(["a", "much", "longer", "text", "than", "this"]) is None  # transcripts: don't know
+
+
+def test_words_raise_a_failed_pass_that_spans_swallow():
+    chunk = aligner.ChunkAligner(np.zeros(3 * TARGET_SR, np.float32), _CountingSession(fail=True), VOCAB, ENGLISH)
+    with pytest.raises(RuntimeError, match="onnxruntime failed"):
+        chunk.words(["one"])
+    chunk = aligner.ChunkAligner(np.zeros(3 * TARGET_SR, np.float32), _CountingSession(fail=True), VOCAB, ENGLISH)
+    assert chunk.spans(["one"]) is None
 
 
 class _OverflowingSession(_CountingSession):

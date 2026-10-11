@@ -77,7 +77,7 @@ def test_form_fields_are_described_and_never_null():
     # Swagger UI shows an optional field's null as `string | (string | null)`;
     # a form leaves the field out instead.
     components = _openapi()["components"]["schemas"]
-    for body in ("Body_transcribe", "Body_transcribe_batch"):
+    for body in ("Body_transcribe", "Body_transcribe_batch", "Body_align"):
         for name, field in components[body]["properties"].items():
             assert "anyOf" not in field, (body, name)
             assert field.get("description"), (body, name)

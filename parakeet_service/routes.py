@@ -20,6 +20,7 @@ from . import aligner, retime, spoken
 from .audio import load_audio
 from .chunker import plan_chunks, slice_chunks, speech_segments
 from .config import (
+    ALIGN_MAX_AUDIO_SECONDS,
     ALIGNER_CONFIGS,
     CHUNK_CONTEXT_SEC,
     CHUNK_MIN_SEC,
@@ -42,6 +43,7 @@ from .config import (
 from .model import ModelLoadError, loaded_models, runtime_status, variant_key
 from .schemas import (
     AlignerCard,
+    Alignment,
     AlignerList,
     BatchTranscription,
     ErrorResponse,
@@ -2086,3 +2088,154 @@ async def transcribe_batch(
     if cursor != len(flat_results):
         raise RuntimeError("inference result accounting mismatch")
     return {"results": response_items, "batch_size": len(response_items)}
+
+
+_ALIGNMENT_EXAMPLE_WORDS = [
+    {"word": word, "start": start, "end": end, "score": score}
+    for word, start, end, score in [
+        ("The", 0.04, 0.1, 0.97),
+        ("quick", 0.18, 0.36, 1.0),
+        ("brown", 0.42, 0.66, 0.99),
+        ("fox", 0.72, 0.94, 0.02),  # the audio said something else
+        ("jumps", 1.12, 1.36, 0.98),
+    ]
+]
+_ALIGNMENT_RESPONSES: Dict[Union[int, str], Dict[str, Any]] = {
+    200: _ok(
+        Alignment,
+        "Each word's times and score.",
+        {
+            "aligner": f"{_EXAMPLE_ALIGNER}:{ALIGNER_CONFIGS[_EXAMPLE_ALIGNER]['default_quantization']}",
+            "language": "en",
+            "duration": 1.5,
+            "words": _ALIGNMENT_EXAMPLE_WORDS,
+        }
+        if _EXAMPLE_ALIGNER
+        else None,
+    ),
+    400: _error(
+        "No text, or no file, or an empty one; an unknown aligner or quantization, or a "
+        "language it doesn't align; or text it can't align: not in its alphabet, or more "
+        "than the audio can hold.",
+        "Can't align the text: the audio is too short to hold the text",
+    ),
+    413: _error(
+        "Over a request limit: the file's size, or its decoded length.",
+        f"audio duration 75.0s exceeds the alignment limit {ALIGN_MAX_AUDIO_SECONDS:.1f}s",
+    ),
+    415: _error("The audio could not be decoded.", "Audio could not be decoded"),
+    503: _error(
+        "The aligner could not be loaded; a request after 5 minutes tries again.",
+        "Aligner 'wav2vec2-base-960h:int8' could not be loaded",
+    ),
+}
+
+
+def _decode_for_alignment(raw: bytes) -> Any:
+    """The upload's waveform, within the alignment endpoint's length limit."""
+    waveform = load_audio(raw)
+    duration = float(waveform.size) / TARGET_SR
+    if duration <= 0:
+        raise ValueError("decoded audio is empty")
+    if duration > ALIGN_MAX_AUDIO_SECONDS:
+        raise _AudioTooLong(
+            f"audio duration {duration:.1f}s exceeds the alignment limit {ALIGN_MAX_AUDIO_SECONDS:.1f}s"
+        )
+    return waveform
+
+
+def _align_words(
+    waveform: Any, words: Sequence[str], language: Optional[str], choice: Tuple[str, str]
+) -> Optional[List[Optional[aligner.Timed]]]:
+    """(start, end, score) per word from aligner `choice`, or None if it could not load."""
+    chunk = aligner.for_chunk(waveform, language, *choice)
+    return None if chunk is None else chunk.words(words)
+
+
+@router.post(
+    "/v1/audio/alignments",
+    tags=["alignment"],
+    summary="Align known text to audio",
+    responses=_ALIGNMENT_RESPONSES,
+)
+async def align(
+    request: Request,
+    file: UploadFile = File(..., description="The audio: anything FFmpeg can decode."),
+    text: str = Form(
+        ...,
+        description=(
+            "What the audio says, in order. Each run of characters between spaces is one "
+            "word of the response, punctuation and all."
+        ),
+    ),
+    aligner_name: str = Form(
+        ...,
+        alias="aligner",
+        description=(
+            "The forced aligner, e.g. `wav2vec2-base-960h`, with a precision after a colon "
+            "if you like. `GET /v1/aligners` lists them."
+        ),
+        examples=[_EXAMPLE_ALIGNER] if _EXAMPLE_ALIGNER else None,
+    ),
+    language: Optional[str] = Form(
+        None,
+        description=(
+            "The text's language as an ISO 639-1 code (`en`), or `auto` (the default): "
+            "the server's `PARAKEET_ALIGN_DEFAULT_LANGUAGE`."
+        ),
+        json_schema_extra=_form_doc(),
+    ),
+):
+    """Time each word of a text you already have (lyrics, a script, a book's
+    text) from the audio, without transcribing it, so nothing is misheard. A
+    forced aligner places every word somewhere, said or not: each word's
+    `score` tells one the audio holds from one forced onto it."""
+    words = text.split()
+    if not words:
+        raise HTTPException(status_code=400, detail="No text provided")
+    _validate_language(language)
+    choice = _validate_aligner(aligner_name)  # a required field: never None
+    code = aligner.language_code(language)
+    if not code:
+        raise HTTPException(
+            status_code=400, detail="Send `language`: this server has no default language to align"
+        )
+    _validate_aligner_language(choice[0], language)
+    raw = await _read_upload_limited(file)
+
+    started = time.perf_counter()
+    loop, state = asyncio.get_running_loop(), request.app.state
+    try:
+        waveform = await loop.run_in_executor(state.audio_pool, _decode_for_alignment, raw)
+    except _AudioTooLong as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("audio decode failed")
+        raise HTTPException(status_code=415, detail="Audio could not be decoded") from exc
+    duration = float(waveform.size) / TARGET_SR
+    key = f"{choice[0]}:{choice[1]}"
+    # The aligner's model runs on the one-worker align pool, as word requests' does.
+    try:
+        timed = await loop.run_in_executor(state.align_pool, _align_words, waveform, words, language, choice)
+    except aligner.AlignmentError as exc:
+        raise HTTPException(status_code=400, detail=f"Can't align the text: {exc}") from exc
+    if timed is None:
+        raise HTTPException(status_code=503, detail=f"Aligner {key!r} could not be loaded")
+    logger.info(
+        "align aligner=%s dur=%.2fs words=%d total=%.0fms",
+        key,
+        duration,
+        len(words),
+        (time.perf_counter() - started) * 1000,
+    )
+    return {
+        "aligner": key,
+        "language": code,
+        "duration": duration,
+        "words": [
+            {"word": word, "start": None, "end": None, "score": None}
+            if span is None
+            else {"word": word, "start": min(duration, span[0]), "end": min(duration, span[1]), "score": span[2]}
+            for word, span in zip(words, timed)
+        ],
+    }
