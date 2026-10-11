@@ -8,6 +8,7 @@ import functools
 import json
 import math
 import re
+import string
 import time
 from dataclasses import dataclass
 from itertools import accumulate
@@ -412,13 +413,34 @@ def _choose_readings(
         start = next((s[1] for s in reversed(spans[: phrase.start]) if s is not None), 0.0)
         end = next((s[0] for s in spans[phrase.end :] if s is not None), float("inf"))
         own = chunk.scores(phrase.options, start, end)
-        choice = phrase.options[own.index(max(own))]
+        choice = phrase.options[_heard_best(phrase.options, own)]
         if rivals and max(own) > float("-inf"):
             theirs = chunk.scores(rivals, start, end)
             if max(theirs) > max(own) + _CORRECTION_MARGIN:
                 choice = rivals[theirs.index(max(theirs))]
         chosen[index] = _each_zero(choice, chunk, start, end)
     return chosen
+
+
+# A reading that only adds a minor unit to another ("two pounds ten pence"
+# over "two pounds ten") wins only by this much: after a louder sentence the
+# star states can fit the word to quiet audio that never said it. Measured on
+# 300 TTS takes of "N pounds MM", clean and 15 dB below the sentence before:
+# it won by 6.7 once when not said, and by 10.5-58.5 in all 15 said.
+_UNIT_MARGIN = 8.0
+
+
+def _heard_best(options: Sequence[str], scores: Sequence[float]) -> int:
+    """Index of the reading in `options` that scored best, but one that only
+    adds a minor unit to another wins over it only by _UNIT_MARGIN."""
+    best = scores.index(max(scores))
+    said = [option.rstrip(string.punctuation) for option in options]
+    head, _, last = said[best].rpartition(" ")
+    if last in spoken.MINOR_UNITS and head in said:
+        shorter = said.index(head)
+        if scores[best] - scores[shorter] < _UNIT_MARGIN:
+            return shorter
+    return best
 
 
 def _each_zero(said: str, chunk: aligner.ChunkAligner, start: float, end: float) -> str:

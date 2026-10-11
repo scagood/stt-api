@@ -712,6 +712,25 @@ def test_a_failure_keeps_parakeets_text(monkeypatch, caplog):
     assert ear.timed[-1] == ["That'll", "be", "£2.10", "please."] and words[2]["start"] == 2.0
 
 
+class _ScoredEar(_Ear):
+    """Scores each reading in `heard` as given, every other reading -100."""
+
+    def __init__(self, **heard):
+        super().__init__()
+        self.heard = heard
+
+    def scores(self, options, start, end):
+        return [self.heard.get(option, -100.0) for option in options]
+
+
+@pytest.mark.parametrize(("lead", "said"), [(7.0, "two pounds ten"), (9.0, "two pounds ten pence")])
+def test_a_reading_that_only_adds_pence_needs_a_clear_lead(monkeypatch, lead, said):
+    # a quiet "two pounds ten" after a louder sentence: "pence" fits the star states
+    ear = _ScoredEar(**{"two pounds ten.": 0.0, "two pounds ten pence.": lead})
+    monkeypatch.setattr(routes.aligner, "for_chunk", lambda *_: ear)
+    assert routes._stitch(_prepared(), [_result("It was £2.10.")], speak=True, aligner_choice=EAR)[0] == f"It was {said}."
+
+
 class _MarginEar(_Ear):
     """Scores the rival "two pounds ten." `lead`, Parakeet's own "one pound
     and ten pence." `own`, and every other reading `other`."""

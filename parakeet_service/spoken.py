@@ -53,6 +53,8 @@ _CURRENCIES = {
     "£": _Currency("pound", "pounds", "penny", "pence", "quid", "quid"),
     "€": _Currency("euro", "euros", "cent", "cents", "euro", "euro"),  # "thirty euro"
 }
+# routes hears a reading that only adds one of these less readily
+MINOR_UNITS = frozenset(word for currency in _CURRENCIES.values() for word in currency[2:4])
 # Unit abbreviations after a number, as (singular, plural). "£25", "25 lb" and
 # "25lb" are all said "twenty-five pounds", and ASR often writes money as weight
 # or the other way round.
