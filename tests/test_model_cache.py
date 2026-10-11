@@ -21,7 +21,6 @@ def _stub_loader(monkeypatch, tmp_path, cache_size, calls=None):
     monkeypatch.setattr(m, "_MODELS", OrderedDict())
     monkeypatch.setattr(m, "_RUNTIMES", {})
     monkeypatch.setattr(m, "_LOADING", {})
-    monkeypatch.setattr(m, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(m, "_resolve_providers", lambda: ["CPUExecutionProvider"])
     monkeypatch.setattr(m, "_validate_gpu_binding", lambda *a, **k: None)
     monkeypatch.setattr(m, "_build_sess_options", lambda *a, **k: None)
