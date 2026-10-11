@@ -786,13 +786,18 @@ def _stitch(
         said = None
         if speak:
             try:
-                said = _speak_numbers(chunk_words, chunk)
+                # Whisper has text only: say its numbers out from that text's words.
+                said = _speak_numbers(
+                    chunk_words or _spread(info["text"].split(), chunk_start, chunk_end), chunk
+                )
             except Exception:  # it refines a finished transcript: never a 500 for it
-                logger.exception("spoken numbers failed; keeping Parakeet's text")
+                logger.exception("spoken numbers failed; keeping the model's text")
         if said is not None:
-            # Text and words are rewritten together so they always agree.
-            chunk_words = said
-            segments[-1]["segment"] = _clean_text(" ".join(w["word"] for w in chunk_words))
+            # Text and words are rewritten together so they always agree; a
+            # text-only chunk's words come from its text below.
+            segments[-1]["segment"] = info["text"] = _clean_text(" ".join(w["word"] for w in said))
+            if chunk_words:
+                chunk_words = said
 
         # A text-only result (Whisper) has no tokens, so no word spans exist to
         # align. When alignment will run, split the transcript into words with

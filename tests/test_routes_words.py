@@ -983,3 +983,13 @@ def test_a_catalog_without_the_default_aligner_hears_no_numbers(monkeypatch):
     monkeypatch.delenv("PARAKEET_SPOKEN_NUMBERS_ALIGNER", raising=False)
     monkeypatch.setattr(config, "ALIGNER_CONFIGS", {k: v for k, v in config.ALIGNER_CONFIGS.items() if k != BASE})
     assert config._numbers_aligner() is None
+
+
+def test_a_text_only_whisper_chunk_says_its_numbers_too():
+    prepared = routes._PreparedAudio(
+        waveform=None, ranges=[(0, 2 * TARGET_SR)], windows=[(0, 2 * TARGET_SR)], speech=[],
+        pieces=["piece"], duration=2.0,
+    )
+    text, segments, words = routes._stitch(prepared, [SimpleNamespace(text="That'll be £2.10 please.")], speak=True)
+    assert text == segments[0]["segment"] == "That'll be two pounds ten please."
+    assert words == []  # no aligner: Whisper still has no word times
