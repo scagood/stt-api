@@ -679,6 +679,33 @@ its input ended. Every word the chunk heard stays. Each such stretch costs one m
 it. On a clip short enough to be one chunk, VAD runs only once it has 3 s or
 more with no word. A redo that fails keeps what was heard.
 
+**Made-up last words.** Where audio ends in a pause, Parakeet can add a word
+that was never said: a clip ending half a second after "he muttered" came back
+as "he muttered, and" (#110). Where the input ends decides it, so the same
+audio a little shorter, or with its pause a little longer, hears no such word,
+while a word that was said is heard either way. VAD can't tell them apart: the
+model times a made-up word inside the speech before the pause as often as
+after it. So the end of a clip, and of each chunk that ends at the end of the
+audio or at a long silence cut out, is decoded twice more (its last 8 s, or
+from 1 s before the word ahead of the checked ones): 0.2 s shorter, and with its
+last 0.3 s played again backwards. Words starting in the last 2 s that neither
+hears, after the last word both do, are dropped. Both must hear the word
+before them, as the same word, one like it ("Lori" for "Lorry"), split in two,
+or any number for a number ("three" for "III"): Parakeet sometimes returns
+nothing at all for a clip, depending on where it ends, and that is no sign.
+Audio that ends inside speech, its last 100 ms within 15 dB of its speech, is
+not checked: cut in its last word, both decodes lose that word too.
+
+Of 1,697 clips of 3.5-12 s from LibriVox's *Alice* and *Sherlock Holmes*, each
+ending between 0.2 s before and 1.5 s after the speech before a pause, the
+check dropped 77 words from 52 clips (`and`, `but`, `that`, `for`, once "I'm
+not sure what I'm gonna do."), each one never said, and no word that was. It
+costs two decodes of up to 8 s per clip, or per such chunk, and none where the
+last word starts more than 2 s before the end or the audio ends in speech. On
+4 CPU cores with `parakeet-v3:int8`, 200 of those clips took a median 1.37 s
+each instead of 0.55 s; whole chapters took as long as before.
+`PARAKEET_CHECK_ENDINGS=false` turns it off. If they fail, every word stays.
+
 **Finding pauses.** By default a pause is any stretch of 20 ms frames quieter
 than the gate, which takes under 0.3 ms of CPU per second of audio.
 `PARAKEET_VAD=silero` asks Silero-VAD instead, at about 10 ms per second, all
@@ -782,6 +809,7 @@ fixed `PARAKEET_VAD_GATE_DB`, which is never heard again.
 | `PARAKEET_ALIGN_DEFAULT_LANGUAGE` | `en` | language assumed for [word timestamps](#word-timestamps) and [spoken numbers](#spoken-numbers) when a request sends none; empty uses them only when `language` is sent |
 | `PARAKEET_SPOKEN_NUMBERS` | `false` | spoken numbers for requests that don't send `spoken_numbers` |
 | `PARAKEET_RETIME_WORDS` | `false` | [`retime_words`](#word-timestamps) for requests that don't send it: move Parakeet's word times out of pauses |
+| `PARAKEET_CHECK_ENDINGS` | `true` | decode the end of each clip twice more to drop words Parakeet makes up where the audio ends in a pause (see **Made-up last words** above) |
 
 ### Request limits
 
