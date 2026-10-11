@@ -254,13 +254,15 @@ def _prepare_audio(
     context_sec: float = 0.0,
     vad_filter: bool = False,
 ) -> _PreparedAudio:
-    waveform = load_audio(raw)
+    # Decoding stops just past the limit, so `duration` is a lower bound
+    # once it is over.
+    waveform = load_audio(raw, MAX_AUDIO_SECONDS)
     duration = float(waveform.size) / TARGET_SR
     if duration <= 0:
         raise ValueError("decoded audio is empty")
     if duration > MAX_AUDIO_SECONDS:
         raise _AudioTooLong(
-            f"audio duration {duration:.1f}s exceeds limit {MAX_AUDIO_SECONDS:.1f}s"
+            f"audio duration exceeds limit {MAX_AUDIO_SECONDS:.1f}s"
         )
     plan = plan_chunks(
         waveform,
@@ -1037,21 +1039,29 @@ def _redo_windows(window: Tuple[int, int], stretches: Sequence[Tuple[int, int]])
     """What to decode again for the stretches a piece decoding `window`
     skipped: each with _REDO_MARGIN_SEC either side, within the window, those
     that then overlap as one. Where one is the whole window, which would come
-    back the same, the span of its stretches alone; none where that is the
-    whole window too."""
+    back the same, the span of its stretches alone; where that is the whole
+    window too, each stretch on its own, with its margins unless they make it
+    the whole window: a piece that heard only a short stretch between them
+    (#96). None for a lone stretch that is the whole window."""
     margin = int(_REDO_MARGIN_SEC * TARGET_SR)
-    joined: List[Tuple[int, int, int, int]] = []  # (start, stop, its first stretch's start, its last's end)
-    for low, high in stretches:
-        start, stop = max(window[0], low - margin), min(window[1], high + margin)
+    whole = tuple(window)
+
+    def margined(stretch: Tuple[int, int]) -> Tuple[int, int]:
+        return max(window[0], stretch[0] - margin), min(window[1], stretch[1] + margin)
+
+    joined: List[Tuple[int, int, List[Tuple[int, int]]]] = []  # (start, stop, its stretches)
+    for stretch in stretches:
+        start, stop = margined(stretch)
         if joined and start <= joined[-1][1]:
-            joined[-1] = (joined[-1][0], stop, joined[-1][2], high)
+            joined[-1] = (joined[-1][0], stop, [*joined[-1][2], stretch])
         else:
-            joined.append((start, stop, low, high))
+            joined.append((start, stop, [stretch]))
     redos = []
-    for start, stop, low, high in joined:
-        redo = next((span for span in ((start, stop), (low, high)) if span != tuple(window)), None)
-        if redo is not None:
-            redos.append(redo)
+    for start, stop, inside in joined:
+        choices = [[(start, stop)], [(inside[0][0], inside[-1][1])]]
+        if len(inside) > 1:  # each on its own: with two or more, none is the whole window
+            choices.append([margined(stretch) if margined(stretch) != whole else stretch for stretch in inside])
+        redos += next((spans for spans in choices if whole not in spans), [])
     return redos
 
 

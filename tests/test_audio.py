@@ -107,7 +107,7 @@ def test_wav_info_rejects_non_wav_bytes():
 def test_load_audio_uses_ffmpeg_only_when_conversion_is_needed(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        audio, "_ffmpeg_decode", lambda data: calls.append(data) or np.float32([0.25])
+        audio, "_ffmpeg_decode", lambda data, max_seconds=None: calls.append(data) or np.float32([0.25])
     )
     pcm = struct.pack("<2h", 16384, -16384)
 
@@ -219,3 +219,89 @@ def test_ffmpeg_decode_handles_a_non_wav_container():
     assert audio._wav_info(flac) is None  # not a WAV, so the fast path declines it
     result = audio.load_audio(flac)
     assert result.ndim == 1 and result.size > 0 and np.isfinite(result).all()
+
+
+def tone_flac(seconds: float) -> bytes:
+    import subprocess
+
+    return subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-f", "flac", "pipe:1"],
+        input=tone_wav(seconds, rate=44_100, channels=1), capture_output=True, check=True,
+    ).stdout
+
+
+def decoded_by_prepare(monkeypatch, data: bytes, limit: float):
+    """Run routes._prepare_audio with a `limit` second cap; return how many
+    seconds it decoded and whether it refused the audio as too long."""
+    from parakeet_service import routes
+
+    sizes = []
+
+    def spy(*args, **kwargs):
+        waveform = audio.load_audio(*args, **kwargs)
+        sizes.append(waveform.size)
+        return waveform
+
+    monkeypatch.setattr(routes, "MAX_AUDIO_SECONDS", limit)
+    monkeypatch.setattr(routes, "load_audio", spy)
+    try:
+        routes._prepare_audio(data, 60.0, 75.0, 20.0, 5.0)
+        refused = False
+    except routes._AudioTooLong:
+        refused = True
+    return sizes[0] / TARGET_SR, refused
+
+
+@requires_ffmpeg
+@pytest.mark.parametrize("encode", [tone_flac, lambda s: tone_wav(s, rate=TARGET_SR, channels=1)],
+                         ids=["ffmpeg", "wav"])
+def test_prepare_stops_decoding_just_past_the_length_limit(monkeypatch, encode):
+    # A small upload of long audio is refused after decoding about the limit,
+    # not after decoding (and holding) all of it.
+    seconds, refused = decoded_by_prepare(monkeypatch, encode(60.0), limit=3.0)
+    assert refused
+    assert 3.0 < seconds <= 4.1
+
+
+@requires_ffmpeg
+@pytest.mark.parametrize("encode", [tone_flac, lambda s: tone_wav(s, rate=TARGET_SR, channels=1)],
+                         ids=["ffmpeg", "wav"])
+def test_prepare_still_decodes_audio_near_the_limit_in_full(monkeypatch, encode):
+    seconds, refused = decoded_by_prepare(monkeypatch, encode(2.9), limit=3.0)
+    assert not refused and seconds == pytest.approx(2.9, abs=0.01)
+    seconds, refused = decoded_by_prepare(monkeypatch, encode(3.1), limit=3.0)
+    assert refused and seconds == pytest.approx(3.1, abs=0.01)
+
+
+def late_audio_mkv() -> bytes:
+    # 2.5 s of audio that starts 2 s after the video.
+    import subprocess
+
+    return subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error",
+         "-f", "lavfi", "-i", "color=c=black:s=16x16:r=5:d=5",
+         "-itsoffset", "2", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=2.5",
+         "-map", "0:v", "-map", "1:a", "-c:v", "mpeg4", "-c:a", "flac", "-f", "matroska", "pipe:1"],
+        capture_output=True, check=True,
+    ).stdout
+
+
+def jumping_audio_mkv() -> bytes:
+    # 2.5 s of audio whose timestamps jump 5 s ahead halfway through.
+    import subprocess
+
+    return subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error",
+         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=2.5",
+         "-af", r"asetpts=PTS+gte(T\,1.25)*5/TB", "-c:a", "flac", "-f", "matroska", "pipe:1"],
+        capture_output=True, check=True,
+    ).stdout
+
+
+@requires_ffmpeg
+@pytest.mark.parametrize("encode", [late_audio_mkv, jumping_audio_mkv], ids=["late-start", "pts-jump"])
+def test_prepare_caps_decoded_samples_not_timestamps(monkeypatch, encode):
+    # The decode, like main's, joins samples without filling timestamp gaps,
+    # so a cap on timestamps would cut this 2.5 s track short and accept it.
+    seconds, refused = decoded_by_prepare(monkeypatch, encode(), limit=3.0)
+    assert not refused and seconds == pytest.approx(2.5, abs=0.01)
