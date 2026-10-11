@@ -1453,6 +1453,11 @@ _PAUSE_END_DB = 15.0
 # Two decodes of a word near the end of their input time it up to about half a
 # second apart (_REDO_EARLY_SEC): words this far apart can be the same one.
 _MADE_UP_MATCH_SEC = 1.0
+# A word a decode of the ending starts this near one the piece heard, but for
+# the word before it, is speech there heard another way ("bit" as "bed.",
+# "him" as "employee."), not a made-up word: it stays (#112's review).
+_SPOKEN_BEFORE_SEC = 0.1
+_SPOKEN_AFTER_SEC = 0.15
 # The context a word at the start of an ending's audio is given.
 _ENDING_LEAD_SEC = 1.0
 
@@ -1517,11 +1522,20 @@ def _heard_in(words: Sequence[Tuple[str, int]], word: str, at: int) -> bool:
     )
 
 
+def _spoken_at(words: Sequence[Tuple[str, int]], at: int, before: str) -> bool:
+    """Whether `words` ((word, sample) each) hold a word other than `before`
+    starting where one was heard at sample `at`: _SPOKEN_BEFORE_SEC before it
+    to _SPOKEN_AFTER_SEC after."""
+    low, high = at - int(_SPOKEN_BEFORE_SEC * TARGET_SR), at + int(_SPOKEN_AFTER_SEC * TARGET_SR)
+    return any(low <= there <= high and _seam_key(word) != _seam_key(before) for word, there in words)
+
+
 def _made_up_end(result: Any, window_start: int, window_end: int, begin: int, again: Sequence[Any]) -> Optional[Any]:
     """`result` (decoded from sample `window_start` to `window_end`) without
     the words it made up as its input ended: those starting in its last
     _MADE_UP_SEC after the last word both decodes of its ending (`again`,
-    from sample `begin`) heard too, when neither hears them; and only when
+    from sample `begin`) heard too, when neither hears them (_heard_in) nor
+    any other word starting where they do (_spoken_at); and only when
     both heard the word just before them, so a decode that lost the speech
     (Parakeet can return nothing for a whole clip) is no sign. None if it
     keeps every word."""
@@ -1535,7 +1549,12 @@ def _made_up_end(result: Any, window_start: int, window_end: int, begin: int, ag
         heard.append([(word, begin + int(other["timestamps"][first] * TARGET_SR)) for word, first, _last in _word_spans(other["tokens"])])
     latest = window_end - int(_MADE_UP_SEC * TARGET_SR)
     keep = len(found)
-    while keep > 1 and found[keep - 1][1] >= latest and not any(_heard_in(words, *found[keep - 1]) for words in heard):
+    while (
+        keep > 1
+        and found[keep - 1][1] >= latest
+        and not any(_heard_in(words, *found[keep - 1]) for words in heard)
+        and not any(_spoken_at(words, found[keep - 1][1], found[keep - 2][0]) for words in heard)
+    ):
         keep -= 1
     if keep == len(found) or not all(_heard_in(words, *found[keep - 1]) for words in heard):
         return None

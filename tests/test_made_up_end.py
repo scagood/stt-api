@@ -149,6 +149,24 @@ async def test_a_word_one_decode_of_the_ending_hears_stays():
     assert _words(result)[-1] == "and"
 
 
+@pytest.mark.asyncio
+async def test_a_word_heard_as_another_at_the_same_spot_stays():
+    # #112's review: "...eat some of the other bit" came back "bed." from the
+    # clip, and "bit" from a decode of its ending: speech there, so it stays.
+    said = SAID[:-1] + [("muttered", 3.5), ("bed.", 3.9)]
+
+    class _Hard(_Parakeet):
+        def hear(self, piece):
+            result = super().hear(piece)
+            if len(self.pieces) > 1:  # the decodes of its ending hear it another way
+                tokens = [" bit." if token == " bed." else token for token in result.tokens]
+                result = SimpleNamespace(text=routes._decoded(tokens), tokens=tokens, timestamps=result.timestamps)
+            return result
+
+    [result], worker = await _checked(_clip(), fake=_Hard, made_up=(), said=said)
+    assert len(worker.pieces) == 3 and _words(result)[-1] == "bed."
+
+
 def test_a_word_heard_another_way_is_the_same_word():
     at = 3 * TARGET_SR
     assert routes._heard_in([("rat", at - 1000), ("hole.", at + 2000)], "rat-hole.", at)

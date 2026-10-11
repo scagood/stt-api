@@ -692,14 +692,18 @@ last 0.3 s played again backwards. Words starting in the last 2 s that neither
 hears, after the last word both do, are dropped. Both must hear the word
 before them, as the same word, one like it ("Lori" for "Lorry"), split in two,
 or any number for a number ("three" for "III"): Parakeet sometimes returns
-nothing at all for a clip, depending on where it ends, and that is no sign.
+nothing at all for a clip, depending on where it ends, and that is no sign. A
+word stays, too, where either decode hears another word starting with it
+(from 0.1 s before to 0.15 s after): that is speech heard another way ("bit"
+as "bed."), not a made-up word.
 Audio that ends inside speech, its last 100 ms within 15 dB of its speech, is
 not checked: cut in its last word, both decodes lose that word too.
 
 Of 1,697 clips of 3.5-12 s from LibriVox's *Alice* and *Sherlock Holmes*, each
 ending between 0.2 s before and 1.5 s after the speech before a pause, the
-check dropped 77 words from 52 clips (`and`, `but`, `that`, `for`, once "I'm
-not sure what I'm gonna do."), each one never said, and no word that was. It
+check dropped 49 words from 39 clips (`and`, `but`, `that`, `for`, once "and
+the wrong way."), each one never said, and no word that was. Main had made up a
+word at the end of 13 more of them, which the check keeps. It
 costs two decodes of up to 8 s per clip, or per such chunk, and none where the
 last word starts more than 2 s before the end or the audio ends in speech. On
 4 CPU cores with `parakeet-v3:int8`, 200 of those clips took a median 1.37 s
