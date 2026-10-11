@@ -752,6 +752,41 @@ async def test_issue_93_whisper_keeps_apostrophe_led_words_apart(calls):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("response_format", ["verbose_json", "srt"])
+async def test_issue_93_parakeet_keeps_a_word_opening_with_an_apostrophe_apart(calls, response_format):
+    # Parakeet v3 has a "▁'" token, and onnx_asr's text glues the word it opens
+    # to the one before; a contraction's "'" carries no marker and stays joined.
+    tokens = [" I", " loved", " the", " '", "8", "0", "s", " '", "cause", " don", "'", "t", " stop", "."]
+
+    class Worker:
+        async def submit_many(self, pieces, _model_name):
+            return [SimpleNamespace(
+                text="I loved the'80s'cause don't stop.",  # as onnx_asr joins `tokens`
+                tokens=tokens, timestamps=[0.1 * i for i in range(len(tokens))],
+            ) for _ in pieces]
+
+    state = _state()
+    state.worker = Worker()
+    try:
+        response = await routes.transcribe(
+            request=SimpleNamespace(app=SimpleNamespace(state=state)),
+            file=UploadFile(io.BytesIO(b"piece"), filename="a.wav"),
+            model="parakeet-v3", quantization=None, response_format=response_format,
+            timestamp_granularities=["word"], timestamp_granularities_plain=None, language=None,
+            prompt=None, temperature=None, spoken_numbers=False, aligner_name=None,
+        )
+    finally:
+        state.audio_pool.shutdown()
+        state.align_pool.shutdown()
+    if response_format == "srt":
+        assert "I loved the '80s 'cause don't stop." in response.body.decode()
+        return
+    body = json.loads(response.body)
+    assert body["text"] == "I loved the '80s 'cause don't stop."
+    assert [w["word"] for w in body["words"]] == ["I", "loved", "the", "'80s", "'cause", "don't", "stop."]
+
+
+@pytest.mark.asyncio
 async def test_issue_93_spoken_numbers_keep_an_apostrophe_led_word_apart(calls, speak):
     body = await _transcribe(text="Back in the '90s 'cause why not.")
     assert body["text"] == "Back in the 'nineties 'cause why not."
