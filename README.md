@@ -525,10 +525,10 @@ then stays loaded until it goes unused for `PARAKEET_MODEL_IDLE_TIMEOUT_SEC`.
 
 With `PARAKEET_TRANSCRIBE_UI=true`, `GET /` and `GET /transcribe` serve a page
 for getting the transcript of one file without the API, with links to `/docs`
-and, when it is on, `/compare`. Pick a file (or drop it
-on the page, or record one from the microphone), choose a model, an optional
-aligner, a language and the `spoken_numbers`, `vad_filter` and `retime_words`
-toggles, which start at the server's own defaults. **Transcribe** sends the
+and, when it is on, `/compare`. Pick a file (or drop it on the page, or record
+one from the microphone), choose a model, an optional aligner, a language and
+the `spoken_numbers`, `vad_filter` and `retime_words` toggles, which start at
+the server's own defaults. **Transcribe** sends the
 file as it is to `/v1/audio/transcriptions`, so the server decodes it and its
 limits apply; the page warns before sending a file near
 `PARAKEET_MAX_UPLOAD_BYTES` or `PARAKEET_MAX_AUDIO_SECONDS`, and shows the
@@ -537,6 +537,11 @@ segment: click a time to hear the segment, or a word to hear the word. From the
 keyboard, the arrow keys step through words and segments, Enter plays a word
 and Shift+Enter its segment. Copy the text, or download it as text, SRT, VTT
 or the `verbose_json` response.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/transcribe-dark.webp">
+  <img src="docs/images/transcribe-light.webp" alt="The transcription page: a 10-minute LibriVox chapter transcribed by parakeet-v3:int8, listed by segment, with one word selected" width="780">
+</picture>
 
 Browsers allow the microphone only over HTTPS or on `localhost`; on a plain
 HTTP host the page says so and still takes files. The page is off by default,
