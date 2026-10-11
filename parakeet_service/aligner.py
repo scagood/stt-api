@@ -156,7 +156,9 @@ _CHOICE_STAR_PENALTY = 3.0
 # twenty-two" 15 dB below the sentence before it scored as "ten twenty-two".
 # So readings are heard in their own stretch of audio, with this much either
 # side for context, normalised on its own. Measured on that recording: 0.5-1 s
-# lead by 15-19 log-prob, 2 s by 2.
+# lead by 15-19 log-prob, 2 s by 2. Louder speech in that context is turned
+# down to the window's level: on quiet amounts after a louder sentence, left
+# as is it lost "pounds" twice as often.
 _CHOICE_CONTEXT = TARGET_SR
 _NEG_INF = -1e30
 # A failed load (no network, no cached model) is retried after this long.
@@ -309,6 +311,11 @@ def evict_idle(timeout: float) -> list[str]:
     for key in keys:
         logger.info("Evicted word aligner %s (unused for %.0fs)", key, timeout)
     return keys
+
+
+def _rms(wav: np.ndarray) -> float:
+    """Root mean square of `wav`, 0 when it is empty."""
+    return float(np.sqrt(np.mean(np.square(wav, dtype=np.float64)))) if wav.size else 0.0
 
 
 def _emission(session: Any, wav: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -616,12 +623,27 @@ class ChunkAligner:
             return whole
         if (first, last) not in self._stretches:
             try:
-                emission, frame_starts = _emission(self._session, self._wav[first:last])
+                emission, frame_starts = _emission(self._session, self._level_context(first, last, start, end))
                 self._stretches[first, last] = emission, frame_starts + first / TARGET_SR
             except Exception:
                 logger.exception("wav2vec2 pass over a reading failed; keeping the default reading")
                 self._stretches[first, last] = np.empty((0, 0)), np.empty(0)
         return self._stretches[first, last]
+
+    def _level_context(self, first: int, last: int, start: float, end: float) -> np.ndarray:
+        """The audio from sample `first` to `last`, its context either side of
+        `start`..`end` seconds turned down to that window's level where it is
+        louder, so the louder speech around a quiet reading doesn't set the
+        level it is heard at."""
+        piece = self._wav[first:last].astype(np.float32)  # a copy
+        low = max(0, int(start * TARGET_SR) - first)
+        high = piece.size if math.isinf(end) else min(piece.size, math.ceil(end * TARGET_SR) - first)
+        level = _rms(piece[low:high])
+        for side in (slice(0, low), slice(high, piece.size)):
+            around = _rms(piece[side])
+            if around > level > 0:
+                piece[side] *= level / around
+        return piece
 
     def scores(self, options: Sequence[str], start: float, end: float) -> list[float]:
         """How well each reading in `options` matches the audio between `start`

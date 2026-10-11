@@ -529,6 +529,18 @@ def test_a_quiet_reading_is_heard_at_its_own_level():
     assert session.runs == 3  # the chunk, then each stretch once
 
 
+def test_louder_speech_next_to_a_quiet_reading_is_turned_down():
+    # "now" said loud just before "ten" 34 dB quieter: it is inside the
+    # stretch's second of context, so unless it is turned down to the
+    # window's level it still sets the level "ten" is heard at.
+    wav = np.concatenate([
+        _said("NOW", 1.0), np.zeros(TARGET_SR // 5), _said("TEN", 0.02), np.zeros(17 * TARGET_SR // 10),
+    ]).astype(np.float32)
+    chunk = aligner.ChunkAligner(wav, _LevelSession(), VOCAB, ENGLISH)
+    assert chunk.best(["t", "ten"], 0.5, 0.8) == 1
+    assert chunk.best(["no", "now"], 0.0, 0.3) == 1  # and the loud one, quieter speech around it left alone
+
+
 def test_words_time_and_score_text_the_caller_has():
     chunk = _chunk_hearing([(BLANK, 2), ("T", 3), (BLANK, 1), ("E", 3), (BLANK, 1), ("N", 3)], frames=16)
     (start, end, score), = chunk.words(["ten"])

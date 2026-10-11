@@ -418,8 +418,15 @@ def _amount_and_unit(n: _Numeral, *, scaled: bool) -> list[tuple[str, str]]:
 
 def _pounds_and_pence(name: _Currency, major: int, cents: int, *, minor: str = "") -> list[str]:
     """"£2.10" -> "two pounds ten", "two pounds and ten pence", "two pounds ten
-    pence", "two pounds ten p", "two quid ten", "two ten"; "$0.50" -> "fifty
-    cents". `minor`: only the ways that say it, as written ("£11.40p")."""
+    pence", "two quid ten", "two ten"; "$0.50" -> "fifty cents", "£0.50" ->
+    "fifty pence", "fifty p". `minor`: only the ways that say it, as written
+    ("£11.40p").
+
+    "two pounds ten p" only when the "p" is written: Parakeet writes a "p"
+    that was said ("£9.90p", in all 16 TTS takes of it), and heard against the
+    audio the lone letter wins without being said (a breath, or the "p" of
+    "please" next to it), by as much as it leads when it was said (3-25
+    against 2-23)."""
     said = _cardinal(cents)
     minors = [name.minor_one if cents == 1 else name.minor_many, *(["p"] if name.minor_many == "pence" else [])]
     if not major:
@@ -435,7 +442,7 @@ def _pounds_and_pence(name: _Currency, major: int, cents: int, *, minor: str = "
         options.append(f"{head} {unit} {said}")
         # "and forty pence", but "forty p" only without the "and" (unless the p is written, above)
         options.append(f"{head} {unit} and {said} {minors[0]}")
-        options += [f"{head} {unit} {said} {each}" for each in minors]
+        options.append(f"{head} {unit} {said} {minors[0]}")
     options += [f"{head} {slang} {said}" for head in heads]  # "a quid fifty", "a buck fifty"
     options += [f"{head} {_cents(cents)}" for head in _amounts(major)]  # "two ten", "one oh five"
     return _unique(options)

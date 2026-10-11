@@ -371,14 +371,16 @@ a code or a time is read as an amount (`911` as "nine hundred eleven",
 `wav2vec2-base-960h`; the other aligners haven't been measured for it yet.
 
 **Cost.** Most chunks with a number need the aligner (97% in our test corpus),
-whether or not the request names one: roughly 2 s per 30 s chunk on a 4-core
-CPU, plus up to 0.9 s to choose on a dense chunk. Hearing each number's own
-stretch of audio adds a pass over it: about 80% more aligner time on a chunk
-dense with numbers (14 in 44 s), less where they are sparse. They queue with
-word requests on the aligner's single worker, so audio with numbers in it is
-heard at about 13x real time (measured before that pass) however many requests
-are waiting. Requests whose
-numbers have nothing to decide (`6pm`) aren't held up.
+whether or not the request names one: it downloads on first use (~95 MB) and
+stays loaded, and each such chunk queues with word requests on the aligner's
+single worker. Each number is then heard once more, in its own stretch of
+audio. On a 44 s chunk with 14 numbers (a 4-core cloud CPU), saying the numbers
+took 3.5 s with fixed readings and 22-25 s heard; a clip with one number went
+from 0.6 s to 1.2 s. Requests whose numbers have nothing to decide (`6pm`)
+aren't held up. Without Hugging Face access, set
+`PARAKEET_SPOKEN_NUMBERS_ALIGNER=` (or fill the cache beforehand): otherwise
+each failed download falls back to fixed readings and is retried every 5
+minutes.
 
 **Language.** English only, decided as for word timestamps: a request without
 `language` is taken as `PARAKEET_ALIGN_DEFAULT_LANGUAGE`. A chunk mostly in

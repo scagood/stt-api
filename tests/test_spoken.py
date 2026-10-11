@@ -241,11 +241,14 @@ def test_after_a_or_an_the_article_is_said_once_and_the_unit_is_singular(written
     assert not any(option.startswith(("a ", "the ")) for option in _heard(written))
 
 
-def test_a_spoken_p_follows_no_and_unless_it_is_written():
-    # "eleven pounds and forty p" beat the "and forty pence" said by 0.3 on the benchmark
+def test_a_spoken_p_after_pounds_is_only_heard_where_it_is_written():
+    # "eleven pounds and forty p" beat the "and forty pence" said by 0.3 on the benchmark;
+    # "twelve pounds forty p" won with no "p" said, from a breath or the next word's "p"
     assert "eleven pounds and forty p" not in _options("£11.40")
-    assert "eleven pounds forty p" in _options("£11.40")
-    assert "eleven pounds and forty p" in _options("£11.40p")
+    assert "eleven pounds forty p" not in _options("£11.40")
+    assert "eleven pounds forty pence" in _options("£11.40")
+    assert {"eleven pounds forty p", "eleven pounds and forty p"} <= set(_options("£11.40p"))
+    assert "forty p" in _options("£0.40")
 
 
 def test_a_scale_word_the_readings_cannot_say_leaves_the_number_as_written():
