@@ -67,6 +67,8 @@ audio { width: 100%; height: 40px; }
 progress { width: min(320px, 100%); accent-color: var(--accent); }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .toolbar h2 { margin-right: auto; }
+.keys summary { cursor: pointer; color: var(--accent); }
+.keys[open] { flex-basis: 100%; }
 .segments { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .segments li { display: grid; grid-template-columns: 5em minmax(0, 1fr); align-items: baseline; gap: 10px; padding: 2px 6px; border-radius: 4px; }
 .segments li.now { box-shadow: inset 3px 0 var(--accent); }
@@ -133,8 +135,10 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
         <button class="btn" type="button" data-download="json" aria-label="Download as JSON">JSON</button>
       </span>
     </div>
-    <p class="hint" id="resultInfo" role="status"></p>
-    <p class="hint" id="keysHelp">Click a time or a word to play it. Keys in the transcript: left/right for words, up/down for segments, Enter to play, Shift+Enter for the segment, Escape to stop.</p>
+    <div class="row">
+      <span class="hint" id="resultInfo" role="status"></span>
+      <details class="hint keys"><summary>Keys</summary><p id="keysHelp">Click a time or a word to play it. In the transcript: left/right for words, up/down for segments, Enter plays, Shift+Enter plays the segment, Escape stops.</p></details>
+    </div>
     <ol class="segments" id="segments" aria-describedby="keysHelp"></ol>
   </section>
 </div>
