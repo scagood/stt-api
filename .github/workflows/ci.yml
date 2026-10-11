@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The Docker workflow runs these before it publishes images.
+  workflow_call:
 
 permissions:
   contents: read
