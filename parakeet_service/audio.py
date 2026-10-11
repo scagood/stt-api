@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import subprocess
+import tempfile
 import wave
 from io import BytesIO
 from pathlib import Path
@@ -83,8 +84,10 @@ def _past(max_seconds: float) -> int:
     return int((max_seconds + 1.0) * TARGET_SR)
 
 
-def _ffmpeg_decode(data: bytes, max_seconds: Optional[float] = None) -> np.ndarray:
-    """Decode a container/codec to mono 16 kHz float32 with one FFmpeg call.
+def _run_ffmpeg(
+    source: str, data: Optional[bytes], max_seconds: Optional[float]
+) -> bytes:
+    """Run one ffmpeg decode of `source` to mono 16 kHz s16le and return it.
 
     With `max_seconds`, ffmpeg stops one second past it (see `load_audio`).
     The cap counts decoded samples, not timestamps (`-t`): audio that starts
@@ -102,7 +105,7 @@ def _ffmpeg_decode(data: bytes, max_seconds: Optional[float] = None) -> np.ndarr
         "-loglevel",
         "error",
         "-i",
-        "pipe:0",
+        source,
         "-map",
         "0:a:0",
         "-vn",
@@ -121,6 +124,7 @@ def _ffmpeg_decode(data: bytes, max_seconds: Optional[float] = None) -> np.ndarr
         process = subprocess.run(
             command,
             input=data,
+            stdin=None if data is not None else subprocess.DEVNULL,
             capture_output=True,
             check=False,
             timeout=FFMPEG_TIMEOUT_SEC,
@@ -134,9 +138,28 @@ def _ffmpeg_decode(data: bytes, max_seconds: Optional[float] = None) -> np.ndarr
     if process.returncode != 0:
         error = process.stderr.decode(errors="replace").strip()[:500]
         raise RuntimeError(f"ffmpeg decode failed: {error or 'unknown error'}")
-    if not process.stdout:
+    return process.stdout
+
+
+def _ffmpeg_decode(data: bytes, max_seconds: Optional[float] = None) -> np.ndarray:
+    """Decode a container/codec to mono 16 kHz float32 with ffmpeg.
+
+    The upload goes in on a pipe. Some containers can't be read from one:
+    an MP4/M4A/MOV/3GP with its `moov` index after the audio (ffmpeg's
+    default layout, and common from phone and browser recorders) needs a
+    seek back, so on a pipe ffmpeg exits 0 with no samples. When the pipe
+    gives nothing, decode again from a seekable temp file. Both runs stop
+    one second past `max_seconds`.
+    """
+    pcm = _run_ffmpeg("pipe:0", data, max_seconds)
+    if not pcm:
+        with tempfile.NamedTemporaryFile(prefix="stt-upload-") as upload:
+            upload.write(data)
+            upload.flush()
+            pcm = _run_ffmpeg(f"file:{upload.name}", None, max_seconds)
+    if not pcm:
         return np.empty(0, dtype=np.float32)
-    result = np.frombuffer(process.stdout, dtype="<i2").astype(np.float32)
+    result = np.frombuffer(pcm, dtype="<i2").astype(np.float32)
     result *= 1.0 / 32768.0  # in place: no second float32 copy
     return result
 

@@ -71,9 +71,10 @@ identify bottlenecks with evidence:
 ### What worked
 
 - **In-process audio decode** (`parakeet_service/audio.py`): single
-  `ffmpeg -i pipe:0 -ac 1 -ar 16000 -f s16le pipe:1` for non-WAV inputs,
-  and stdlib `wave` + numpy for WAVs already at 16 kHz. Removes per-chunk
-  subprocess fork/exec.
+  `ffmpeg -i pipe:0 -ac 1 -ar 16000 -f s16le pipe:1` for non-WAV inputs
+  (retried from a temp file when the pipe yields nothing, as for an MP4
+  with its `moov` index at the end), and stdlib `wave` + numpy for WAVs
+  already at 16 kHz. Removes per-chunk subprocess fork/exec.
 - **Silero-VAD auto-chunking** (`parakeet_service/chunker.py`): pack speech
   segments into each model's target chunk length (60 s for Parakeet v3),
   cutting on pause midpoints, with min/max guards. Falls back to energy-RMS
