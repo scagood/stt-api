@@ -774,6 +774,18 @@ async def test_whisper_words_need_an_aligner(calls):
     assert body["words"] is None
 
 
+@pytest.mark.asyncio
+async def test_whisper_s_number_to_hear_queues_on_the_align_pool(calls, stitched, speak, monkeypatch):
+    # its words come from its text, for _needs_aligner as for _stitch, so the
+    # aligner's model never runs on an audio-pool worker
+    monkeypatch.setattr(routes, "SPOKEN_NUMBERS_ALIGNER", (BASE, "int8"))
+    body = await _transcribe_whisper("whisper-base", language="en", aligner_name=None, text="That'll be £2.10 please.")
+    assert body["text"] == "That'll be two pounds ten please."
+    assert stitched == ["align"]
+    assert any("options" in call for call in calls)
+    assert all(call["thread"].startswith("align") for call in calls)
+
+
 APOSTROPHE_LED = "I loved the '80s 'cause he said 'yes'. Rock 'n' roll, don't you?"
 
 
