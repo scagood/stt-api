@@ -271,3 +271,37 @@ def test_prepare_still_decodes_audio_near_the_limit_in_full(monkeypatch, encode)
     assert not refused and seconds == pytest.approx(2.9, abs=0.01)
     seconds, refused = decoded_by_prepare(monkeypatch, encode(3.1), limit=3.0)
     assert refused and seconds == pytest.approx(3.1, abs=0.01)
+
+
+def late_audio_mkv() -> bytes:
+    # 2.5 s of audio that starts 2 s after the video.
+    import subprocess
+
+    return subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error",
+         "-f", "lavfi", "-i", "color=c=black:s=16x16:r=5:d=5",
+         "-itsoffset", "2", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=2.5",
+         "-map", "0:v", "-map", "1:a", "-c:v", "mpeg4", "-c:a", "flac", "-f", "matroska", "pipe:1"],
+        capture_output=True, check=True,
+    ).stdout
+
+
+def jumping_audio_mkv() -> bytes:
+    # 2.5 s of audio whose timestamps jump 5 s ahead halfway through.
+    import subprocess
+
+    return subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error",
+         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=2.5",
+         "-af", r"asetpts=PTS+gte(T\,1.25)*5/TB", "-c:a", "flac", "-f", "matroska", "pipe:1"],
+        capture_output=True, check=True,
+    ).stdout
+
+
+@requires_ffmpeg
+@pytest.mark.parametrize("encode", [late_audio_mkv, jumping_audio_mkv], ids=["late-start", "pts-jump"])
+def test_prepare_caps_decoded_samples_not_timestamps(monkeypatch, encode):
+    # The decode, like main's, joins samples without filling timestamp gaps,
+    # so a cap on timestamps would cut this 2.5 s track short and accept it.
+    seconds, refused = decoded_by_prepare(monkeypatch, encode(), limit=3.0)
+    assert not refused and seconds == pytest.approx(2.5, abs=0.01)

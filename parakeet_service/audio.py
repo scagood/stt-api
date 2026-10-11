@@ -87,8 +87,14 @@ def _ffmpeg_decode(data: bytes, max_seconds: Optional[float] = None) -> np.ndarr
     """Decode a container/codec to mono 16 kHz float32 with one FFmpeg call.
 
     With `max_seconds`, ffmpeg stops one second past it (see `load_audio`).
+    The cap counts decoded samples, not timestamps (`-t`): audio that starts
+    after a video, or jumps ahead mid-stream, still decodes in full.
     """
-    limit = [] if max_seconds is None else ["-t", f"{_past(max_seconds) / TARGET_SR:.6f}"]
+    limit = (
+        []
+        if max_seconds is None
+        else ["-af", f"aresample={TARGET_SR},atrim=end_sample={_past(max_seconds)}"]
+    )
     command = [
         "ffmpeg",
         "-hide_banner",
