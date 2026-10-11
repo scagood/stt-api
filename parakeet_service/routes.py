@@ -40,6 +40,7 @@ from .config import (
     MODEL_CONFIGS,
     RETIME_WORDS,
     SPOKEN_NUMBERS,
+    SPOKEN_NUMBERS_ALIGNER,
     TRANSCRIBE_UI,
     VAD_FILTER,
     TARGET_SR,
@@ -687,7 +688,8 @@ def _stitch(
 
     `align` re-times words with the request's aligner (`aligner_choice`, its
     name and quantization); `speak` says numbers out (PARAKEET_SPOKEN_NUMBERS),
-    hearing which reading was said through that aligner if there is one. Either
+    hearing which reading was said through that aligner if there is one (the
+    request's, else PARAKEET_SPOKEN_NUMBERS_ALIGNER: _hears_with). Either
     may run the aligner's model: call it through _stitch_request, which keeps
     that off the event loop. `retime_words` moves the words of each chunk the
     aligner did not re-time out of the pauses they slipped into (retime.py).
@@ -2105,6 +2107,12 @@ def _speaks(spoken_numbers: Optional[bool], language: Optional[str]) -> bool:
     return wanted and aligner.language_code(language) == "en"
 
 
+def _hears_with(choice: Optional[Tuple[str, str]], speak: bool) -> Optional[Tuple[str, str]]:
+    """The aligner for _stitch: the request's, else, to hear how its numbers
+    were said, PARAKEET_SPOKEN_NUMBERS_ALIGNER. Only the request's times words."""
+    return choice or (SPOKEN_NUMBERS_ALIGNER if speak else None)
+
+
 async def _plain_granularities(request: Request) -> Optional[List[str]]:
     """`timestamp_granularities` without the brackets OpenAI's SDKs add. Read
     from the form rather than declared with Form(), so the docs show the
@@ -2245,7 +2253,7 @@ async def transcribe(
         align=want_words and choice is not None,
         speak=speak,
         language=heard,
-        aligner_choice=choice,
+        aligner_choice=_hears_with(choice, speak),
         retime_words=want_words and _retimes(retime_words),
     )
     stitch_ms = (time.perf_counter() - stitch_started) * 1000
@@ -2298,7 +2306,10 @@ async def transcribe_batch(
     aligner_name: Optional[str] = Form(
         None,
         alias="aligner",
-        description="Only to hear numbers for `spoken_numbers`: a batch returns no word times.",
+        description=(
+            "Only to hear numbers for `spoken_numbers`, instead of the server's "
+            "`PARAKEET_SPOKEN_NUMBERS_ALIGNER`: a batch returns no word times."
+        ),
         json_schema_extra=_form_doc(),
     ),
 ):
@@ -2384,7 +2395,7 @@ async def transcribe_batch(
         item_results = flat_results[cursor : cursor + count]
         cursor += count
         text, _segments, _words = await _stitch_request(
-            request, prepared, item_results, speak=speak, language=heard, aligner_choice=choice
+            request, prepared, item_results, speak=speak, language=heard, aligner_choice=_hears_with(choice, speak)
         )
         response_items.append(
             {"filename": filename, "text": text, "duration": prepared.duration}

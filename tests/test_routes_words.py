@@ -549,7 +549,25 @@ async def test_spoken_numbers_queue_on_the_align_pool_only_to_hear_one(calls, st
 
 
 @pytest.mark.asyncio
-async def test_without_an_aligner_spoken_numbers_never_queue_to_hear(calls, stitched, speak):
+async def test_without_an_aligner_numbers_are_heard_by_the_server_s(calls, stitched, speak, monkeypatch):
+    # PARAKEET_SPOKEN_NUMBERS_ALIGNER hears how "£2.10" was said; it does not
+    # time the words, which only the request's aligner does
+    monkeypatch.setattr(routes, "SPOKEN_NUMBERS_ALIGNER", (BASE, "fp16"))
+    text = "That'll be £2.10 please."
+    assert (await _transcribe(response_format="json", text=text))["text"] == "That'll be two pounds ten please."
+    assert await _batch(text) == ["That'll be two pounds ten please."]
+    assert stitched == ["align", "align"]
+    assert any("options" in call for call in calls)
+    assert all(call["thread"].startswith("align") for call in calls)
+    assert {call["aligner"] for call in calls if "aligner" in call} == {(BASE, "fp16")}
+    heard = await _transcribe(text=text)
+    monkeypatch.setattr(routes, "SPOKEN_NUMBERS_ALIGNER", None)
+    assert heard["words"] == (await _transcribe(text=text))["words"]
+
+
+@pytest.mark.asyncio
+async def test_with_no_aligner_to_hear_by_spoken_numbers_never_queue(calls, stitched, speak, monkeypatch):
+    monkeypatch.setattr(routes, "SPOKEN_NUMBERS_ALIGNER", None)  # PARAKEET_SPOKEN_NUMBERS_ALIGNER=""
     text = "That'll be £2.10 please."
     assert (await _transcribe(response_format="json", text=text))["text"] == "That'll be two pounds ten please."
     assert await _batch(text) == ["That'll be two pounds ten please."]
@@ -927,3 +945,41 @@ async def test_issue_64_two_seconds_of_silence_reach_no_model(monkeypatch, vad_f
         assert (body["text"], body["segments"], body.get("words", [])) == ("", [], [])
     else:  # unchanged without it: the clip goes to the model whole
         assert inventor.pieces == 1 and body["text"] == "Thank you."
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, (BASE, "int8")),  # unset: wav2vec2-base-960h at its default_quantization
+        ("", None),
+        ("  ", None),
+        (" Wav2vec2-Base-960h:FP16 ", (BASE, "fp16")),
+        ("mms-300m-forced-aligner", ("mms-300m-forced-aligner", "int8")),
+    ],
+)
+def test_the_spoken_numbers_aligner_setting_parses(monkeypatch, raw, expected):
+    from parakeet_service import config
+
+    if raw is None:
+        monkeypatch.delenv("PARAKEET_SPOKEN_NUMBERS_ALIGNER", raising=False)
+    else:
+        monkeypatch.setenv("PARAKEET_SPOKEN_NUMBERS_ALIGNER", raw)
+    assert config._numbers_aligner() == expected
+
+
+@pytest.mark.parametrize(("raw", "match"), [("wav2vec3", "in the catalog"), (f"{BASE}:fp8", "no 'fp8' quantization")])
+def test_the_spoken_numbers_aligner_setting_rejects_nonsense(monkeypatch, raw, match):
+    from parakeet_service import config
+
+    monkeypatch.setenv("PARAKEET_SPOKEN_NUMBERS_ALIGNER", raw)
+    with pytest.raises(RuntimeError, match=match):
+        config._numbers_aligner()
+
+
+def test_a_catalog_without_the_default_aligner_hears_no_numbers(monkeypatch):
+    # PARAKEET_MODEL_CATALOG without wav2vec2-base-960h: fixed readings, not a startup error
+    from parakeet_service import config
+
+    monkeypatch.delenv("PARAKEET_SPOKEN_NUMBERS_ALIGNER", raising=False)
+    monkeypatch.setattr(config, "ALIGNER_CONFIGS", {k: v for k, v in config.ALIGNER_CONFIGS.items() if k != BASE})
+    assert config._numbers_aligner() is None

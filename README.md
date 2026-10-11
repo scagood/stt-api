@@ -347,7 +347,7 @@ the way they were said:
 ```bash
 curl http://localhost:5092/v1/audio/transcriptions \
   -F file=@audio.mp3 -F model=parakeet-v3 \
-  -F spoken_numbers=true -F language=en -F aligner=wav2vec2-base-960h
+  -F spoken_numbers=true -F language=en
 ```
 
 From the OpenAI SDK, send `extra_body={"spoken_numbers": True}`.
@@ -356,21 +356,29 @@ they can still send `spoken_numbers=false`.
 
 **How it chooses.** Different speech often comes out as the same text: `£2.10`
 is "two pounds ten" or "two ten", `911` is "nine one one" or "nine eleven". So
-the request's [aligner](#word-timestamps) scores each number's readings
-against the audio and keeps the one that was said. It also scores likely
+an [aligner](#word-timestamps) scores each number's readings against the
+audio and keeps the one that was said: the request's `aligner` if it names
+one, else `PARAKEET_SPOKEN_NUMBERS_ALIGNER` (`wav2vec2-base-960h`), which
+only listens and leaves the word times alone. Each number is heard in its own
+stretch of audio, a second either side, so one said quieter than the rest
+of its chunk is heard as clearly. It also scores likely
 mishearings of an amount (`£1.10` for "two pounds ten", `€3` for "thirty
 euros"), and replaces Parakeet's number only when the audio clearly prefers
-one. Without an aligner, each number gets a fixed reading, usually the most
-common one, but a code or a time is read as an amount (`911` as "nine hundred
-eleven", `1030` as "one thousand thirty"). The choice was tuned with
+one. With `PARAKEET_SPOKEN_NUMBERS_ALIGNER` empty and no `aligner` in the
+request, each number gets a fixed reading, usually the most common one, but
+a code or a time is read as an amount (`911` as "nine hundred eleven",
+`1030` as "one thousand thirty"). The choice was tuned with
 `wav2vec2-base-960h`; the other aligners haven't been measured for it yet.
 
-**Cost.** Most chunks with a number need the aligner (97% in our test
-corpus): roughly 2 s per 30 s chunk on a 4-core CPU, plus up to 0.9 s to choose
-on a dense chunk. They queue with word requests on the aligner's single worker,
-so audio with numbers in it is heard at about 13x real time however many
-requests are waiting. Requests whose numbers have nothing to decide (`6pm`)
-aren't held up.
+**Cost.** Most chunks with a number need the aligner (97% in our test corpus),
+whether or not the request names one: roughly 2 s per 30 s chunk on a 4-core
+CPU, plus up to 0.9 s to choose on a dense chunk. Hearing each number's own
+stretch of audio adds a pass over it: about 80% more aligner time on a chunk
+dense with numbers (14 in 44 s), less where they are sparse. They queue with
+word requests on the aligner's single worker, so audio with numbers in it is
+heard at about 13x real time (measured before that pass) however many requests
+are waiting. Requests whose
+numbers have nothing to decide (`6pm`) aren't held up.
 
 **Language.** English only, decided as for word timestamps: a request without
 `language` is taken as `PARAKEET_ALIGN_DEFAULT_LANGUAGE`. A chunk mostly in
@@ -829,6 +837,7 @@ fixed `PARAKEET_VAD_GATE_DB`, which is never heard again.
 |---|---|---|
 | `PARAKEET_ALIGN_DEFAULT_LANGUAGE` | `en` | language assumed for [word timestamps](#word-timestamps) and [spoken numbers](#spoken-numbers) when a request sends none; empty uses them only when `language` is sent |
 | `PARAKEET_SPOKEN_NUMBERS` | `false` | spoken numbers for requests that don't send `spoken_numbers` |
+| `PARAKEET_SPOKEN_NUMBERS_ALIGNER` | `wav2vec2-base-960h` | the aligner, `name` or `name:quantization`, that hears [how each number was said](#spoken-numbers) when a request names none; empty gives fixed readings without loading one |
 | `PARAKEET_RETIME_WORDS` | `false` | [`retime_words`](#word-timestamps) for requests that don't send it: move Parakeet's word times out of pauses |
 | `PARAKEET_CHECK_ENDINGS` | `false` | decode the end of each clip twice more to drop words Parakeet makes up where the audio ends in a pause; it can still lose a real word now and then (see **Made-up last words** above) |
 
