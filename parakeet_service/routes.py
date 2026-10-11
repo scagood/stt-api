@@ -2131,7 +2131,7 @@ _ALIGNMENT_RESPONSES: Dict[Union[int, str], Dict[str, Any]] = {
     ),
     413: _error(
         "Over a request limit: the file's size, or its decoded length.",
-        f"audio duration 75.0s exceeds the alignment limit {ALIGN_MAX_AUDIO_SECONDS:.1f}s",
+        f"audio duration exceeds the alignment limit {ALIGN_MAX_AUDIO_SECONDS:.1f}s",
     ),
     415: _error("The audio could not be decoded.", "Audio could not be decoded"),
     503: _error(
@@ -2143,14 +2143,13 @@ _ALIGNMENT_RESPONSES: Dict[Union[int, str], Dict[str, Any]] = {
 
 def _decode_for_alignment(raw: bytes) -> Any:
     """The upload's waveform, within the alignment endpoint's length limit."""
-    waveform = load_audio(raw)
+    # Decoding stops just past the limit, as for transcription.
+    waveform = load_audio(raw, ALIGN_MAX_AUDIO_SECONDS)
     duration = float(waveform.size) / TARGET_SR
     if duration <= 0:
         raise ValueError("decoded audio is empty")
     if duration > ALIGN_MAX_AUDIO_SECONDS:
-        raise _AudioTooLong(
-            f"audio duration {duration:.1f}s exceeds the alignment limit {ALIGN_MAX_AUDIO_SECONDS:.1f}s"
-        )
+        raise _AudioTooLong(f"audio duration exceeds the alignment limit {ALIGN_MAX_AUDIO_SECONDS:.1f}s")
     return waveform
 
 

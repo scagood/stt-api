@@ -47,7 +47,13 @@ def heard(monkeypatch):
 
     monkeypatch.setattr(aligner, "for_chunk", fake_for_chunk)
     monkeypatch.setattr(aligner, "ALIGN_DEFAULT_LANGUAGE", "en")
-    monkeypatch.setattr(routes, "load_audio", lambda raw: np.zeros(int(float(raw.decode()) * TARGET_SR), np.float32))
+    def decode(raw, max_seconds=None):
+        seconds = float(raw.decode())
+        if max_seconds is not None:  # as load_audio: stops a second past the limit
+            seconds = min(seconds, max_seconds + 1.0)
+        return np.zeros(int(seconds * TARGET_SR), np.float32)
+
+    monkeypatch.setattr(routes, "load_audio", decode)
     return calls
 
 
@@ -147,17 +153,21 @@ async def test_an_aligner_that_cannot_load_is_a_503_naming_it(heard, monkeypatch
 @pytest.mark.asyncio
 async def test_audio_over_the_alignment_limit_is_a_413(heard, monkeypatch):
     monkeypatch.setattr(routes, "ALIGN_MAX_AUDIO_SECONDS", 60.0)
-    status, detail = await _status(seconds=60.5)
-    assert status == 413 and "60.5s exceeds the alignment limit 60.0s" in detail
+    limits = []
+    decode = routes.load_audio
+    monkeypatch.setattr(routes, "load_audio", lambda raw, max_seconds=None: limits.append(max_seconds) or decode(raw, max_seconds))
+    for seconds in (3600.0, 60.5):
+        assert await _status(seconds=seconds) == (413, "audio duration exceeds the alignment limit 60.0s")
     assert not heard
+    assert limits == [60.0, 60.0]  # never decoded far past the limit
     assert (await _align(seconds=60.0))["duration"] == 60.0
 
 
 @pytest.mark.asyncio
 async def test_audio_that_cannot_be_decoded_is_a_415(heard, monkeypatch):
-    monkeypatch.setattr(routes, "load_audio", lambda _raw: 1 / 0)
+    monkeypatch.setattr(routes, "load_audio", lambda _raw, _max=None: 1 / 0)
     assert await _status() == (415, "Audio could not be decoded")
-    monkeypatch.setattr(routes, "load_audio", lambda _raw: np.zeros(0, np.float32))
+    monkeypatch.setattr(routes, "load_audio", lambda _raw, _max=None: np.zeros(0, np.float32))
     assert await _status() == (415, "Audio could not be decoded")
 
 
