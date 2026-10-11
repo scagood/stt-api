@@ -31,6 +31,19 @@ def _shutdown_executor(executor: ThreadPoolExecutor) -> None:
     executor.shutdown(wait=True, cancel_futures=True)
 
 
+async def _load_first(get_model_fn, cached_fn, model_name: str) -> None:
+    """Load `model_name` before its pieces are queued: in-flight pieces would
+    each retry a failed load. A loaded model is found on the loop; only a miss
+    takes a thread, so requests waiting on a model's first load can't fill the
+    default executor in front of requests for models already loaded."""
+    if cached_fn(model_name) is None:
+        await asyncio.to_thread(get_model_fn, model_name)
+
+
+def _no_cache(_model_name: str) -> None:
+    return None
+
+
 def _infer_one(get_model_fn: Callable[[str], Any], model_name: str, wav: np.ndarray):
     return get_model_fn(model_name).recognize(wav)
 
@@ -44,8 +57,9 @@ def _infer_named_batch(
 class InferencePool:
     """Parallel single-item ORT calls, optimized for CPU inference."""
 
-    def __init__(self, get_model_fn, *, workers: int = INFER_WORKERS):
+    def __init__(self, get_model_fn, *, cached_fn=_no_cache, workers: int = INFER_WORKERS):
         self._get_model = get_model_fn
+        self._cached = cached_fn
         self._workers = max(1, workers)
         self._executor = ThreadPoolExecutor(
             max_workers=self._workers, thread_name_prefix="ort"
@@ -73,8 +87,7 @@ class InferencePool:
     async def submit_many(self, wavs: List[np.ndarray], model_name: str) -> List[Any]:
         if not wavs:
             return []
-        # Load once up front: in-flight pieces would each retry a failed load.
-        await asyncio.to_thread(self._get_model, model_name)
+        await _load_first(self._get_model, self._cached, model_name)
         return list(
             await asyncio.gather(*(self.submit(wav, model_name) for wav in wavs))
         )
@@ -87,11 +100,13 @@ class BatchWorker:
         self,
         get_model_fn,
         *,
+        cached_fn=_no_cache,
         max_batch: int = MAX_BATCH_SIZE,
         max_batch_audio_seconds: float = MAX_BATCH_AUDIO_SECONDS,
         window_ms: float = BATCH_WINDOW_MS,
     ):
         self._get_model = get_model_fn
+        self._cached = cached_fn
         self._max_batch = max(1, max_batch)
         self._max_batch_samples = max(1, int(max_batch_audio_seconds * TARGET_SR))
         self._window_s = max(0.0, window_ms) / 1000.0
@@ -138,8 +153,7 @@ class BatchWorker:
     async def submit_many(self, wavs: List[np.ndarray], model_name: str) -> List[Any]:
         if not wavs:
             return []
-        # Load once up front: each batch of these jobs would retry a failed load.
-        await asyncio.to_thread(self._get_model, model_name)
+        await _load_first(self._get_model, self._cached, model_name)
         jobs = [self._new_job(wav, model_name) for wav in wavs]
         for job in jobs:
             await self._queue.put(job)
@@ -242,9 +256,9 @@ def _infer_batch(model, wavs: List[np.ndarray]) -> List[Any]:
         raise RuntimeError("model returned a non-iterable batched result") from exc
 
 
-def build_worker(get_model_fn):
+def build_worker(get_model_fn, cached_fn=_no_cache):
     if BATCHED:
         logger.info("Using BatchWorker (cross-request micro-batching)")
-        return BatchWorker(get_model_fn)
+        return BatchWorker(get_model_fn, cached_fn=cached_fn)
     logger.info("Using InferencePool (parallel single-item inference)")
-    return InferencePool(get_model_fn)
+    return InferencePool(get_model_fn, cached_fn=cached_fn)

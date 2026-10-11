@@ -399,6 +399,13 @@ def get_model(key: str):
     return load_model(key, with_timestamps=True)
 
 
+def cached_model(key: str):
+    """get_model()'s model if it is already loaded, else None. Never loads,
+    and only takes _MODEL_LOCK briefly, so it is safe on the event loop."""
+    with _MODEL_LOCK:
+        return _cache_hit((key, True))
+
+
 def evict_idle(timeout: float) -> List[str]:
     """Unload the models no one has asked for in `timeout` seconds; return
     their keys. Call trim_heap() after, to give their memory back.

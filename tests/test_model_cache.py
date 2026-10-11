@@ -9,9 +9,10 @@ import weakref
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 
+import numpy as np
 import pytest
 
-from parakeet_service import config, main, routes
+from parakeet_service import batchworker, config, main, routes
 from parakeet_service import model as m
 
 
@@ -307,6 +308,36 @@ def test_concurrent_first_loads_of_a_model_build_it_once(monkeypatch, tmp_path):
         first, second = (load.result(timeout=5) for load in loads)
     assert first is second
     assert builds == ["whisper"]
+
+
+class _Recognizer:
+    def recognize(self, wav):
+        return [len(w) for w in wav] if isinstance(wav, list) else len(wav)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("worker_type", [batchworker.InferencePool, batchworker.BatchWorker])
+async def test_requests_waiting_on_a_first_load_do_not_hold_up_loaded_models(monkeypatch, tmp_path, worker_type):
+    _stub_loader(monkeypatch, tmp_path, cache_size=0)
+    monkeypatch.setattr(m, "_build_asr", lambda *a, **k: _Recognizer())
+    m.load_model("whisper-tiny:fp32")
+    started, release, _builds = _held_build(monkeypatch, "whisper-base:fp32")
+    loop = asyncio.get_running_loop()
+    default = ThreadPoolExecutor(2)  # as min(32, cpus + 4) is, once that many wait
+    loop.set_default_executor(default)
+    worker = worker_type(m.get_model, cached_fn=m.cached_model)
+    await worker.start()
+    wav = np.zeros(160, np.float32)
+    try:
+        cold = [asyncio.create_task(worker.submit_many([wav], "whisper-base:fp32")) for _ in range(2)]
+        assert await asyncio.to_thread(started.wait, 5)
+        # Both threads of the default executor now wait on base's load.
+        assert await asyncio.wait_for(worker.submit_many([wav], "whisper-tiny:fp32"), 2) == [160]
+    finally:
+        release.set()
+    assert await asyncio.wait_for(asyncio.gather(*cold), 5) == [[160], [160]]
+    await worker.stop()
+    default.shutdown()
 
 
 def test_preloading_cuda_does_not_take_the_model_lock(monkeypatch):
