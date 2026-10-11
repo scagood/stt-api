@@ -146,6 +146,7 @@ def create_app() -> FastAPI:
         description="OpenAI-compatible speech-to-text server on ONNX Runtime.",
         openapi_tags=[
             {"name": "transcription"},
+            {"name": "alignment"},
             {"name": "models", "description": "The models and aligners a request may name."},
             {"name": "health"},
         ],

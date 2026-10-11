@@ -135,6 +135,29 @@ class VerboseTranscription(_Schema):
     )
 
 
+class AlignmentWord(_Schema):
+    """A word of the request's `text`; `start`, `end` and `score` are null for
+    one with no letters the aligner knows."""
+
+    word: str
+    start: Optional[float] = Field(description="Seconds.")
+    end: Optional[float] = Field(description="Seconds.")
+    score: Optional[float] = Field(
+        description=(
+            "0 to 1: how closely the word's letters match what the aligner hears on "
+            "its frames. A word that was said scores near 1; one forced onto audio "
+            "that doesn't hold it, near 0."
+        )
+    )
+
+
+class Alignment(_Schema):
+    aligner: str = Field(description="The aligner that timed the words, as `aligner:quantization`.")
+    language: str = Field(description="The language the text was aligned as.")
+    duration: float = Field(description="Seconds of audio.")
+    words: List[AlignmentWord] = Field(description="One per word of `text`, in order.")
+
+
 class BatchItem(_Schema):
     filename: str
     text: str

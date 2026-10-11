@@ -448,6 +448,60 @@ curl http://localhost:5092/v1/audio/transcriptions/batch \
 A batch is limited to `PARAKEET_MAX_BATCH_FILES` (16) files and
 `PARAKEET_MAX_BATCH_BYTES` (512 MiB); see [request limits](#request-limits).
 
+## Forced alignment
+
+When you already have the text (lyrics, a script, a book's text),
+`POST /v1/audio/alignments` times its words from the audio without
+transcribing it, so nothing is misheard. Send the audio, the `text` and an
+`aligner`, plus `language` for anything but English:
+
+```bash
+curl http://localhost:5092/v1/audio/alignments \
+  -F file=@quilter.wav -F aligner=mms-300m-forced-aligner \
+  -F 'text=Mister Quilter is the apostle of the upper classes.'
+```
+
+```json
+{"aligner":"mms-300m-forced-aligner:int8","language":"en","duration":5.855,"words":[{"word":"Mister","start":0.56,"end":0.8,"score":0.344},{"word":"Quilter","start":0.84,"end":1.2,"score":1.0},{"word":"is","start":1.28,"end":1.36,"score":1.0},{"word":"the","start":1.42,"end":1.5,"score":1.0},{"word":"apostle","start":1.56,"end":2.08,"score":1.0},{"word":"of","start":2.16,"end":2.24,"score":1.0},{"word":"the","start":2.28,"end":2.36,"score":1.0},{"word":"upper","start":2.42,"end":2.62,"score":0.005},{"word":"classes.","start":2.64,"end":3.16,"score":1.0}]}
+```
+
+(Rounded here. The reader said "middle classes", and goes on past the
+text.) Each run of characters between spaces is one word, punctuation and
+all, in the order sent. `aligner` and `language` work as they do for [word
+timestamps](#word-timestamps), except that the aligner has to be named. A word with no letters the aligner knows (`—`, or a
+number for `omnilingual-ctc-300m`) has `null` times and score.
+
+**Score.** A forced aligner places every word somewhere, said or not.
+`score`, 0 to 1, says how closely the word matches what the aligner hears on
+the frames it was given: per 20 ms frame, the probability of the letter (or
+gap) forced there over that of the one the aligner hears best, averaged
+geometrically. A word that was said scores near 1; one that wasn't, near 0.
+On 73 LibriSpeech clips (8 minutes; 1,150 words), with one word inserted into
+each text and one replaced (146 words not said), the share of each that
+scored under a threshold (`int8`):
+
+| Aligner | Under 0.3: said / not said | Under 0.5: said / not said |
+|---|---|---|
+| `mms-300m-forced-aligner` | 1.0% / 97.3% | 3.0% / 99.3% |
+| `wav2vec2-large-xlsr-53-english` | 2.4% / 100% | 3.3% / 100% |
+| `omnilingual-ctc-300m` | 0.8% / 97.3% | 1.5% / 100% |
+| `wav2vec2-base-960h` | 5.9% / 100% | 8.3% / 100% |
+
+Rejecting words under 0.5 is a reasonable start. `wav2vec2-base-960h`
+mishears more, so it rejects more words that were said. Two things a score
+can't tell you: a word that wasn't said where the text puts it, but was said
+nearby ("the", "and"), can score high, since the aligner finds it there; and a
+word that wasn't said can pull its neighbours' scores down with it, as it
+takes their frames. A text that's wrong throughout shows as many low scores.
+
+**Limits.** The whole clip is aligned in one pass, whose memory grows with
+the audio's length times its text's, so audio is limited to
+`PARAKEET_ALIGN_MAX_AUDIO_SECONDS` (60 s); longer is a 413, so cut long audio
+at pauses and align each piece. Text the aligner can't spell, or with more
+letters than the audio can hold, is a 400; an aligner that can't load is a
+503, retried after 5 minutes. Alignments run one at a time on the aligner's
+worker, queued with word-timestamp requests.
+
 ## Comparing models and aligners by ear
 
 With `PARAKEET_COMPARE_UI=true`, `GET /compare` serves a page for choosing
@@ -708,6 +762,7 @@ A request over a limit is rejected with 413.
 | `PARAKEET_MAX_UPLOAD_BYTES` | 256 MiB | one uploaded file |
 | `PARAKEET_MAX_AUDIO_SECONDS` | `7200` (2 h) | one file's decoded duration |
 | `PARAKEET_MAX_REQUEST_CHUNKS` | `512` | chunks one request may produce |
+| `PARAKEET_ALIGN_MAX_AUDIO_SECONDS` | `60` | one file's decoded duration for [forced alignment](#forced-alignment) |
 | `PARAKEET_MAX_BATCH_FILES` | `16` | files in one batch request |
 | `PARAKEET_MAX_BATCH_BYTES` | 512 MiB | total bytes in one batch request |
 | `PARAKEET_FFMPEG_TIMEOUT_SEC` | `180` | per-request FFmpeg decode time (not a 413) |

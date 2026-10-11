@@ -470,6 +470,10 @@ MAX_BATCH_BYTES = _env_int(
 )
 MAX_AUDIO_SECONDS = _env_float("PARAKEET_MAX_AUDIO_SECONDS", 2 * 60 * 60, minimum=1.0)
 MAX_REQUEST_CHUNKS = _env_int("PARAKEET_MAX_REQUEST_CHUNKS", 512)
+# /v1/audio/alignments aligns a clip in one pass, whose memory grows with the
+# audio's length times its text's: about 120 MB for a minute of speech, 290 MB
+# for two, and up to 600 MB for two minutes of text dense enough to fill it.
+ALIGN_MAX_AUDIO_SECONDS = _env_float("PARAKEET_ALIGN_MAX_AUDIO_SECONDS", 60.0, minimum=1.0)
 FFMPEG_TIMEOUT_SEC = _env_float("PARAKEET_FFMPEG_TIMEOUT_SEC", 180.0, minimum=1.0)
 UPLOAD_READ_CHUNK_BYTES = min(1024 * 1024, MAX_UPLOAD_BYTES)
 
