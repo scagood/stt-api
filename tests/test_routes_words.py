@@ -738,6 +738,26 @@ async def test_whisper_words_need_an_aligner(calls):
     assert body["words"] is None
 
 
+APOSTROPHE_LED = "I loved the '80s 'cause he said 'yes'. Rock 'n' roll, don't you?"
+
+
+@pytest.mark.asyncio
+async def test_issue_93_whisper_keeps_apostrophe_led_words_apart(calls):
+    # Whisper's text keeps its spaces: a word opening with an apostrophe is
+    # neither glued to the one before in the text nor lost from the words.
+    body = await _transcribe_whisper("whisper-base", language="en", text=APOSTROPHE_LED)
+    assert body["text"] == APOSTROPHE_LED
+    assert [c["words"] for c in calls] == [APOSTROPHE_LED.split()]
+    assert [w["word"] for w in body["words"]] == APOSTROPHE_LED.split()
+
+
+@pytest.mark.asyncio
+async def test_issue_93_spoken_numbers_keep_an_apostrophe_led_word_apart(calls, speak):
+    body = await _transcribe(text="Back in the '90s 'cause why not.")
+    assert body["text"] == "Back in the 'nineties 'cause why not."
+    assert [w["word"] for w in body["words"]] == ["Back", "in", "the", "'nineties", "'cause", "why", "not."]
+
+
 @pytest.fixture
 def retimed(calls, monkeypatch):
     """The retime_words each _stitch was given, and the pool it ran on."""
