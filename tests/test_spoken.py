@@ -677,6 +677,13 @@ def test_a_number_to_hear_needs_the_model(monkeypatch):
     assert routes._needs_aligner([_result("No numbers here.")], align=True, aligner_choice=EAR)
 
 
+def test_a_number_to_hear_in_whisper_text_needs_the_model_too(monkeypatch):
+    monkeypatch.setattr(routes.aligner, "ALIGN_DEFAULT_LANGUAGE", "en")
+    whisper = SimpleNamespace(text="That'll be £2.10 please.")  # text only, no tokens
+    assert routes._needs_aligner([whisper], speak=True, aligner_choice=EAR)
+    assert not routes._needs_aligner([SimpleNamespace(text="It opens at 6pm.")], speak=True, aligner_choice=EAR)
+
+
 @pytest.mark.parametrize(
     "written",
     ["Это стоило $5 вчера вечером.", "Αυτό κόστισε £2.10 χθες."],

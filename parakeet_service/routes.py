@@ -851,7 +851,9 @@ def _needs_aligner(
         return False  # for_chunk answers None without loading anything
     try:
         for result in results:
-            texts = [word for word, _first, _last in _group_words(_extract(result))]
+            info = _extract(result)
+            # Whisper has text only: its words are read from that text, as in _stitch.
+            texts = [word for word, _first, _last in _group_words(info)] or info["text"].split()
             if any(_undecided(texts, phrase) for phrase in _phrases(texts, most=2)):
                 return True
     except Exception:  # can't tell: _stitch will log it and keep Parakeet's text
