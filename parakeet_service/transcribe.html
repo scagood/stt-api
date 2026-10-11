@@ -237,7 +237,10 @@ kbd { font: 11.5px var(--mono); padding: 0 4px; border: 1px solid var(--line-str
     const stale = Boolean(result) && result.file !== file;
     $("result").classList.toggle("stale", stale);
     $("staleInfo").hidden = !stale;
-    if (stale) $("staleInfo").textContent = `Another file is in the player now, so this transcript's words don't play.`;
+    if (stale) {
+      $("staleInfo").textContent = `Another file is in the player now, so this transcript's words don't play.`;
+      unmark();
+    }
     update();
   }
   function describeFile() {
@@ -527,7 +530,13 @@ kbd { font: 11.5px var(--mono); padding: 0 4px; border: 1px solid var(--line-str
     mark(t);
     if (!player.paused) requestAnimationFrame(follow);
   }
+  function unmark() {
+    if (nowItem) nowItem.el.classList.remove("now");
+    if (nowSeg) nowSeg.classList.remove("now");
+    nowItem = nowSeg = lastItem = null;
+  }
   function mark(t) {
+    if (!result || result.file !== file) return; // the player holds another file: its times aren't this transcript's
     let lo = 0, hi = items.length - 1, found = null;
     while (lo <= hi) { // the last item starting at or before t
       const mid = (lo + hi) >> 1;
