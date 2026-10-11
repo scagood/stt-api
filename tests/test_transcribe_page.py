@@ -108,3 +108,17 @@ def test_the_root_is_a_404_when_the_page_is_off(monkeypatch):
     with pytest.raises(HTTPException) as caught:
         root.endpoint(_request())
     assert caught.value.status_code == 404
+
+
+def test_transcribe_page_tells_whisper_models_by_their_catalog_family(monkeypatch):
+    """The page warns that a Whisper model gives word times only with an aligner.
+    It finds Whisper models by /v1/models' owned_by, which follows the catalog
+    family, not by the model's name."""
+    html = _page(monkeypatch)
+    assert 'owned_by === "openai"' in html
+    assert "/^whisper/" not in html
+    names = {name: routes._family(name) for name in routes.MODEL_CONFIGS}
+    assert "whisper" in names.values()
+    listed = {model["id"]: model["owned_by"] for model in routes.list_models()["data"]}
+    for name, family in names.items():
+        assert (listed[name] == "openai") == (family == "whisper")
