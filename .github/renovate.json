@@ -6,9 +6,10 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Both Dockerfiles pin pip wheels that no built-in manager sees, currently the CPU onnxruntime build and the torch pair",
+      "description": "Both Dockerfiles, and CI's contract job, pin pip wheels that no built-in manager sees, currently the CPU onnxruntime build and the torch pair",
       "managerFilePatterns": [
-        "/(?:^|/)Dockerfile(?:\\.(?:cpu|gpu))?$/"
+        "/(?:^|/)Dockerfile(?:\\.(?:cpu|gpu))?$/",
+        "/(?:^|/)\\.github/workflows/ci\\.yml$/"
       ],
       "matchStringsStrategy": "recursive",
       "matchStrings": [
