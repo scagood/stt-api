@@ -89,7 +89,10 @@ def _clean_text(text: str) -> str:
     # onnx_asr drops the space before any non-word character, meaning to join
     # punctuation, and so glues currency to the word before: "was\u00a31.10".
     text = re.sub(r"(?<=[^\W\d_])(?=[$\u00a3\u20ac])", " ", text)
-    return text.replace(" '", "'")
+    # A space before an apostrophe is kept: it opens a word ("the '80s",
+    # "'cause"). onnx_asr already joins Parakeet's contractions, and Whisper's
+    # text has none split.
+    return text
 
 
 def _fmt_srt_time(seconds: float) -> str:
