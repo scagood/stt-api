@@ -82,12 +82,7 @@ def _env_choice(name: str, default: str, choices: Iterable[str]) -> str:
 # ---------------------------------------------------------------------------
 # Paths & models
 # ---------------------------------------------------------------------------
-ROOT_DIR = Path(__file__).resolve().parent.parent
-MODELS_DIR = Path(os.getenv("PARAKEET_MODELS_DIR", ROOT_DIR / "models")).expanduser()
-MODELS_DIR.mkdir(parents=True, exist_ok=True)
-
-os.environ.setdefault("HF_HOME", str(MODELS_DIR))
-os.environ.setdefault("HF_HUB_CACHE", str(MODELS_DIR))
+# Models live in the HF cache: HF_HUB_CACHE, ~/.cache/huggingface/hub by default.
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "true")
 # huggingface_hub 2.x files Xet blobs in a cache-wide store sharded by hash
 # prefix, so a model .onnx and its external-data file resolve into different

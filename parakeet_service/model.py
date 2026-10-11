@@ -18,7 +18,6 @@ from .config import (
     GPU_MEMORY_LIMIT_MB,
     MODEL_CACHE_SIZE,
     MODEL_CONFIGS,
-    MODELS_DIR,
     ORT_INTER_THREADS,
     ORT_INTRA_THREADS,
     TARGET_SR,
@@ -291,8 +290,8 @@ def _onnx_asr_model_type(onnx_asr_type: str):
     from onnx_asr.loader import create_asr_resolver
 
     # The resolver only picks the class here: a type name it knows never
-    # reaches the directory or the hub.
-    return create_asr_resolver(onnx_asr_type, MODELS_DIR, offline=True).model_type
+    # reaches the directory or the hub, so any path will do.
+    return create_asr_resolver(onnx_asr_type, ".", offline=True).model_type
 
 
 def _files_by_role(model_type, files: Dict[str, Any]) -> Dict[str, Any]:
