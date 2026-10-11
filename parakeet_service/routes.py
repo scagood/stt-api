@@ -90,8 +90,8 @@ def _clean_text(text: str) -> str:
     # punctuation, and so glues currency to the word before: "was\u00a31.10".
     text = re.sub(r"(?<=[^\W\d_])(?=[$\u00a3\u20ac])", " ", text)
     # A space before an apostrophe is kept: it opens a word ("the '80s",
-    # "'cause"). onnx_asr already joins Parakeet's contractions, and Whisper's
-    # text has none split.
+    # "'cause"). A contraction has none: Parakeet's "'" carries no word marker
+    # there, and Whisper's text never splits one.
     return text
 
 
@@ -135,8 +135,11 @@ def _segments_to_vtt(segments: Sequence[Dict[str, Any]]) -> str:
 
 
 def _extract(result: Any) -> Dict[str, Any]:
-    text = _clean_text(getattr(result, "text", str(result)))
     tokens = [str(token) for token in (getattr(result, "tokens", []) or [])]
+    # onnx_asr joins tokens into text by the same rule, except that it glues a
+    # word opening with an apostrophe to the one before ("the'80s"): rebuilt
+    # from the tokens, it keeps that space. Whisper has text only.
+    text = _clean_text(_decoded(tokens) if tokens else getattr(result, "text", str(result)))
     raw_timestamps = list(getattr(result, "timestamps", []) or [])
     if tokens and len(raw_timestamps) != len(tokens):
         logger.warning(
@@ -500,13 +503,15 @@ def _group_words(info: Dict[str, Any]) -> List[Tuple[str, float, float]]:
     return [(word, timestamps[first], timestamps[last]) for word, first, last in _word_spans(info["tokens"])]
 
 
-# How onnx_asr joins a result's tokens into its text: the leading space, and
-# any space before a non-word character, go.
-_DECODE_SPACE = re.compile(r"\A\s|\s\B|(\s)\b")
+# How a result's tokens join into its text. As in onnx_asr, the leading space
+# and any space before a non-word character go, but not before an apostrophe:
+# a word marker there opens a word ("the '80s", "'cause"); contractions carry
+# none ("don't").
+_DECODE_SPACE = re.compile(r"\A\s|(\s)(?=\b|')|\s\B")
 
 
 def _decoded(tokens: Sequence[str]) -> str:
-    """The text onnx_asr makes of `tokens`."""
+    """The text of `tokens`: onnx_asr's, but for a space before an apostrophe."""
     text = "".join(token.replace("\u2581", " ") for token in tokens)
     return _DECODE_SPACE.sub(lambda match: " " if match.group(1) else "", text)
 
