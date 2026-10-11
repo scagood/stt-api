@@ -21,7 +21,7 @@ from .config import (
     WARMUP_TIMEOUT_SEC,
     logger,
 )
-from .model import evict_idle, get_model, load_model, trim_heap, variant_key, warmup_waveform
+from .model import cached_model, evict_idle, get_model, load_model, trim_heap, variant_key, warmup_waveform
 from .routes import router
 
 # How often idle models are looked for: one goes at most this long after its timeout.
@@ -112,7 +112,7 @@ async def lifespan(app: FastAPI):
         for key in preload:
             logger.info("Lifespan startup: preloading %s", key)
             await asyncio.to_thread(load_model, key)
-        app.state.worker = build_worker(get_model)
+        app.state.worker = build_worker(get_model, cached_model)
         await app.state.worker.start()
         if WARMUP and WARMUP_SEC > 0:
             for key in preload:
