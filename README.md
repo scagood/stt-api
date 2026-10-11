@@ -324,8 +324,8 @@ GPU server), so it never holds up other requests' audio decoding. Each
 aligner downloads on the first request that names it (int8: ~320 MB, or
 ~95 MB for `wav2vec2-base-960h`) and adds roughly 3 s per 30 s of audio on a
 4-core machine (2 s for `wav2vec2-base-960h`). If a download fails, words keep
-Parakeet's times and the load is retried every 5 minutes; `/health` reports
-each aligner's state under `aligner`.
+Parakeet's times and the load is retried every 5 minutes; `/health` lists
+the aligners that failed to load under `failed`.
 
 ## Spoken numbers
 
@@ -590,7 +590,8 @@ images already set the CPU or GPU ones (`PARAKEET_USE_GPU`, `PARAKEET_BATCHED`,
 Core counts respect the affinity mask and the cgroup CPU quota; see
 [Running under an orchestrator](#running-under-an-orchestrator).
 
-`/health` reports what each loaded model actually runs on under `runtime`:
+`/health` reports what each loaded model and aligner actually runs on under
+`runtime`, keyed `name:quantization`: its `kind` (`model` or `aligner`),
 `backend` (`cuda` or `cpu`), the providers each ONNX session bound to, and a
 `fallback_reason` when CUDA was asked for (`PARAKEET_USE_GPU=auto`) but ONNX
 Runtime used the CPU.

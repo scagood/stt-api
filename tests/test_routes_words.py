@@ -423,10 +423,28 @@ def test_aligners_are_listed_like_models():
     assert caught.value.status_code == 404
 
 
-def test_health_reports_aligner_state(monkeypatch):
-    monkeypatch.setattr(aligner, "status", lambda: {"wav2vec2-base-960h:int8": "failed"})
+def test_health_lists_aligners_as_it_lists_models(monkeypatch):
+    states = {
+        "wav2vec2-base-960h:int8": "failed",
+        "wav2vec2-base-960h:fp32": "loaded",
+        "omnilingual-ctc-300m:int8": "not loaded",
+    }
+    runtime = {"kind": "aligner", "backend": "cpu", "sessions": {"session": ["CPUExecutionProvider"]}, "fallback_reason": None}
+    monkeypatch.setattr(aligner, "status", lambda: states)
+    monkeypatch.setattr(aligner, "runtime_status", lambda: {"wav2vec2-base-960h:fp32": runtime})
+    monkeypatch.setattr(routes, "loaded_models", lambda: ["whisper-tiny:fp32"])
+    monkeypatch.setattr(routes, "runtime_status", lambda: {"whisper-tiny:fp32": {**runtime, "kind": "model"}})
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(ready=True)))
-    assert routes.health(request)["aligner"] == {"wav2vec2-base-960h:int8": "failed"}
+    health = routes.health(request)
+    assert health["aligners"] == list(routes.ALIGNER_CONFIGS)
+    assert health["loaded"] == ["whisper-tiny:fp32", "wav2vec2-base-960h:fp32"]
+    assert {key: entry["kind"] for key, entry in health["runtime"].items()} == {
+        "whisper-tiny:fp32": "model",
+        "wav2vec2-base-960h:fp32": "aligner",
+    }
+    assert health["failed"] == ["wav2vec2-base-960h:int8"]
+    assert "aligner" not in health
+    schemas.Health.model_validate(health)
 
 
 # --------------------------------------------------------------------------- #

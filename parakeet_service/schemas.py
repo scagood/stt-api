@@ -53,9 +53,10 @@ class AlignerList(_Schema):
     data: List[AlignerCard]
 
 
-class ModelRuntime(_Schema):
-    """What a loaded model runs on."""
+class Runtime(_Schema):
+    """What a loaded model or aligner runs on."""
 
+    kind: Literal["model", "aligner"]
     backend: Literal["cuda", "cpu", "unknown"]
     sessions: Dict[str, List[str]] = Field(
         description="Each ONNX Runtime session's execution providers, in order."
@@ -82,11 +83,13 @@ class Health(_Schema):
     status: Literal["healthy", "starting"]
     ready: bool
     models: List[str] = Field(description="Every model in the catalog.")
-    loaded: List[str] = Field(description="Loaded models, as `model:quantization`.")
-    runtime: Dict[str, ModelRuntime] = Field(description="By `model:quantization`.")
+    aligners: List[str] = Field(description="Every aligner in the catalog.")
+    loaded: List[str] = Field(description="Loaded models and aligners, as `name:quantization`.")
+    runtime: Dict[str, Runtime] = Field(description="Each loaded model and aligner, by `name:quantization`.")
     cpu: CpuInfo
-    aligner: Dict[str, Literal["loaded", "failed", "not loaded"]] = Field(
-        description="Each aligner, by `aligner:quantization`."
+    failed: List[str] = Field(
+        description="Aligners whose last load failed, as `aligner:quantization`; "
+        "requests naming one keep the model's word times, and the load is retried every 5 minutes."
     )
 
 
