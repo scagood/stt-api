@@ -252,13 +252,15 @@ def _prepare_audio(
     context_sec: float = 0.0,
     vad_filter: bool = False,
 ) -> _PreparedAudio:
-    waveform = load_audio(raw)
+    # Decoding stops just past the limit, so `duration` is a lower bound
+    # once it is over.
+    waveform = load_audio(raw, MAX_AUDIO_SECONDS)
     duration = float(waveform.size) / TARGET_SR
     if duration <= 0:
         raise ValueError("decoded audio is empty")
     if duration > MAX_AUDIO_SECONDS:
         raise _AudioTooLong(
-            f"audio duration {duration:.1f}s exceeds limit {MAX_AUDIO_SECONDS:.1f}s"
+            f"audio duration exceeds limit {MAX_AUDIO_SECONDS:.1f}s"
         )
     plan = plan_chunks(
         waveform,
