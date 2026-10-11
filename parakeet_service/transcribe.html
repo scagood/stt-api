@@ -96,12 +96,7 @@ audio { display: block; width: 100%; height: 40px; }
 .group .btn:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
 .group .btn:last-child { border-radius: 0 6px 6px 0; }
 .group .btn:hover, .group .btn:focus-visible { position: relative; }
-.keys { display: flex; flex-wrap: wrap; gap: 0 10px; font-size: 13px; color: var(--muted); padding: 8px 16px 0; }
-.keys details[open] { flex-basis: 100%; }
-.keys summary { cursor: pointer; width: fit-content; color: var(--accent); }
-.keys summary:hover { color: var(--accent); }
-.keys p { margin-top: 4px; }
-kbd { font: 11.5px var(--mono); padding: 0 4px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 4px; background: var(--sunken); }
+.how { font-size: 13px; color: var(--muted); padding: 8px 16px 0; }
 .segments { margin: 0; padding: 6px 8px 0; list-style: none; display: grid; gap: 2px; }
 .segments li { display: grid; grid-template-columns: 3.6em minmax(0, 1fr); align-items: baseline; gap: 10px; padding: 6px 8px; border-radius: 6px; }
 .segments li.now { background: var(--select); }
@@ -109,13 +104,10 @@ kbd { font: 11.5px var(--mono); padding: 0 4px; border: 1px solid var(--line-str
 .time { font: 12px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); background: none; border: 0; padding: 2px 0; text-align: left; cursor: pointer; }
 .time:hover, li.now .time { color: var(--accent); }
 .text { font-size: 16px; line-height: 1.65; overflow-wrap: anywhere; }
-[data-item] { cursor: pointer; border-radius: 3px; scroll-margin: 72px 0 24px; }
+[data-item] { cursor: pointer; border-radius: 3px; }
 [data-item]:hover { background: var(--select); }
 /* The playing word: solid accent, widened a little by its shadow so the letters don't touch its edge. */
 [data-item].now { background: var(--accent); color: var(--on-accent); box-shadow: 0 0 0 2px var(--accent); }
-/* No offset: the outline sits in the space between words, clear of the letters next to it. */
-[data-item]:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
-[data-item].now:focus-visible { outline-color: var(--ink); }
 .empty { padding: 18px 16px 12px; color: var(--muted); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -190,8 +182,8 @@ kbd { font: 11.5px var(--mono); padding: 0 4px; border: 1px solid var(--line-str
         </span>
       </div>
     </div>
-    <div class="keys"><span>Click a word or a time to play it.</span><details><summary>Keys</summary><p id="keysHelp"><kbd>←</kbd> <kbd>→</kbd> words, <kbd>↑</kbd> <kbd>↓</kbd> segments, <kbd>Enter</kbd> plays a word, <kbd>Shift</kbd>+<kbd>Enter</kbd> its segment, <kbd>Esc</kbd> stops.</p></details></div>
-    <ol class="segments" id="segments" aria-describedby="keysHelp"></ol>
+    <p class="how">Click a word or a time to play it.</p>
+    <ol class="segments" id="segments"></ol>
     <p class="empty" id="noSpeech" hidden>No speech found.</p>
   </section>
 </div>
@@ -493,14 +485,13 @@ kbd { font: 11.5px var(--mono); padding: 0 4px; border: 1px solid var(--line-str
     $("segments").innerHTML = segments.map((seg, i) => {
       const own = bySegment[i];
       const text = own.length
-        ? own.map((w) => `<span data-item tabindex="-1" data-start="${w.start}" data-end="${w.end}" data-seg="${i}">${esc(w.word)}</span>`).join(" ")
-        : `<span data-item tabindex="-1" data-start="${seg.start}" data-end="${seg.end}" data-seg="${i}">${esc(seg.text.trim())}</span>`;
-      return `<li data-seg="${i}"><button class="time" type="button" tabindex="-1" data-seg="${i}" aria-label="Play from ${clock(seg.start, 1)} to ${clock(seg.end, 1)}">${clock(seg.start)}</button><span class="text">${text}</span></li>`;
+        ? own.map((w) => `<span data-item data-start="${w.start}" data-end="${w.end}" data-seg="${i}">${esc(w.word)}</span>`).join(" ")
+        : `<span data-item data-start="${seg.start}" data-end="${seg.end}" data-seg="${i}">${esc(seg.text.trim())}</span>`;
+      return `<li data-seg="${i}"><button class="time" type="button" data-seg="${i}" aria-label="Play from ${clock(seg.start, 1)} to ${clock(seg.end, 1)}">${clock(seg.start)}</button><span class="text">${text}</span></li>`;
     }).join("");
     items = [...$("segments").querySelectorAll("[data-item]")].map((el) => ({
       el, start: Number(el.dataset.start), end: Number(el.dataset.end), seg: Number(el.dataset.seg),
     }));
-    if (items.length) items[0].el.tabIndex = 0;
     const parts = !segments.length ? ["no speech"]
       : words.length ? [count(words.length, "word"), count(segments.length, "segment")]
       : [count(segments.length, "segment"), "no word times"];
@@ -568,44 +559,13 @@ kbd { font: 11.5px var(--mono); padding: 0 4px; border: 1px solid var(--line-str
   $("player").addEventListener("seeked", () => mark($("player").currentTime));
 
   function segmentSpan(i) { const seg = result.body.segments[i]; return [seg.start, seg.end]; }
-  function focusItem(index) {
-    const item = items[index];
-    if (!item) return;
-    items.forEach((x) => { x.el.tabIndex = -1; });
-    item.el.tabIndex = 0;
-    item.el.focus();
-  }
   $("segments").addEventListener("click", (e) => {
     const time = e.target.closest("button.time");
     if (time) return playSpan(...segmentSpan(Number(time.dataset.seg)));
     const el = e.target.closest("[data-item]");
     if (!el) return;
-    const index = items.findIndex((x) => x.el === el);
-    focusItem(index);
-    playSpan(items[index].start, items[index].end);
-  });
-  $("segments").addEventListener("keydown", (e) => {
-    const index = items.findIndex((x) => x.el === document.activeElement);
-    if (index < 0) return;
-    const item = items[index];
-    const firstOf = (seg) => items.findIndex((x) => x.seg === seg);
-    let next = null;
-    switch (e.key) {
-      case "ArrowRight": next = Math.min(items.length - 1, index + 1); break;
-      case "ArrowLeft": next = Math.max(0, index - 1); break;
-      case "ArrowDown": next = item.seg + 1 < result.body.segments.length ? firstOf(item.seg + 1) : index; break;
-      case "ArrowUp": next = item.seg > 0 ? firstOf(item.seg - 1) : index; break;
-      case "Home": next = 0; break;
-      case "End": next = items.length - 1; break;
-      case "Enter": case " ":
-        e.preventDefault();
-        if (e.shiftKey) playSpan(...segmentSpan(item.seg)); else playSpan(item.start, item.end);
-        return;
-      case "Escape": $("player").pause(); return;
-      default: return;
-    }
-    e.preventDefault();
-    if (next >= 0) focusItem(next);
+    const item = items.find((x) => x.el === el);
+    playSpan(item.start, item.end);
   });
 
   // ---- keeping it ------------------------------------------------------------------------

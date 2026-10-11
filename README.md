@@ -536,10 +536,9 @@ limits apply; the page warns before sending a file near
 upload's progress and the time spent waiting. The transcript is listed by
 segment: click a time to hear the segment, or a word to hear the word. While
 the audio plays, the player stays at the top of the window and the playing word
-is marked, and the page scrolls to keep it in view unless you scroll away. From
-the keyboard, the arrow keys step through words and segments, Enter plays a
-word and Shift+Enter its segment. Copy the text, or download it as text, SRT,
-VTT or the `verbose_json` response.
+is marked, and the page scrolls to keep it in view unless you scroll away.
+Copy the text, or download it as text, SRT, VTT or the `verbose_json`
+response.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/transcribe-dark.webp">
