@@ -523,8 +523,9 @@ then stays loaded until it goes unused for `PARAKEET_MODEL_IDLE_TIMEOUT_SEC`.
 
 ## Transcribing in the browser
 
-With `PARAKEET_TRANSCRIBE_UI=true`, `GET /transcribe` serves a page for
-getting the transcript of one file without the API. Pick a file (or drop it
+With `PARAKEET_TRANSCRIBE_UI=true`, `GET /` and `GET /transcribe` serve a page
+for getting the transcript of one file without the API, with links to `/docs`
+and, when it is on, `/compare`. Pick a file (or drop it
 on the page, or record one from the microphone), choose a model, an optional
 aligner, a language and the `spoken_numbers`, `vad_filter` and `retime_words`
 toggles, which start at the server's own defaults. **Transcribe** sends the
@@ -567,7 +568,7 @@ images already set the CPU or GPU ones (`PARAKEET_USE_GPU`, `PARAKEET_BATCHED`,
 | `PARAKEET_PORT` | `5092` | bind port |
 | `PARAKEET_UVICORN_WORKERS` | `1` | uvicorn worker processes; each loads its own copy of every model |
 | `PARAKEET_COMPARE_UI` | `false` | serve the [`/compare` page](#comparing-models-and-aligners-by-ear) |
-| `PARAKEET_TRANSCRIBE_UI` | `false` | serve the [`/transcribe` page](#transcribing-in-the-browser) |
+| `PARAKEET_TRANSCRIBE_UI` | `false` | serve the [transcription page](#transcribing-in-the-browser) at `/` and `/transcribe` |
 
 **Models**
 

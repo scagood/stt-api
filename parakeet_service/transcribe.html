@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Transcribe</title>
 <!--
-  Served at GET /transcribe when PARAKEET_TRANSCRIBE_UI=true. A client of the
-  API only: the pickers come from /v1/models and /v1/aligners, and a transcript
-  is one POST /v1/audio/transcriptions of the file as it is, so the server's own
-  decoding and limits apply. The server fills in #server with its limits and
-  defaults when it serves the page.
+  Served at GET / and GET /transcribe when PARAKEET_TRANSCRIBE_UI=true. A client
+  of the API only: the pickers come from /v1/models and /v1/aligners, and a
+  transcript is one POST /v1/audio/transcriptions of the file as it is, so the
+  server's own decoding and limits apply. The server fills in #server with its
+  limits and defaults, and links to /docs and /compare where it serves them,
+  when it serves the page.
 -->
 <script id="server" type="application/json">__SERVER_SETTINGS__</script>
 <style>
@@ -36,6 +37,9 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(-
 h1, h2, p { margin: 0; }
 h1 { font-size: 26px; font-weight: 600; }
 h2 { font-size: 18px; font-weight: 600; }
+.masthead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 18px; }
+nav { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; }
+nav a { color: var(--accent); text-underline-offset: 3px; }
 .lede, .hint { color: var(--muted); }
 .lede { max-width: 72ch; }
 .hint { font-size: 13px; }
@@ -87,7 +91,10 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
 <body>
 <div class="page">
   <header style="display:grid;gap:8px">
-    <h1>Transcribe</h1>
+    <div class="masthead">
+      <h1>Transcribe</h1>
+      <nav aria-label="Other pages on this server" id="links" hidden></nav>
+    </div>
     <p class="lede">Pick or record an audio file, choose a model, and read its transcript. The file is sent to this server as it is; a model or aligner loads on the first request that names it.</p>
   </header>
 
@@ -546,6 +553,12 @@ progress { width: min(320px, 100%); accent-color: var(--accent); }
     }
     $("resultInfo").textContent = copied ? "Copied the text." : "Could not copy: select the text and copy it instead.";
   });
+
+  // ---- links to the other pages this server shows ------------------------------------------
+  const links = server.links || {};
+  const pages = [[links.docs, "API docs"], [links.compare, "Compare models"]].filter(([href]) => href);
+  $("links").innerHTML = pages.map(([href, text]) => `<a href="${esc(href)}">${esc(text)}</a>`).join("");
+  $("links").hidden = !pages.length;
 
   setUpRecording();
   update();

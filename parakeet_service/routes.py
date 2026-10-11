@@ -1739,20 +1739,28 @@ def compare_page():
     return FileResponse(Path(__file__).with_name("compare.html"), media_type="text/html")
 
 
+@router.get("/", include_in_schema=False)
 @router.get("/transcribe", include_in_schema=False)
-def transcribe_page():
-    """The page for transcribing one file in the browser (PARAKEET_TRANSCRIBE_UI):
-    a client of the routes here, which sends the file as is to
+def transcribe_page(request: Request):
+    """The page for transcribing one file in the browser (PARAKEET_TRANSCRIBE_UI),
+    at the root too: a client of the routes here, which sends the file as is to
     /v1/audio/transcriptions. It is given the server's limits, to warn before
-    sending a file they would refuse, and its defaults, to start its options there."""
+    sending a file they would refuse, its defaults, to start its options there,
+    and the other pages this server shows, to link to them."""
     if not TRANSCRIBE_UI:
         raise HTTPException(status_code=404, detail="Not Found")
+    docs = request.app.docs_url
     settings = {
         "max_upload_bytes": MAX_UPLOAD_BYTES,
         "max_audio_seconds": MAX_AUDIO_SECONDS,
         "spoken_numbers": SPOKEN_NUMBERS,
         "vad_filter": VAD_FILTER,
         "retime_words": RETIME_WORDS,
+        # Relative, as the page's API calls are, so they work behind a path prefix.
+        "links": {
+            "docs": docs.lstrip("/") if docs else None,
+            "compare": "compare" if COMPARE_UI else None,
+        },
     }
     page = Path(__file__).with_name("transcribe.html").read_text(encoding="utf-8")
     return HTMLResponse(page.replace("__SERVER_SETTINGS__", json.dumps(settings)))
