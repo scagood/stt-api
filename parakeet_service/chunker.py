@@ -102,14 +102,23 @@ def has_speech(wav: np.ndarray) -> bool:
     there pays for a pass over all of it, and that one is then usually spared
     its inference. Each is heard with _SPEECH_LEAD_SEC of silence either side.
     """
-    lead = np.zeros(int(_SPEECH_LEAD_SEC * TARGET_SR), dtype=np.float32)
-
-    def heard(part: np.ndarray) -> bool:
-        padded = np.concatenate([lead, part.astype(np.float32, copy=False), lead])
-        return bool(_silero_speech_segments(padded, VAD_FILTER_MIN_SPEECH_MS))
-
     probe = int(_SPEECH_PROBE_SEC * TARGET_SR)
-    return (wav.size > probe and heard(wav[:probe])) or heard(wav)
+    return (wav.size > probe and bool(_silero_heard(wav[:probe]))) or bool(_silero_heard(wav))
+
+
+def silero_speech(wav: np.ndarray) -> int:
+    """Samples of `wav` Silero hears as speech, whatever PARAKEET_VAD says,
+    as has_speech hears it."""
+    lead = int(_SPEECH_LEAD_SEC * TARGET_SR)
+    return sum(max(0, min(end, lead + wav.size) - max(start, lead)) for start, end in _silero_heard(wav))
+
+
+def _silero_heard(wav: np.ndarray) -> List[Range]:
+    """What Silero hears as speech in `wav` with _SPEECH_LEAD_SEC of silence
+    either side, in samples of the padded audio."""
+    lead = np.zeros(int(_SPEECH_LEAD_SEC * TARGET_SR), dtype=np.float32)
+    padded = np.concatenate([lead, wav.astype(np.float32, copy=False), lead])
+    return _silero_speech_segments(padded, VAD_FILTER_MIN_SPEECH_MS)
 
 
 FRAME = int(0.02 * TARGET_SR)  # loudness is measured in 20 ms frames

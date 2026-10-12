@@ -952,6 +952,74 @@ async def test_a_one_piece_clip_heard_as_nothing_is_not_decoded_again_as_it_was(
     assert worker.pieces == []
 
 
+# 24 s with pauses at 3.4-4.3, 7.1-7.5, 9.5-9.7 and 15.8-16.2 s
+_PAUSED = [(0.0, 3.4), (4.3, 7.1), (7.5, 9.5), (9.7, 15.8), (16.2, 24.0)]
+
+
+@pytest.mark.asyncio
+async def test_a_one_piece_clip_heard_as_nothing_is_decoded_again_in_parts(monkeypatch):
+    # #116: speech, a pause, then more, which a decode of all of it hears
+    # nothing in. In parts of about 8 s, cut in the pauses nearest 8 and 16 s,
+    # each hears its words, the last of each too: its input ends in a pause.
+    monkeypatch.setattr(routes, "silero_speech", lambda wav: wav.size)  # speech throughout
+    words = [(f" w{i}", 0.3 + 0.5 * i) for i in range(48)]  # to 23.8 s
+    prepared = _one_piece(24.0, speech=_samples(_PAUSED))
+    parts = [(0.0, 7.3), (7.3, 16.0), (16.0, 24.0)]
+    worker = _Redo([_heard(a, [(word, at) for word, at in words if a <= at < b]) for a, b in parts])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_result([], [])], "parakeet-v3:int8")
+    assert _decoded_spans(worker) == parts  # with no margin: one reaching past a pause heard nothing too
+    text, _segments, timed = routes._stitch(prepared, results)
+    assert text.split() == [word.strip() for word, _at in words]
+    assert [w["start"] for w in timed] == pytest.approx([at for _word, at in words])
+
+
+@pytest.mark.asyncio
+async def test_a_one_piece_clip_heard_as_nothing_in_parts_too_stays_empty(monkeypatch, caplog):
+    # Music, say, with pauses VAD hears, and that Silero hears as speech:
+    # nothing in the parts either
+    monkeypatch.setattr(routes, "silero_speech", lambda wav: wav.size)
+    results = [_result([], [])]
+    worker = _Redo([])
+    prepared = _one_piece(24.0, speech=_samples(_PAUSED))
+    assert await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:int8") == results
+    assert _decoded_spans(worker) == [(0.0, 7.3), (7.3, 16.0), (16.0, 24.0)]
+    assert "0.0-7.3 s, 7.3-16.0 s, 16.0-24.0 s: 0 words" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_part_silero_hears_too_little_speech_in_is_not_decoded(monkeypatch):
+    # Noise the volume VAD calls speech: Parakeet makes words up in short
+    # parts of it (#117's review). Silero hears 1.9 s of speech in the
+    # 7.3-16 s part, so only the others are decoded.
+    heard = {0: 7.0, int(7.3 * TARGET_SR): 1.9, 16 * TARGET_SR: 2.0}  # by where each part starts
+    monkeypatch.setattr(routes, "silero_speech", lambda wav: int(heard[int(wav[0])] * TARGET_SR))
+    prepared = _one_piece(24.0, speech=_samples(_PAUSED))
+    worker = _Redo([_heard(0.0, [(" a", 1.0), (" b", 5.0)]), _heard(16.0, [(" c", 17.0), (" d", 20.0)])])
+    results = await routes._redo_stalled(_request(worker), [prepared], [_result([], [])], "parakeet-v3:int8")
+    assert _decoded_spans(worker) == [(0.0, 7.3), (16.0, 24.0)]
+    assert routes._stitch(prepared, results)[0] == "a b c d"
+
+
+@pytest.mark.asyncio
+async def test_a_piece_with_no_context_heard_as_nothing_is_decoded_again_in_parts(monkeypatch):
+    # PARAKEET_CHUNK_CONTEXT_SEC=0, or pieces cut out by long silences: the
+    # second piece, its window its range, heard nothing. Its parts' words go
+    # in, and the first piece's words at their cut all stay.
+    monkeypatch.setattr(routes, "silero_speech", lambda wav: wav.size)
+    wav = np.arange(34 * TARGET_SR, dtype=np.float32)
+    prepared = _prepared([(0.0, 10.0), (10.0, 34.0)], pieces=[wav[: 10 * TARGET_SR], wav[10 * TARGET_SR :]])
+    prepared.speech = _samples([(0.0, 10.0)] + [(a + 10, b + 10) for a, b in _PAUSED])
+    first = [(f" a{i}", 0.3 + 0.5 * i) for i in range(20)]  # to 9.8 s
+    words = [(f" w{i}", 10.3 + 0.5 * i) for i in range(48)]  # to 33.8 s
+    parts = [(10.0, 17.3), (17.3, 26.0), (26.0, 34.0)]
+    worker = _Redo([_heard(a, [(word, at) for word, at in words if a <= at < b]) for a, b in parts])
+    results = await routes._redo_stalled(
+        _request(worker), [prepared], [_heard(0.0, first), _result([], [])], "parakeet-v3:int8"
+    )
+    assert _decoded_spans(worker) == parts
+    assert routes._stitch(prepared, results)[0].split() == [word.strip() for word, _at in first + words]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("heard_to", "later"), [(30.0, 28.12), (31.0, 29.12)])
 async def test_a_one_piece_clip_heard_only_mid_way_has_each_stretch_decoded_again(heard_to, later):
