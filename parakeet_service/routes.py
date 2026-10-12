@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 
 from . import aligner, retime, spoken
 from .audio import load_audio
-from .chunker import FRAME, frame_rms, plan_chunks, slice_chunks, speech_segments
+from .chunker import FRAME, frame_rms, plan_chunks, silero_speech, slice_chunks, speech_segments
 from .config import (
     ALIGN_MAX_AUDIO_SECONDS,
     ALIGNER_CONFIGS,
@@ -1086,6 +1086,12 @@ _REDO_LATE_SEC = 1.5
 # sentence and any of the heading came back empty too: in halves, and with
 # 0.5 s or more past the pause, every time.
 _REDO_PART_SEC = 8.0
+# A part is decoded only if Silero hears this much speech in it, whatever
+# PARAKEET_VAD says: the volume VAD calls noise speech, and Parakeet makes up
+# words in short parts of it. Of 52 clips of ESC-50 sounds, 5 gained words
+# ("I kill", 18 x "gun"); Silero heard at most 1.6 s of speech in any part of
+# them, and 2.29 s or more in each of the 84 parts of the 28 clips above.
+_REDO_PART_SPEECH_SEC = 2.0
 
 # How many of the pieces that still skipped speech the log names.
 _LOGGED_PIECES = 10
@@ -1422,8 +1428,14 @@ async def _redo_stretches(
                 window, piece = windows[index], prepared.pieces[index]
                 parts = [tuple(stretch) for stretch in stretches] == [tuple(window)]  # heard nothing (#116)
                 if parts:
-                    stretches = _parts(window, prepared.speech)
-                spans = (stretches if len(stretches) > 1 else []) if parts else _redo_windows(window, stretches)
+                    split = _parts(window, prepared.speech)
+                    stretches = [
+                        (a, b)
+                        for a, b in split
+                        if len(split) > 1
+                        and silero_speech(piece[a - window[0] : b - window[0]]) >= _REDO_PART_SPEECH_SEC * TARGET_SR
+                    ]
+                spans = stretches if parts else _redo_windows(window, stretches)
                 redos = [(a, b, piece[a - window[0] : b - window[0]]) for a, b in spans]
                 neighbours = [
                     (cursor + other, windows[other], ranges[other], cut)
