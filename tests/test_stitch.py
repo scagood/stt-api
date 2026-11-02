@@ -943,13 +943,88 @@ async def test_a_one_piece_clip_with_no_long_stretch_without_words_is_left_as_it
 
 
 @pytest.mark.asyncio
-async def test_a_one_piece_clip_heard_as_nothing_is_not_decoded_again_as_it_was():
-    # Music, say: the stretch is the whole clip, which would come back the same
+async def test_a_one_piece_clip_heard_as_nothing_with_too_little_speech_is_not_decoded_again(monkeypatch):
+    # Music, say, that VAD hears as speech throughout and Silero hears 1.9 s
+    # of speech in: the stretch is the whole clip, with no pause to cut it in
+    monkeypatch.setattr(routes, "silero_speech", lambda wav: int(1.9 * TARGET_SR))
     results = [_result([], [])]
     worker = _Redo([])
     prepared = _one_piece(30.0, speech=_samples([(0.0, 30.0)]))
     assert await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:fp32") == results
     assert worker.pieces == []
+
+
+_PAD = 0.5  # routes._REDO_PAD_SEC
+
+
+def _padded_spans(worker):
+    """_decoded_spans of pieces given _PAD s of silence either side, each
+    checked to be silence there."""
+    pad = int(_PAD * TARGET_SR)
+    for piece in worker.pieces:
+        assert not piece[:pad].any() and not piece[-pad:].any()
+    return _decoded_spans(SimpleNamespace(pieces=[piece[pad:-pad] for piece in worker.pieces]))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("seconds", "speech"),
+    [
+        (4.0, [(0.0, 4.0)]),  # #121: 4 s cut mid-speech
+        (8.0, [(0.0, 3.4), (4.3, 8.0)]),  # #121: 8 s, too short for parts
+        (30.0, [(0.0, 30.0)]),  # no pause to cut it in
+    ],
+)
+async def test_a_clip_heard_as_nothing_that_cannot_be_cut_in_parts_is_decoded_again_with_silence_either_side(
+    monkeypatch, seconds, speech
+):
+    # As it was, it would come back the same. Padded, it hears its words,
+    # timed from where the clip starts, not the silence before it.
+    monkeypatch.setattr(routes, "silero_speech", lambda wav: wav.size)
+    words = [(f" w{i}", 0.3 + 0.5 * i) for i in range(int(seconds * 2) - 1)]
+    worker = _Redo([_heard(-_PAD, words)])
+    prepared = _one_piece(seconds, speech=_samples(speech))
+    results = await routes._redo_stalled(_request(worker), [prepared], [_result([], [])], "parakeet-v3:int8")
+    assert _padded_spans(worker) == [(0.0, seconds)]
+    text, _segments, timed = routes._stitch(prepared, results)
+    assert text.split() == [word.strip() for word, _at in words]
+    assert [w["start"] for w in timed] == pytest.approx([at for _word, at in words])
+
+
+@pytest.mark.asyncio
+async def test_a_word_timed_in_the_silence_put_before_a_clip_starts_with_it(monkeypatch):
+    monkeypatch.setattr(routes, "silero_speech", lambda wav: wav.size)
+    worker = _Redo([_result([" Down", " in", " the", " street"], [0.2, _PAD + 0.4, _PAD + 0.6, _PAD + 1.0])])
+    prepared = _one_piece(4.0, speech=_samples([(0.0, 4.0)]))
+    results = await routes._redo_stalled(_request(worker), [prepared], [_result([], [])], "parakeet-v3:int8")
+    text, _segments, timed = routes._stitch(prepared, results)
+    assert text == "Down in the street"
+    assert [w["start"] for w in timed] == pytest.approx([0.0, 0.4, 0.6, 1.0])
+
+
+@pytest.mark.asyncio
+async def test_a_short_clip_heard_as_nothing_padded_too_stays_empty(monkeypatch, caplog):
+    monkeypatch.setattr(routes, "silero_speech", lambda wav: wav.size)
+    results = [_result([], [])]
+    worker = _Redo([])
+    prepared = _one_piece(4.0, speech=_samples([(0.0, 4.0)]))
+    assert await routes._redo_stalled(_request(worker), [prepared], results, "parakeet-v3:int8") == results
+    assert _padded_spans(worker) == [(0.0, 4.0)]
+    assert "0.0-4.0 s: 0 words" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_parts_of_a_clip_heard_as_nothing_are_decoded_without_silence(monkeypatch):
+    # #116's parts, as #117 measured them: no margin, and no padding either
+    monkeypatch.setattr(routes, "silero_speech", lambda wav: wav.size)
+    prepared = _one_piece(24.0, speech=_samples(_PAUSED))
+    worker = _Redo([])
+    await routes._redo_stalled(_request(worker), [prepared], [_result([], [])], "parakeet-v3:int8")
+    assert [piece.size for piece in worker.pieces] == [s - a for a, s in _samples([(0.0, 7.3), (7.3, 16.0), (16.0, 24.0)])]
+
+
+def test_the_tests_pad_as_the_service_does():
+    assert routes._REDO_PAD_SEC == _PAD
 
 
 # 24 s with pauses at 3.4-4.3, 7.1-7.5, 9.5-9.7 and 15.8-16.2 s
