@@ -1092,6 +1092,19 @@ _REDO_PART_SEC = 8.0
 # ("I kill", 18 x "gun"); Silero heard at most 1.6 s of speech in any part of
 # them, and 2.29 s or more in each of the 84 parts of the 28 clips above.
 _REDO_PART_SPEECH_SEC = 2.0
+# A piece that heard nothing and can't be cut in parts (a clip of about
+# _REDO_PART_SEC or less, or one VAD hears no pause in) is decoded again with
+# this much silence either side, since as it was it would come back the same
+# (#121). Parakeet, int8 and fp32 alike, hears nothing in many short clips
+# cut mid-speech: in the first 300 s of two LibriVox chapters, 59 of 198
+# clips of 4 s and 24 of 196 of 8 s. Of 119 such clips (with Moby Dick's
+# first chapter), 81 heard words padded, 69% of those a long decode heard
+# there. 0.25 s left more of them empty, 1 s most. In every ESC-50 sound,
+# alone and in pairs, padding made up no word; decoding halves too, when the
+# padded clip still hears nothing, saved 18 more clips but did (a pig, a door).
+# Words it times after the clip's end are made up in the silence put there,
+# 3 of 73 clips saved on other chapters, so are dropped (_unpadded).
+_REDO_PAD_SEC = 0.5
 
 # How many of the pieces that still skipped speech the log names.
 _LOGGED_PIECES = 10
@@ -1140,6 +1153,25 @@ def _parts(window: Tuple[int, int], speech: Sequence[Tuple[int, int]]) -> List[T
     share = (window[1] - window[0]) / count
     cuts = sorted({min(pauses, key=lambda at: abs(at - (window[0] + share * part))) for part in range(1, count)})
     return list(zip([window[0], *cuts], [*cuts, window[1]]))
+
+
+def _padded(audio: np.ndarray) -> np.ndarray:
+    """`audio` with _REDO_PAD_SEC of silence either side."""
+    silence = np.zeros(int(_REDO_PAD_SEC * TARGET_SR), dtype=audio.dtype)
+    return np.concatenate([silence, audio, silence])
+
+
+def _unpadded(result: Any, seconds: float) -> Any:
+    """`result`, decoded from _padded audio `seconds` long, timed from where
+    that audio starts. A token timed in the silence before it is a first word
+    timed a frame or two early: at its start. A word that starts in the
+    silence after it was made up there ("a little bit of a little bit of a"
+    after a clip of Alice): dropped, from there on."""
+    info = _extract(result)
+    tokens, timestamps = list(info["tokens"]), [max(at - _REDO_PAD_SEC, 0.0) for at in info["timestamps"]]
+    late = next((first for _word, first, _last in _word_spans(tokens) if timestamps[first] >= seconds), len(tokens))
+    tokens, timestamps = tokens[:late], [min(at, seconds) for at in timestamps[:late]]
+    return SimpleNamespace(text=_clean_text(_decoded(tokens)) if tokens else "", tokens=tokens, timestamps=timestamps)
 
 
 def _appended(result: Any, origin: int, again: Any, start: int, barred: Collection[int] = ()) -> Tuple[Any, List[Tuple[int, int, int]]]:
@@ -1415,11 +1447,11 @@ async def _redo_stretches(
     what was heard stands."""
     loop, pool = asyncio.get_running_loop(), request.app.state.audio_pool
 
-    def find() -> List[Tuple[int, Tuple[int, int], Tuple[int, int], List[Tuple[int, int]], List[Tuple[int, int, Any]], List[Tuple[int, int, int]], bool]]:
+    def find() -> List[Tuple[int, Tuple[int, int], Tuple[int, int], List[Tuple[int, int]], List[Tuple[int, int, Any, bool]], List[Tuple[int, int, int]], bool]]:
         """(in results, its window, its range, its stretches, each (start,
-        stop, audio) to decode, (in results, window, range, cut) for each
-        neighbour it meets, and whether it heard nothing, so is decoded in
-        parts) for each piece that still skipped speech."""
+        stop, audio, whether _padded) to decode, (in results, window, range,
+        cut) for each neighbour it meets, and whether it heard nothing, so is
+        decoded in parts) for each piece that still skipped speech."""
         found = []
         cursor = 0
         for prepared in files:
@@ -1432,11 +1464,13 @@ async def _redo_stretches(
                     stretches = [
                         (a, b)
                         for a, b in split
-                        if len(split) > 1
-                        and silero_speech(piece[a - window[0] : b - window[0]]) >= _REDO_PART_SPEECH_SEC * TARGET_SR
+                        if silero_speech(piece[a - window[0] : b - window[0]]) >= _REDO_PART_SPEECH_SEC * TARGET_SR
                     ]
-                spans = stretches if parts else _redo_windows(window, stretches)
-                redos = [(a, b, piece[a - window[0] : b - window[0]]) for a, b in spans]
+                    pad = len(split) == 1  # can't be cut in parts: as it was, it would come back the same (#121)
+                    audio = [piece[a - window[0] : b - window[0]] for a, b in stretches]
+                    redos = [(a, b, _padded(part) if pad else part, pad) for (a, b), part in zip(stretches, audio)]
+                else:
+                    redos = [(a, b, piece[a - window[0] : b - window[0]], False) for a, b in _redo_windows(window, stretches)]
                 neighbours = [
                     (cursor + other, windows[other], ranges[other], cut)
                     for other, cut, side in ((index - 1, ranges[index][0], 1), (index + 1, ranges[index][1], 0))
@@ -1456,12 +1490,15 @@ async def _redo_stretches(
             taken = [
                 word for other, (origin, _end), _range, cut in neighbours for word in _heard_near(spliced[other], origin, cut)
             ]
-            mine = again[cursor : cursor + len(redos)]
+            mine = [
+                _unpadded(result, (stop - start) / TARGET_SR) if padded else result
+                for (start, stop, _piece, padded), result in zip(redos, again[cursor : cursor + len(redos)])
+            ]
             cursor += len(redos)
             barred: set = set()
             while True:  # until putting words in loses none at a cut, as _seam pairs them
                 merged, new, put = results[at], 0, []
-                for (start, stop, _piece), result in zip(redos, mine):
+                for (start, stop, _piece, _pad), result in zip(redos, mine):
                     inside = [(low, high) for low, high in stretches if start <= low and high <= stop]
                     merged, added = (
                         _appended(merged, window[0], result, start, barred)
@@ -1487,7 +1524,7 @@ async def _redo_stretches(
         found = await loop.run_in_executor(pool, find)
         if not found:
             return results
-        audio = [piece for *_found, redos, _neighbours, _in_parts in found for _start, _stop, piece in redos]
+        audio = [piece for *_found, redos, _neighbours, _in_parts in found for _start, _stop, piece, _pad in redos]
         again = await _infer(request, audio, model_key)
         spliced, heard = await loop.run_in_executor(pool, splice, again)
     except Exception:  # what was heard stands: never a failed request for a redo
