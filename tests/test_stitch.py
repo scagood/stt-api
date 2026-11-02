@@ -997,9 +997,27 @@ async def test_a_word_timed_in_the_silence_put_before_a_clip_starts_with_it(monk
     worker = _Redo([_result([" Down", " in", " the", " street"], [0.2, _PAD + 0.4, _PAD + 0.6, _PAD + 1.0])])
     prepared = _one_piece(4.0, speech=_samples([(0.0, 4.0)]))
     results = await routes._redo_stalled(_request(worker), [prepared], [_result([], [])], "parakeet-v3:int8")
+    assert results[0].timestamps == pytest.approx([0.0, 0.4, 0.6, 1.0])  # at the clip's start, not before it
     text, _segments, timed = routes._stitch(prepared, results)
     assert text == "Down in the street"
     assert [w["start"] for w in timed] == pytest.approx([0.0, 0.4, 0.6, 1.0])
+
+
+@pytest.mark.asyncio
+async def test_words_a_padded_redo_times_after_the_clip_ends_are_dropped(monkeypatch):
+    # #122's review: Alice ch. 4 at 142.17 s, 4 s, came back "...a tidy little
+    # room where I was a little bit of a little bit of a", every word after
+    # "where" timed past its end, in the silence put after it. A word that
+    # starts before the end and runs into it stays, timed to the end.
+    monkeypatch.setattr(routes, "silero_speech", lambda wav: wav.size)
+    worker = _Redo([_result(
+        [" a", " tidy", " little", " ro", "om", " wh", "ere", " I", " was", " a", " lit", "tle"],
+        [_PAD + t for t in (2.6, 2.8, 3.1, 3.3, 3.5, 3.8, 4.06, 4.1, 4.2, 4.3, 4.4, 4.5)],
+    )])
+    prepared = _one_piece(4.0, speech=_samples([(0.0, 4.0)]))
+    results = await routes._redo_stalled(_request(worker), [prepared], [_result([], [])], "parakeet-v3:int8")
+    assert results[0].text == "a tidy little room where"
+    assert results[0].timestamps == pytest.approx([2.6, 2.8, 3.1, 3.3, 3.5, 3.8, 4.0])
 
 
 @pytest.mark.asyncio

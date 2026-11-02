@@ -1102,6 +1102,8 @@ _REDO_PART_SPEECH_SEC = 2.0
 # there. 0.25 s left more of them empty, 1 s most. In every ESC-50 sound,
 # alone and in pairs, padding made up no word; decoding halves too, when the
 # padded clip still hears nothing, saved 18 more clips but did (a pig, a door).
+# Words it times after the clip's end are made up in the silence put there,
+# 3 of 73 clips saved on other chapters, so are dropped (_unpadded).
 _REDO_PAD_SEC = 0.5
 
 # How many of the pieces that still skipped speech the log names.
@@ -1161,10 +1163,15 @@ def _padded(audio: np.ndarray) -> np.ndarray:
 
 def _unpadded(result: Any, seconds: float) -> Any:
     """`result`, decoded from _padded audio `seconds` long, timed from where
-    that audio starts: a token timed in the silence either side, at its edge."""
+    that audio starts. A token timed in the silence before it is a first word
+    timed a frame or two early: at its start. A word that starts in the
+    silence after it was made up there ("a little bit of a little bit of a"
+    after a clip of Alice): dropped, from there on."""
     info = _extract(result)
-    timestamps = [min(max(at - _REDO_PAD_SEC, 0.0), seconds) for at in info["timestamps"]]
-    return SimpleNamespace(text=info["text"], tokens=info["tokens"], timestamps=timestamps)
+    tokens, timestamps = list(info["tokens"]), [max(at - _REDO_PAD_SEC, 0.0) for at in info["timestamps"]]
+    late = next((first for _word, first, _last in _word_spans(tokens) if timestamps[first] >= seconds), len(tokens))
+    tokens, timestamps = tokens[:late], [min(at, seconds) for at in timestamps[:late]]
+    return SimpleNamespace(text=_clean_text(_decoded(tokens)) if tokens else "", tokens=tokens, timestamps=timestamps)
 
 
 def _appended(result: Any, origin: int, again: Any, start: int, barred: Collection[int] = ()) -> Tuple[Any, List[Tuple[int, int, int]]]:
