@@ -64,6 +64,32 @@ async def test_batch_worker_rejects_submission_before_start():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("batched", [False, True])
+async def test_no_input_is_a_whole_number_of_encoder_frames(batched):
+    # Parakeet v3 makes up a last word ("her and | Chapter five") where its
+    # input ends ~0.5 s into a pause on an exact 80 ms frame (#123); 10 ms of
+    # zeros more and it doesn't. Other lengths reach the model as they are.
+    sizes = []
+
+    class _Sizes(_Model):
+        def recognize(self, value):
+            sizes.extend(item.size for item in (value if isinstance(value, list) else [value]))
+            return super().recognize(value)
+
+    wavs = [np.ones(1280 * 50, dtype=np.float32), np.ones(1280 * 50 + 320, dtype=np.float32)]
+    if batched:
+        worker = BatchWorker(lambda _name: _Sizes(), max_batch=4, window_ms=20)
+        await worker.start()
+    else:
+        worker = InferencePool(lambda _name: _Sizes(), workers=1)
+    try:
+        assert await worker.submit_many(wavs, "a") == [1280.0 * 50, 1280.0 * 50 + 320]
+    finally:
+        await worker.stop()
+    assert sorted(sizes) == [1280 * 50 + 160, 1280 * 50 + 320]
+
+
+@pytest.mark.asyncio
 async def test_batch_worker_caps_padded_audio_per_batch():
     sizes = []
 

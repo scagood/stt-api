@@ -44,8 +44,23 @@ def _no_cache(_model_name: str) -> None:
     return None
 
 
+# Parakeet's encoder steps 80 ms (1280 samples). Input ending on an exact step
+# ~0.5 s into a pause makes it add a word that was never said, where 10 ms
+# more of silence doesn't (#123). Whisper pads to 30 s, so the 10 ms is
+# nothing to it.
+_ENCODER_STEP = TARGET_SR * 8 // 100
+_OFF_STEP = TARGET_SR // 100
+
+
+def _off_step(wav: np.ndarray) -> np.ndarray:
+    """`wav`, with 10 ms of zeros after it if it is a whole number of encoder steps."""
+    if wav.size % _ENCODER_STEP:
+        return wav
+    return np.concatenate([wav, np.zeros(_OFF_STEP, dtype=wav.dtype)])
+
+
 def _infer_one(get_model_fn: Callable[[str], Any], model_name: str, wav: np.ndarray):
-    return get_model_fn(model_name).recognize(wav)
+    return get_model_fn(model_name).recognize(_off_step(wav))
 
 
 def _infer_named_batch(
@@ -243,6 +258,7 @@ class BatchWorker:
 
 
 def _infer_batch(model, wavs: List[np.ndarray]) -> List[Any]:
+    wavs = [_off_step(wav) for wav in wavs]
     if len(wavs) == 1:
         return [model.recognize(wavs[0])]
     result = model.recognize(wavs)
