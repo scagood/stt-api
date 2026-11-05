@@ -562,6 +562,7 @@ def plan_chunks(
     min_sec: float = CHUNK_MIN_SEC,
     context_sec: float = 0.0,
     vad_filter: bool = False,
+    encoder_step: int = 0,
 ) -> Plan:
     """Ordered, non-empty, bounded ranges in the original waveform, and the
     window of audio to decode for each (_windows).
@@ -572,7 +573,10 @@ def plan_chunks(
     (has_speech).
 
     Bounds are the model's own (models.yaml). A long clip's ranges leave room
-    for `context_sec` more on either side within max_sec.
+    for `context_sec` more on either side within max_sec. With an
+    `encoder_step` (samples), no range ending at a long silence cut out, nor
+    a window ending with it, is a whole number of them where it fits
+    (_off_step).
     """
     total = int(wav.size)
     if total <= 0:
@@ -670,7 +674,46 @@ def plan_chunks(
         for start, end in output
         if 0 <= start < end <= total and end - start <= own_maximum
     ]
-    return Plan(ranges, _windows(ranges, segments, context, maximum), segments)
+    windows = _windows(ranges, segments, context, maximum)
+    if encoder_step:
+        ranges, windows = _off_step(ranges, windows, encoder_step, own_maximum, maximum)
+    return Plan(ranges, windows, segments)
+
+
+_NUDGE = TARGET_SR // 100
+
+
+def _off_step(
+    ranges: List[Range], windows: List[Range], step: int, own_maximum: int, maximum: int
+) -> Tuple[List[Range], List[Range]]:
+    """`ranges` and `windows`, each range that ends at a long silence cut out
+    reaching 10-30 ms further into it where it (decoded again without context)
+    or a window ending with it is a whole number of `step`s, as far as the
+    bounds allow."""
+    ranges, windows = list(ranges), list(windows)
+    for index, (start, end) in enumerate(ranges[:-1]):
+        if ranges[index + 1][0] == end:
+            continue  # a cut with context either side, not a long silence
+        ending = [at for at, (_start, window_end) in enumerate(windows) if window_end == end]
+        starts = [start] + [windows[at][0] for at in ending]
+        on_step = lambda at: any((at - begin) % step == 0 for begin in starts)
+        if not on_step(end):
+            continue
+        moved = next(
+            (
+                at
+                for at in range(end + _NUDGE, end + 4 * _NUDGE, _NUDGE)
+                if not on_step(at)
+                and at < ranges[index + 1][0]
+                and at - start <= own_maximum
+                and all(at - windows[w][0] <= maximum for w in ending)
+            ),
+            end,
+        )
+        ranges[index] = (start, moved)
+        for at in ending:
+            windows[at] = (windows[at][0], moved)
+    return ranges, windows
 
 
 def _windows(ranges: List[Range], speech: List[Range], context: int, maximum: int) -> List[Range]:
