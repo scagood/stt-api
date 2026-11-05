@@ -670,7 +670,51 @@ def plan_chunks(
         for start, end in output
         if 0 <= start < end <= total and end - start <= own_maximum
     ]
-    return Plan(ranges, _windows(ranges, segments, context, maximum), segments)
+    windows = _windows(ranges, segments, context, maximum)
+    if context:
+        ranges, windows = _off_step(ranges, windows, own_maximum, maximum)
+    return Plan(ranges, windows, segments)
+
+
+# Parakeet's encoder steps 80 ms. Input that ends at a long silence cut out,
+# just after the speech, and is a whole number of steps long makes it add a
+# word that was never said ("her and | Chapter five"), where 10 ms more of the
+# silence doesn't (#123).
+_ENCODER_STEP = TARGET_SR * 8 // 100
+_NUDGE = TARGET_SR // 100
+
+
+def _off_step(
+    ranges: List[Range], windows: List[Range], own_maximum: int, maximum: int
+) -> Tuple[List[Range], List[Range]]:
+    """`ranges` and `windows`, each range that ends at a long silence cut out
+    reaching 10-30 ms further into it where it (decoded again without context)
+    or a window ending with it is a whole number of encoder steps, as far as
+    the bounds allow."""
+    ranges, windows = list(ranges), list(windows)
+    for index, (start, end) in enumerate(ranges[:-1]):
+        if ranges[index + 1][0] == end:
+            continue  # a cut with context either side, not a long silence
+        ending = [at for at, (_start, window_end) in enumerate(windows) if window_end == end]
+        starts = [start] + [windows[at][0] for at in ending]
+        on_step = lambda at: any((at - begin) % _ENCODER_STEP == 0 for begin in starts)
+        if not on_step(end):
+            continue
+        moved = next(
+            (
+                at
+                for at in range(end + _NUDGE, end + 4 * _NUDGE, _NUDGE)
+                if not on_step(at)
+                and at < ranges[index + 1][0]
+                and at - start <= own_maximum
+                and all(at - windows[w][0] <= maximum for w in ending)
+            ),
+            end,
+        )
+        ranges[index] = (start, moved)
+        for at in ending:
+            windows[at] = (windows[at][0], moved)
+    return ranges, windows
 
 
 def _windows(ranges: List[Range], speech: List[Range], context: int, maximum: int) -> List[Range]:
