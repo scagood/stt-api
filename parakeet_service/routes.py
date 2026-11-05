@@ -220,6 +220,16 @@ def _chunk_bounds(model_name: str) -> Tuple[float, float, float, float]:
     return target, maximum, min(CHUNK_MIN_SEC, target), context
 
 
+def _encoder_step(model_name: str) -> int:
+    """Samples per step of the model's encoder, for plan_chunks to keep a
+    long silence's cut off: Parakeet's steps 80 ms (8 of its 10 ms frames),
+    and input that ends there just after speech, a whole number of steps
+    long, makes it add a word that was never said ("her and | Chapter
+    five"), where 10 ms more of the silence doesn't (#123). Whisper hears a
+    fixed 30 s window: 0, none."""
+    return TARGET_SR * 8 // 100 if _family(model_name) == "parakeet" else 0
+
+
 def _validate_format(response_format: str) -> str:
     normalized = (response_format or "json").strip().lower()
     if normalized not in _ALLOWED_FORMATS:
@@ -267,6 +277,7 @@ def _prepare_audio(
     min_sec: float,
     context_sec: float = 0.0,
     vad_filter: bool = False,
+    encoder_step: int = 0,
 ) -> _PreparedAudio:
     # Decoding stops just past the limit, so `duration` is a lower bound
     # once it is over.
@@ -285,6 +296,7 @@ def _prepare_audio(
         min_sec=min_sec,
         context_sec=context_sec,
         vad_filter=vad_filter,
+        encoder_step=encoder_step,
     )
     pieces = slice_chunks(waveform, plan.windows)
     if len(pieces) > MAX_REQUEST_CHUNKS:
@@ -309,6 +321,7 @@ async def _prepare_in_pool(
     min_sec: float,
     context_sec: float = 0.0,
     vad_filter: bool = False,
+    encoder_step: int = 0,
 ) -> _PreparedAudio:
     loop = asyncio.get_running_loop()
     try:
@@ -321,6 +334,7 @@ async def _prepare_in_pool(
             min_sec,
             context_sec,
             vad_filter,
+            encoder_step,
         )
     except _AudioTooLong as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
@@ -2376,7 +2390,8 @@ async def transcribe(
 
     started = time.perf_counter()
     prepared = await _prepare_in_pool(
-        request, raw, target_sec, max_sec, min_sec, context_sec, _filters(vad_filter)
+        request, raw, target_sec, max_sec, min_sec, context_sec, _filters(vad_filter),
+        _encoder_step(model_name),
     )
     decode_ms = (time.perf_counter() - started) * 1000
 
@@ -2494,6 +2509,7 @@ async def transcribe_batch(
             min_sec,
             context_sec,
             filters,
+            _encoder_step(model_name),
         )
         for raw in raws
     ]

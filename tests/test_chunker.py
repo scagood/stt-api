@@ -82,18 +82,24 @@ def test_long_silence_gap_is_cut_out_of_chunks(monkeypatch):
         (30.02, (0, 30.02)),  # not a whole number of steps: as cut
     ],
 )
-def test_a_range_before_a_long_silence_is_no_whole_number_of_steps(monkeypatch, speech_end, first):
+@pytest.mark.parametrize("context_sec", [5.0, 0.0])
+def test_a_range_before_a_long_silence_is_no_whole_number_of_steps(monkeypatch, speech_end, first, context_sec):
     # Input ending at a long silence cut out, just after the speech, and a
     # whole number of 80 ms steps long makes Parakeet v3 add a word that was
     # never said ("her and | Chapter five"); 10 ms more of the silence and it
-    # doesn't (#123). Without context (Whisper), the cuts are as before.
+    # doesn't (#123). With context or without. Whisper has no such step: its
+    # cuts are as before.
     speech = [_at(1, speech_end), _at(34.4, 90)]
     monkeypatch.setattr(chunker, "_speech_segments", lambda _wav: speech)
     wav = np.zeros(_at(92)[0], dtype=np.float32)
-    plan = chunker.plan_chunks(wav, context_sec=5.0, **BOUNDS)
-    assert plan.ranges == [_at(*first), _at(34.4, 92)]
-    assert plan.windows[0] == _at(*first)
-    assert chunker.plan_chunks(wav, **BOUNDS).ranges == [_at(0, speech_end), _at(34.4, 92)]
+    for name in ("parakeet-v3", "parakeet-v2"):
+        step = routes._encoder_step(name)
+        plan = chunker.plan_chunks(wav, context_sec=context_sec, encoder_step=step, **BOUNDS)
+        assert plan.ranges == [_at(*first), _at(34.4, 92)]
+        assert plan.windows[0] == _at(*first)
+    assert routes._encoder_step("whisper-base") == 0
+    plan = chunker.plan_chunks(wav, context_sec=context_sec, encoder_step=0, **BOUNDS)
+    assert plan.ranges == [_at(0, speech_end), _at(34.4, 92)]
 
 
 def test_bounds_override_caps_chunks(monkeypatch):

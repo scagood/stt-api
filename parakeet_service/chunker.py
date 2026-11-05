@@ -562,6 +562,7 @@ def plan_chunks(
     min_sec: float = CHUNK_MIN_SEC,
     context_sec: float = 0.0,
     vad_filter: bool = False,
+    encoder_step: int = 0,
 ) -> Plan:
     """Ordered, non-empty, bounded ranges in the original waveform, and the
     window of audio to decode for each (_windows).
@@ -572,7 +573,10 @@ def plan_chunks(
     (has_speech).
 
     Bounds are the model's own (models.yaml). A long clip's ranges leave room
-    for `context_sec` more on either side within max_sec.
+    for `context_sec` more on either side within max_sec. With an
+    `encoder_step` (samples), no range ending at a long silence cut out, nor
+    a window ending with it, is a whole number of them where it fits
+    (_off_step).
     """
     total = int(wav.size)
     if total <= 0:
@@ -671,33 +675,28 @@ def plan_chunks(
         if 0 <= start < end <= total and end - start <= own_maximum
     ]
     windows = _windows(ranges, segments, context, maximum)
-    if context:
-        ranges, windows = _off_step(ranges, windows, own_maximum, maximum)
+    if encoder_step:
+        ranges, windows = _off_step(ranges, windows, encoder_step, own_maximum, maximum)
     return Plan(ranges, windows, segments)
 
 
-# Parakeet's encoder steps 80 ms. Input that ends at a long silence cut out,
-# just after the speech, and is a whole number of steps long makes it add a
-# word that was never said ("her and | Chapter five"), where 10 ms more of the
-# silence doesn't (#123).
-_ENCODER_STEP = TARGET_SR * 8 // 100
 _NUDGE = TARGET_SR // 100
 
 
 def _off_step(
-    ranges: List[Range], windows: List[Range], own_maximum: int, maximum: int
+    ranges: List[Range], windows: List[Range], step: int, own_maximum: int, maximum: int
 ) -> Tuple[List[Range], List[Range]]:
     """`ranges` and `windows`, each range that ends at a long silence cut out
     reaching 10-30 ms further into it where it (decoded again without context)
-    or a window ending with it is a whole number of encoder steps, as far as
-    the bounds allow."""
+    or a window ending with it is a whole number of `step`s, as far as the
+    bounds allow."""
     ranges, windows = list(ranges), list(windows)
     for index, (start, end) in enumerate(ranges[:-1]):
         if ranges[index + 1][0] == end:
             continue  # a cut with context either side, not a long silence
         ending = [at for at, (_start, window_end) in enumerate(windows) if window_end == end]
         starts = [start] + [windows[at][0] for at in ending]
-        on_step = lambda at: any((at - begin) % _ENCODER_STEP == 0 for begin in starts)
+        on_step = lambda at: any((at - begin) % step == 0 for begin in starts)
         if not on_step(end):
             continue
         moved = next(

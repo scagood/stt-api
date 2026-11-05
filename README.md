@@ -668,7 +668,10 @@ All of it fits inside the model's `chunk_max_sec`, so a chunk's own range is
 shorter by twice the context: `parakeet-v3` still cuts at about 60 s (at most
 65 s), `parakeet-v2` at 20 s instead of 25 s. That decodes up to 1.25× the
 audio on `parakeet-v3` and 1.5× on `parakeet-v2`. Long silences are still cut
-out, with no context across them. Whisper gets no context: it returns no word
+out, with no context across them. A Parakeet chunk that ends at one, just after
+the speech, ends 10-30 ms into it instead where it would be a whole number of
+the model's 80 ms steps long: there Parakeet adds a word that was never said
+(`…her and | Chapter five`, #123). Whisper gets no context: it returns no word
 times to trim it back by.
 
 **Skipped speech.** Parakeet can still skip a stretch of speech, which one
