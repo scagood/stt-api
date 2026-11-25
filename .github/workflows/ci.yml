@@ -31,9 +31,7 @@ jobs:
         # The service decodes everything that is not already a 16 kHz PCM WAV
         # through ffmpeg, so tests/test_audio.py cannot cover that path
         # without it. Not present in the runner image.
-        run: |
-          sudo rm -f /etc/apt/sources.list.d/git-core-*
-          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Compile service
         run: python -m compileall -q parakeet_service server.py
       - name: Run unit tests
