@@ -6,7 +6,7 @@ on:
 jobs:
   cleanup:
     name: ghcr.io cleanup action
-    runs-on: ubuntu-latest
+    runs-on: stt-api-runners
     permissions:
       packages: write
     steps:
