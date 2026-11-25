@@ -12,7 +12,9 @@ permissions:
 
 jobs:
   unit-tests:
-    runs-on: ubuntu-latest
+    # Self-hosted, except a pull request from a fork: the runners refuse those
+    # jobs (a hook in mini-cluster), so they run on GitHub's runners instead.
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || 'stt-api-runners' }}
     strategy:
       matrix:
         python-version: ["3.14"]
@@ -43,7 +45,9 @@ jobs:
     # model._build_asr leans on onnx-asr internals, and the chunker on
     # silero-vad's API, so check both against the real packages, at the
     # versions requirements.txt pins.
-    runs-on: ubuntu-latest
+    # Self-hosted, except a pull request from a fork: the runners refuse those
+    # jobs (a hook in mini-cluster), so they run on GitHub's runners instead.
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || 'stt-api-runners' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

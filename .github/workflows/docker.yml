@@ -25,9 +25,14 @@ jobs:
   build:
     name: build (${{ matrix.flavor }})
     needs: ci
-    # ci is skipped on a pull request; build still runs then.
-    if: ${{ !cancelled() && (needs.ci.result == 'success' || needs.ci.result == 'skipped') }}
-    runs-on: ubuntu-latest
+    # ci is skipped on a pull request; build still runs then, except for a PR
+    # from a fork: the self-hosted runners refuse those jobs (a hook in
+    # mini-cluster). A fork's change still gets the smoke test on the push to
+    # main, before anything is published.
+    if: >-
+      ${{ !cancelled() && (needs.ci.result == 'success' || needs.ci.result == 'skipped')
+      && (!github.event.pull_request || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: stt-api-runners
     strategy:
       fail-fast: false
       matrix:
@@ -46,13 +51,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Free runner disk space
-        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
-
-      - uses: docker/setup-qemu-action@v4
-        if: contains(matrix.platforms, ',')
-
+      # The cluster's shared BuildKit keeps the layer cache on its own volume
+      # and registers QEMU for arm64 itself.
       - uses: docker/setup-buildx-action@v4
+        with:
+          driver: remote
+          endpoint: tcp://buildkitd:1234
 
       # Build the amd64 image into the runner's Docker first, so the smoke test
       # runs before anything is published.
@@ -63,7 +67,6 @@ jobs:
           file: Dockerfile.${{ matrix.flavor }}
           platforms: linux/amd64
           load: true
-          cache-from: type=gha,scope=${{ matrix.flavor }}
 
       # Start the image as a replica starts: it answers /healthz only once
       # PARAKEET_PRELOAD_MODELS has loaded and run a warm-up inference through
@@ -152,5 +155,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.flavor }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.flavor }}
