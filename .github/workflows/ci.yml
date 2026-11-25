@@ -12,8 +12,6 @@ permissions:
 
 jobs:
   unit-tests:
-    # Self-hosted, except a pull request from a fork: the runners refuse those
-    # jobs (a hook in mini-cluster), so they run on GitHub's runners instead.
     runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || 'stt-api-runners' }}
     strategy:
       matrix:
@@ -33,9 +31,7 @@ jobs:
       - name: Install ffmpeg
         # The service decodes everything that is not already a 16 kHz PCM WAV
         # through ffmpeg, so tests/test_audio.py cannot cover that path
-        # without it. Not present in the runner image. The self-hosted image
-        # also adds the git-core PPA, whose outages fail apt-get update;
-        # nothing here needs it.
+        # without it. Not present in the runner image.
         run: |
           sudo rm -f /etc/apt/sources.list.d/git-core-*
           sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg
@@ -49,8 +45,6 @@ jobs:
     # model._build_asr leans on onnx-asr internals, and the chunker on
     # silero-vad's API, so check both against the real packages, at the
     # versions requirements.txt pins.
-    # Self-hosted, except a pull request from a fork: the runners refuse those
-    # jobs (a hook in mini-cluster), so they run on GitHub's runners instead.
     runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || 'stt-api-runners' }}
     steps:
       - uses: actions/checkout@v7
