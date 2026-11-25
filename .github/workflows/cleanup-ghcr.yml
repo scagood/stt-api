@@ -6,12 +6,10 @@ on:
 jobs:
   cleanup:
     name: ghcr.io cleanup action
-    runs-on: ubuntu-latest
+    runs-on: stt-api-runners
     permissions:
       packages: write
     steps:
-      # Multi-arch buildx re-pushes (latest-cpu/latest-gpu) orphan the previous
-      # untagged manifests; no pr-* handling needed as PR builds never push.
       - uses: dataaxiom/ghcr-cleanup-action@v1
         with:
           delete-untagged: true
