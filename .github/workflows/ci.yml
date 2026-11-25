@@ -21,7 +21,6 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
       - name: Install lightweight test dependencies
         # numpy unpinned here: requirements.txt caps it at <3, so pip resolves
         # the same 2.x series the runtime installs.
@@ -51,7 +50,6 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
-          cache: pip
       - name: Install onnx-asr, onnx and onnxruntime
         run: |
           python -m pip install --upgrade pip
