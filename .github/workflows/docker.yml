@@ -20,9 +20,7 @@ jobs:
   build:
     name: build (${{ matrix.flavor }})
     needs: ci
-    if: >-
-      ${{ !cancelled() && (needs.ci.result == 'success' || needs.ci.result == 'skipped')
-      && (!github.event.pull_request || github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ !cancelled() && (needs.ci.result == 'success' || needs.ci.result == 'skipped') }}
     runs-on: stt-api-runners
     strategy:
       fail-fast: false
